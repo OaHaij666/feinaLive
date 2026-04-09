@@ -1,0 +1,89 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg-primary: #f0f5ff;
+  --bg-secondary: #e8efff;
+  --bg-danmaku: rgba(232, 239, 255, 0.95);
+  --accent-blue: #4a90e2;
+  --accent-blue-light: #7db9ff;
+  --accent-blue-dark: #2563eb;
+  --accent-cyan: #38bdf8;
+  --accent-purple: #818cf8;
+  --accent-light: #a8c4e8;
+  --accent-dark: #3b82f6;
+  --text-primary: #1e3a5f;
+  --text-secondary: #4a6aa8;
+  --text-muted: #8a9ab0;
+  --border-color: #93c5fd;
+  --glow-color: rgba(59, 130, 246, 0.5);
+  --glass-bg: rgba(240, 248, 255, 0.75);
+  --glass-border: rgba(147, 197, 253, 0.4);
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  background: linear-gradient(135deg, #e0f2fe 0%, #dbeafe 50%, #ede9fe 100%);
+  color: var(--text-primary);
+  overflow: hidden;
+}
+
+#app {
+  width: 1920px;
+  height: 1080px;
+  overflow: hidden;
+}
+
+@keyframes float-particle {
+  0%, 100% {
+    transform: translateY(0) translateX(0);
+    opacity: 0;
+  }
+  10% {
+    opacity: 1;
+  }
+  90% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(-100vh) translateX(50px);
+    opacity: 0;
+  }
+}
+
+@keyframes pulse-glow {
+  0%, 100% {
+    box-shadow: 0 0 20px rgba(59, 130, 246, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 40px rgba(59, 130, 246, 0.6), 0 0 60px rgba(147, 197, 253, 0.3);
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% center;
+  }
+  100% {
+    background-position: 200% center;
+  }
+}
+
+@keyframes border-flow {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}

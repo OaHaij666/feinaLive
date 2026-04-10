@@ -67,14 +67,13 @@ const countdown = ref('0:00')
 let timer: number | null = null
 
 function formatMissionName(name: string): string {
-  if (name.includes('/')) {
-    return name.replace('/', '(') + ')'
-  }
-  return name
+  return name.replace(/\/无尽$/, '').trim()
 }
 
 function formatMissions(missions: string[]): string {
-  return missions.map(formatMissionName).join(' / ')
+  return missions
+    .map(formatMissionName)
+    .join(' / ')
 }
 
 function updateCountdown() {

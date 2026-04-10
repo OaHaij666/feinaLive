@@ -37,7 +37,13 @@
       <!-- 底部装饰 -->
       <BottomDecoration />
 
-      <!-- Live2D 浮动层 - 嵌入在底部信息栏上方 -->
+      <!-- 通知提示组件 -->
+      <NotificationToast />
+
+      <!-- 音乐播放解锁弹窗 -->
+      <PlayUnlockModal :visible="showPlayUnlock" @confirm="handlePlayUnlock" />
+
+      <!-- Live2D 浮动层 -->
       <div class="live2d-floating">
         <div class="live2d-wrapper">
           <Live2DViewer />
@@ -59,12 +65,30 @@ import DanmakuPanel from './components/danmaku/DanmakuPanel.vue'
 import InfoBar from './components/infobar/InfoBar.vue'
 import MissionPanel from './components/panels/MissionPanel.vue'
 import PlaceholderPanel from './components/panels/PlaceholderPanel.vue'
+import NotificationToast from './components/NotificationToast.vue'
+import PlayUnlockModal from './components/PlayUnlockModal.vue'
 import Live2DViewer from './components/live2d/Live2DViewer.vue'
 import { useDanmakuStore } from '@/stores/danmaku'
 import { useStreamStore } from '@/stores/stream'
+import { useMusicStore } from '@/stores/music'
+import { storeToRefs } from 'pinia'
 
 const danmakuStore = useDanmakuStore()
 const streamStore = useStreamStore()
+const musicStore = useMusicStore()
+const { current, isPlaying, audioUnlocked } = storeToRefs(musicStore)
+
+const showPlayUnlock = computed(() => {
+  const hasCurrent = !!current.value
+  const locked = !audioUnlocked.value
+  const notPlaying = !isPlaying.value
+  console.log('[MusicModal] current:', hasCurrent, 'locked:', locked, 'notPlaying:', notPlaying)
+  return locked && notPlaying
+})
+
+function handlePlayUnlock() {
+  musicStore.unlockAndPlay()
+}
 
 const baseWidth = 1920
 const baseHeight = 1080

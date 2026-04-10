@@ -1,0 +1,18 @@
+database:
+  url: "mysql+aiomysql://root:root@localhost:3306/feinalive?charset=utf8mb4"
+
+bilibili:
+  sessdata: ""
+
+trusted_ups:
+  - uid: 3493093607213343
+    name: "JLRS-LeoFM"
+
+up_videos:
+  incremental_days: 5
+  full_refresh_days: 30
+
+default_playlist:
+  - bvid: "BV17zDeBHENi"
+    title: "重铸黑白"
+    artist: "胡彦斌"

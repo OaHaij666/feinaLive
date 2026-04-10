@@ -1,30 +1,107 @@
 <template>
   <div class="placeholder-panel">
     <div class="panel-glow"></div>
-    
-    <div class="panel-header">
-      <div class="header-icon">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <rect x="3" y="3" width="7" height="7" stroke="currentColor" stroke-width="2" rx="1"/>
-          <rect x="14" y="3" width="7" height="7" stroke="currentColor" stroke-width="2" rx="1"/>
-          <rect x="14" y="14" width="7" height="7" stroke="currentColor" stroke-width="2" rx="1"/>
-          <rect x="3" y="14" width="7" height="7" stroke="currentColor" stroke-width="2" rx="1"/>
-        </svg>
-      </div>
-      <span class="panel-title">待定</span>
-    </div>
+
     <div class="panel-content">
-      <span class="placeholder-text">预留位置</span>
+      <div class="content-upper">
+        <div class="music-section">
+          <div class="music-main">
+            <div class="track-info">
+              <div class="track-title" :title="current?.title || '等待播放'">
+                {{ current?.title || '等待播放' }}
+              </div>
+              <div class="track-artist" v-if="hasCurrent">
+                <span>{{ current?.upName }}</span>
+              </div>
+              <div class="track-artist placeholder" v-else>暂无歌曲</div>
+
+              <div class="progress-section" v-if="hasCurrent">
+                <div class="progress-bar" @click.stop="handleSeek">
+                  <div class="progress-track">
+                    <div class="progress-fill" :style="{ width: progressPercent + '%' }"></div>
+                    <div class="progress-handle" :style="{ left: progressPercent + '%' }"></div>
+                  </div>
+                </div>
+                <div class="time-display">
+                  <span>{{ formatTime(currentTime) }}</span>
+                  <span>{{ formatTime(duration) }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="queue-section">
+            <div class="queue-header">
+              <span class="queue-label">播放列表</span>
+              <span class="queue-count">{{ displayQueue.length }}首</span>
+            </div>
+            <div class="queue-list" v-if="displayQueue.length > 0">
+              <div
+                v-for="(item, index) in displayQueue"
+                :key="item.id"
+                class="queue-item"
+                :class="{ next: index === 0 }"
+              >
+                <div class="item-index">{{ index + 1 }}</div>
+                <div class="item-info">
+                  <div class="item-title">{{ item.title }}</div>
+                  <div class="item-artist">{{ item.upName }}</div>
+                </div>
+                <div class="item-duration">{{ formatTime(item.duration) }}</div>
+              </div>
+            </div>
+            <div class="queue-empty" v-else>
+              <span>歌单为空</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="content-lower">
+      </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
+import { computed, onMounted } from 'vue'
+import { storeToRefs } from 'pinia'
+import { useMusicStore } from '@/stores/music'
+
+const musicStore = useMusicStore()
+const { current, queue, isPlaying, currentTime, duration } = storeToRefs(musicStore)
+
+const hasCurrent = computed(() => !!current.value)
+
+const displayQueue = computed(() => queue.value.slice(0, 3))
+
+const progressPercent = computed(() => {
+  if (!duration.value) return 0
+  return (currentTime.value / duration.value) * 100
+})
+
+function handleSeek(event: MouseEvent) {
+  const bar = event.currentTarget as HTMLElement
+  const rect = bar.getBoundingClientRect()
+  const percent = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width))
+  musicStore.seekTo(percent)
+}
+
+function formatTime(seconds: number): string {
+  if (!seconds || isNaN(seconds)) return '0:00'
+  const mins = Math.floor(seconds / 60)
+  const secs = Math.floor(seconds % 60)
+  return `${mins}:${secs.toString().padStart(2, '0')}`
+}
+
+onMounted(() => {
+  musicStore.fetchQueue()
+})
 </script>
 
 <style scoped>
 .placeholder-panel {
-  width: 280px;
+  width: 680px;
   height: 160px;
   background: linear-gradient(135deg, rgba(255, 255, 255, 0.45) 0%, rgba(240, 249, 255, 0.38) 100%);
   backdrop-filter: blur(2.4px);
@@ -33,10 +110,9 @@
   border-radius: 16px;
   display: flex;
   flex-direction: column;
-  padding: 10px 14px;
   overflow: hidden;
   position: relative;
-  box-shadow: 
+  box-shadow:
     0 8px 32px rgba(59, 130, 246, 0.15),
     inset 0 1px 2px rgba(255, 255, 255, 0.8),
     inset 0 -1px 2px rgba(147, 197, 253, 0.2);
@@ -45,7 +121,7 @@
 
 .placeholder-panel:hover {
   background: linear-gradient(135deg, rgba(255, 255, 255, 0.52) 0%, rgba(240, 249, 255, 0.45) 100%);
-  box-shadow: 
+  box-shadow:
     0 12px 40px rgba(59, 130, 246, 0.22),
     inset 0 1px 2px rgba(255, 255, 255, 0.9),
     inset 0 -1px 2px rgba(147, 197, 253, 0.25);
@@ -62,54 +138,254 @@
   pointer-events: none;
 }
 
-.panel-header {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-shrink: 0;
-  margin-bottom: 8px;
-  padding-bottom: 8px;
-  border-bottom: 2px solid rgba(147, 197, 253, 0.25);
-}
-
-.header-icon {
-  width: 32px;
-  height: 32px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: linear-gradient(135deg, #60a5fa, #3b82f6);
-  border-radius: 8px;
-  color: white;
-  animation: pulse-glow 4s ease-in-out infinite;
-  box-shadow: 0 3px 10px rgba(59, 130, 246, 0.3);
-}
-
-.header-icon svg {
-  width: 16px;
-  height: 16px;
-}
-
-.panel-title {
+.unlock-hint {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 10;
+  background: rgba(59, 130, 246, 0.9);
+  color: #fff;
+  padding: 10px 24px;
+  border-radius: 20px;
   font-size: 14px;
-  font-weight: 700;
-  color: #1e3a5f;
-  letter-spacing: 2px;
+  cursor: pointer;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  50% { opacity: 0.8; transform: translate(-50%, -50%) scale(1.05); }
 }
 
 .panel-content {
   flex: 1;
   display: flex;
-  align-items: center;
-  justify-content: center;
+  flex-direction: column;
   overflow: hidden;
 }
 
-.placeholder-text {
-  font-size: 14px;
+.content-upper {
+  flex: 1;
+  min-height: 0;
+}
+
+.content-lower {
+  flex: 1;
+  border-top: 1px dashed rgba(147, 197, 253, 0.2);
+}
+
+.music-section {
+  display: flex;
+  height: 100%;
+  padding: 6px 14px;
+  gap: 12px;
+}
+
+.music-main {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+}
+
+.track-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.track-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(30, 58, 95, 0.9);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.track-artist {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: rgba(30, 58, 95, 0.6);
+}
+
+.track-artist.placeholder {
+  color: rgba(30, 58, 95, 0.4);
+  font-style: italic;
+}
+
+.progress-section {
+  margin-top: 6px;
+}
+
+.progress-bar {
+  height: 16px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+}
+
+.progress-track {
+  width: 100%;
+  height: 4px;
+  background: rgba(147, 197, 253, 0.4);
+  border-radius: 2px;
+  position: relative;
+  overflow: visible;
+}
+
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #60a5fa, #3b82f6);
+  border-radius: 2px;
+  transition: width 0.1s linear;
+  box-shadow: 0 0 8px rgba(96, 165, 250, 0.5);
+}
+
+.progress-handle {
+  position: absolute;
+  top: 50%;
+  width: 10px;
+  height: 10px;
+  background: white;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.progress-bar:hover .progress-handle {
+  opacity: 1;
+}
+
+.time-display {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 4px;
+  font-size: 10px;
+  color: rgba(30, 58, 95, 0.5);
+  font-variant-numeric: tabular-nums;
+}
+
+.queue-section {
+  width: 320px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid rgba(147, 197, 253, 0.2);
+  padding-left: 12px;
+}
+
+.queue-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+  flex-shrink: 0;
+}
+
+.queue-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: rgba(30, 58, 95, 0.7);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.queue-count {
+  font-size: 9px;
+  color: rgba(30, 58, 95, 0.5);
+  background: rgba(147, 197, 253, 0.2);
+  padding: 1px 5px;
+  border-radius: 6px;
+}
+
+.queue-list {
+  flex: 1;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(147, 197, 253, 0.3) transparent;
+}
+
+.queue-list::-webkit-scrollbar {
+  width: 3px;
+}
+
+.queue-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.queue-list::-webkit-scrollbar-thumb {
+  background: rgba(147, 197, 253, 0.3);
+  border-radius: 2px;
+}
+
+.queue-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 6px;
+  border-radius: 6px;
+  transition: background 0.2s;
+}
+
+.queue-item:hover {
+  background: rgba(147, 197, 253, 0.15);
+}
+
+.queue-item.next {
+  background: linear-gradient(135deg, rgba(96, 165, 250, 0.15), rgba(59, 130, 246, 0.08));
+}
+
+.item-index {
+  width: 18px;
+  font-size: 11px;
+  color: rgba(30, 58, 95, 0.5);
+  text-align: center;
+  flex-shrink: 0;
   font-weight: 500;
-  color: #60a5fa;
-  opacity: 0.7;
-  letter-spacing: 2px;
+}
+
+.item-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.item-title {
+  font-size: 11px;
+  color: rgba(30, 58, 95, 0.85);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.item-artist {
+  font-size: 9px;
+  color: rgba(30, 58, 95, 0.45);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.item-duration {
+  font-size: 10px;
+  color: rgba(30, 58, 95, 0.4);
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+
+.queue-empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(30, 58, 95, 0.35);
+  font-size: 10px;
 }
 </style>

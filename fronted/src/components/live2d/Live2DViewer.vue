@@ -56,7 +56,7 @@ onMounted(() => {
     canvas.width = 336
     canvas.height = 420
 
-    ctx.drawImage(image, 0, 0, 336, 420)
+    ctx.drawImage(image!, 0, 0, 336, 420)
     processImage(ctx, 336, 420)
   }
 

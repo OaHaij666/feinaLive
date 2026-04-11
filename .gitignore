@@ -1,6 +1,21 @@
 # 忽略的目录
 oss-referances/
-EasyVtuber-main/
+
+# ai_vtuber 模型文件 (大文件不上传)
+backend/ai_vtuber/data/models/
+*.onnx
+*.pth
+*.pt
+*.bin
+*.safetensors
+*.engine
+*.plan
+
+# 但保留 ai_vtuber 代码
+!backend/ai_vtuber/**/*.py
+!backend/ai_vtuber/**/*.yaml
+!backend/ai_vtuber/**/*.json
+!backend/ai_vtuber/**/*.md
 
 # 但保留 docs 目录中的以下文件
 # (通过否定规则)
@@ -10,6 +25,9 @@ EasyVtuber-main/
 .vscode/
 *.swp
 *.swo
+__pycache__/
+*.pyc
+*.pyo
 
 # OS
 .DS_Store
@@ -30,3 +48,6 @@ build/
 .env
 .env.local
 .env.*.local
+
+# Config with secrets
+backend/config.yaml

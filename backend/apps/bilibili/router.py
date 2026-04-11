@@ -65,3 +65,40 @@ async def get_room_status(room_id: str):
         client = _bilibili_clients[room_id]
         return {"room_id": room_id, "status": "running", "connected": client.is_running}
     return {"room_id": room_id, "status": "not_running", "connected": False}
+
+
+@router.get("/sessdata/verify")
+async def verify_sessdata():
+    from apps.config import config
+    sessdata = config.bilibili_sessdata
+    if not sessdata:
+        return {"valid": False, "error": "SESSDATA未填写"}
+    try:
+        from bilibili_api import Credential
+        credential = Credential(sessdata=sessdata)
+        user_info = await credential.get_self_info()
+        return {
+            "valid": True,
+            "mid": user_info.get("mid"),
+            "uname": user_info.get("uname"),
+        }
+    except Exception as e:
+        return {"valid": False, "error": str(e)}
+
+
+@router.post("/sessdata/update")
+async def update_sessdata(new_sessdata: str):
+    from pathlib import Path
+    import yaml
+    config_path = Path(__file__).parent.parent.parent / "config.yaml"
+    try:
+        with open(config_path, "r", encoding="utf-8") as f:
+            data = yaml.safe_load(f) or {}
+        data.setdefault("bilibili", {})["sessdata"] = new_sessdata
+        with open(config_path, "w", encoding="utf-8") as f:
+            yaml.dump(data, f, allow_unicode=True)
+        from apps.config import Config
+        Config._instance = None
+        return {"success": True}
+    except Exception as e:
+        return {"success": False, "error": str(e)}

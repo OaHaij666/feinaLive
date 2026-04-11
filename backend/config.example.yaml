@@ -1,0 +1,38 @@
+database:
+  url: "mysql+aiomysql://root:root@localhost:3306/feinalive?charset=utf8mb4"
+
+bilibili:
+  sessdata: ""
+
+trusted_ups:
+  - uid: 3493093607213343
+    name: "JLRS-LeoFM"
+
+up_videos:
+  incremental_days: 5
+  full_refresh_days: 30
+
+default_playlist:
+  - bvid: "BV17zDeBHENi"
+    title: "重铸黑白"
+    artist: "胡彦斌"
+
+llm:
+  api_url: "https://ark.cn-beijing.volces.com/api/v3"
+  api_key: ""
+  model: "doubao-seed-2-0-mini-260215"
+  temperature: 0.1
+  top_p: 0.9
+  max_tokens: 200
+  auto_collect_min_views: 20000
+  prompts:
+    music_verify: |
+      判断视频是否为音乐视频，提取歌名和歌手。
+
+      请返回JSON格式：
+      {"is_music": true/false, "song_name": "歌名", "artist": "歌手"}
+
+      注意：
+      - is_music: true表示是音乐视频，false表示不是
+      - song_name: 歌曲名称，如果无法确定则填原标题
+      - artist: 演唱者/创作者，如果无法确定则填"未知"

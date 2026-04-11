@@ -3,7 +3,8 @@
 import logging
 from datetime import datetime
 
-from bilibili_api import user, VideoOrder
+from bilibili_api import user
+from bilibili_api.user import VideoOrder
 from sqlalchemy import select, func, delete
 
 from apps.db import UpVideo, get_session, init_db

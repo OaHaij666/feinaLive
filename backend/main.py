@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from apps.bilibili.router import router as bilibili_router
 from apps.music.router import router as music_router
+from apps.config_router import router as config_router
 from apps.exceptions import AppException
 
 logging.basicConfig(
@@ -23,13 +24,22 @@ async def lifespan(app: FastAPI):
     logger.info("Application starting up...")
     from apps.music.queue import get_music_queue
     from apps.music.up_videos import get_up_video_manager
+    from apps.easyvtuber import get_easyvtuber_manager
+    
     queue = get_music_queue()
     logger.info(f"Music queue initialized: max_history={queue._history.maxlen}, max_queue={queue._queue.maxlen}")
+    
     up_manager = get_up_video_manager()
     await up_manager.initialize()
+    
+    easyvtuber_manager = get_easyvtuber_manager()
+    await easyvtuber_manager.start()
+    
     yield
+    
     logger.info("Application shutting down...")
     await queue.stop_auto_play()
+    await easyvtuber_manager.stop()
 
 
 app = FastAPI(
@@ -49,6 +59,7 @@ app.add_middleware(
 
 app.include_router(bilibili_router, prefix="/bilibili", tags=["Bilibili"])
 app.include_router(music_router, prefix="/music", tags=["Music"])
+app.include_router(config_router, tags=["Config"])
 
 
 @app.exception_handler(AppException)

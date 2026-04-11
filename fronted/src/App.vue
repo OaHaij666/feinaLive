@@ -40,6 +40,14 @@
       <!-- 通知提示组件 -->
       <NotificationToast />
 
+      <!-- SESSDATA警告弹窗 -->
+      <SessdataWarningModal
+        :visible="showSessdataWarning"
+        :error-message="sessdataError"
+        @ignore="handleSessdataIgnore"
+        @update="handleSessdataUpdate"
+      />
+
       <!-- 音乐播放解锁弹窗 -->
       <PlayUnlockModal :visible="showPlayUnlock" @confirm="handlePlayUnlock" />
 
@@ -52,6 +60,9 @@
 
       <!-- 信息栏 -->
       <InfoBar />
+
+      <!-- 设置面板 -->
+      <SettingsPanel :visible="showSettings" @close="toggleSettings" />
     </div>
   </div>
 </template>
@@ -67,7 +78,9 @@ import MissionPanel from './components/panels/MissionPanel.vue'
 import PlaceholderPanel from './components/panels/PlaceholderPanel.vue'
 import NotificationToast from './components/NotificationToast.vue'
 import PlayUnlockModal from './components/PlayUnlockModal.vue'
+import SessdataWarningModal from './components/SessdataWarningModal.vue'
 import Live2DViewer from './components/live2d/Live2DViewer.vue'
+import SettingsPanel from './components/SettingsPanel.vue'
 import { useDanmakuStore } from '@/stores/danmaku'
 import { useStreamStore } from '@/stores/stream'
 import { useMusicStore } from '@/stores/music'
@@ -85,6 +98,57 @@ const showPlayUnlock = computed(() => {
   console.log('[MusicModal] current:', hasCurrent, 'locked:', locked, 'notPlaying:', notPlaying)
   return locked && notPlaying
 })
+
+const showSessdataWarning = ref(false)
+const sessdataError = ref('')
+const sessdataIgnored = ref(false)
+const showSettings = ref(false)
+
+function toggleSettings() {
+  showSettings.value = !showSettings.value
+}
+
+async function checkSessdata() {
+  try {
+    const res = await fetch('/api/bilibili/sessdata/verify')
+    const data = await res.json()
+    if (!data.valid) {
+      sessdataError.value = data.error || 'SESSDATA无效'
+      if (!sessdataIgnored.value) {
+        showSessdataWarning.value = true
+      }
+    } else {
+      console.log('[SESSDATA] 验证成功:', data.uname)
+    }
+  } catch (e) {
+    console.error('[SESSDATA] 验证请求失败:', e)
+  }
+}
+
+function handleSessdataIgnore() {
+  sessdataIgnored.value = true
+  showSessdataWarning.value = false
+}
+
+async function handleSessdataUpdate(newSessdata: string) {
+  try {
+    const res = await fetch('/api/bilibili/sessdata/update', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(newSessdata),
+    })
+    const data = await res.json()
+    if (data.success) {
+      showSessdataWarning.value = false
+      sessdataIgnored.value = false
+      await checkSessdata()
+    } else {
+      alert('更新失败: ' + (data.error || '未知错误'))
+    }
+  } catch (e) {
+    alert('更新失败: ' + e)
+  }
+}
 
 function handlePlayUnlock() {
   musicStore.unlockAndPlay()
@@ -123,6 +187,14 @@ onMounted(() => {
   danmakuStore.startMockGeneration()
   updateScale()
   window.addEventListener('resize', updateScale)
+  checkSessdata()
+  
+  window.addEventListener('keydown', (e) => {
+    if (e.ctrlKey && e.shiftKey && e.key === 'S') {
+      e.preventDefault()
+      toggleSettings()
+    }
+  })
 })
 
 onUnmounted(() => {

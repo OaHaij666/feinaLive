@@ -1,4 +1,4 @@
-"""UP主视频管理（MySQL）"""
+"""UP主视频管理"""
 
 import logging
 from datetime import datetime
@@ -7,7 +7,7 @@ from bilibili_api import user
 from bilibili_api.user import VideoOrder
 from sqlalchemy import select, func, delete
 
-from apps.db import UpVideo, get_session, init_db
+from apps.db import UpVideo, get_db_session, init_db
 from apps.config import config
 
 logger = logging.getLogger(__name__)
@@ -42,7 +42,7 @@ class UpVideoManager:
                 logger.error(f"刷新UP主视频失败 {up['name']}: {e}")
 
     async def _get_last_fetch_time(self, up_uid: int) -> datetime | None:
-        async with get_session() as session:
+        async with get_db_session() as session:
             result = await session.execute(
                 select(func.max(UpVideo.fetched_at)).where(UpVideo.up_uid == up_uid)
             )
@@ -52,7 +52,7 @@ class UpVideoManager:
         u = user.User(up["uid"])
         result = await u.get_videos(pn=1, ps=50, order=VideoOrder.PUBDATE)
         vlist = result.get("list", {}).get("vlist", [])
-        async with get_session() as session:
+        async with get_db_session() as session:
             await session.execute(delete(UpVideo).where(UpVideo.up_uid == up["uid"]))
             for v in vlist:
                 duration_str = v.get("length", "0")
@@ -76,7 +76,7 @@ class UpVideoManager:
         result = await u.get_videos(pn=1, ps=20, order=VideoOrder.PUBDATE)
         vlist = result.get("list", {}).get("vlist", [])
         count = 0
-        async with get_session() as session:
+        async with get_db_session() as session:
             for v in vlist:
                 bvid = v.get("bvid", "")
                 existing = await session.execute(
@@ -102,7 +102,7 @@ class UpVideoManager:
 
     async def search(self, keyword: str, limit: int = 10) -> list[dict]:
         kw = keyword.strip().lower()
-        async with get_session() as session:
+        async with get_db_session() as session:
             result = await session.execute(
                 select(UpVideo)
                 .where(UpVideo.title.ilike(f"%{kw}%"))

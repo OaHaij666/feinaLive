@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 
 logger = logging.getLogger(__name__)
 
-MAX_HISTORY_PER_SESSION = 50
+MAX_HISTORY_PER_SESSION = 16  # 8轮对话 (用户弹幕+主播回复)
 
 
 @dataclass
@@ -48,6 +48,10 @@ class SessionHistory:
 
     def is_answered(self, msg_id: str) -> bool:
         return msg_id in self._answered_ids
+
+    def mark_answered_batch(self, msg_ids: list[str]):
+        for msg_id in msg_ids:
+            self._answered_ids.add(msg_id)
 
     def get_recent(self, n: int = 10) -> list[MessageEntry]:
         return self._messages[-n:]

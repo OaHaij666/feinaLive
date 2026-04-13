@@ -36,3 +36,14 @@ llm:
       - is_music: true表示是音乐视频，false表示不是
       - song_name: 歌曲名称，如果无法确定则填原标题
       - artist: 演唱者/创作者，如果无法确定则填"未知"
+
+tts:
+  provider: volcano
+  voice: "zh-CN-XiaoxiaoNeural"
+  encoding: wav
+  speed_ratio: 1.0
+
+volcano:
+  appid: "7532660763"
+  access_token: "your_access_token"
+  speaker_id: "S_n7lZ1klZ1"

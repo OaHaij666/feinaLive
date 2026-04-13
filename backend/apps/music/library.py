@@ -1,11 +1,11 @@
-"""预备歌单管理（MySQL）"""
+"""预备歌单管理"""
 
 import logging
 import random
 
 from sqlalchemy import select
 
-from apps.db import PlaylistItem, get_session, init_db
+from apps.db import PlaylistItem, get_db_session, init_db
 from apps.music.client import BilibiliMusicClient
 from apps.music.models import MusicLibraryItem, MusicLibraryResponse
 from apps.config import config
@@ -22,7 +22,7 @@ class PlaylistManager:
         if self._initialized:
             return
         await init_db()
-        async with get_session() as session:
+        async with get_db_session() as session:
             result = await session.execute(select(PlaylistItem))
             existing = result.scalars().all()
             if not existing:
@@ -36,7 +36,7 @@ class PlaylistManager:
 
     async def get_all(self) -> MusicLibraryResponse:
         await self.initialize()
-        async with get_session() as session:
+        async with get_db_session() as session:
             result = await session.execute(
                 select(PlaylistItem).where(PlaylistItem.enabled == True)
             )
@@ -59,7 +59,7 @@ class PlaylistManager:
 
     async def add(self, bvid: str, title: str = "", artist: str = "", enabled: bool = True) -> MusicLibraryItem | None:
         await self.initialize()
-        async with get_session() as session:
+        async with get_db_session() as session:
             existing = await session.execute(select(PlaylistItem).where(PlaylistItem.bvid == bvid))
             if existing.scalar_one_or_none():
                 logger.warning(f"预备歌单中已存在: {bvid}")
@@ -99,7 +99,7 @@ class PlaylistManager:
 
     async def remove(self, bvid: str) -> bool:
         await self.initialize()
-        async with get_session() as session:
+        async with get_db_session() as session:
             result = await session.execute(select(PlaylistItem).where(PlaylistItem.bvid == bvid))
             item = result.scalar_one_or_none()
             if not item:
@@ -111,7 +111,7 @@ class PlaylistManager:
 
     async def set_enabled(self, bvid: str, enabled: bool) -> bool:
         await self.initialize()
-        async with get_session() as session:
+        async with get_db_session() as session:
             result = await session.execute(select(PlaylistItem).where(PlaylistItem.bvid == bvid))
             item = result.scalar_one_or_none()
             if not item:
@@ -123,7 +123,7 @@ class PlaylistManager:
 
     async def random_pick(self) -> MusicLibraryItem | None:
         await self.initialize()
-        async with get_session() as session:
+        async with get_db_session() as session:
             result = await session.execute(
                 select(PlaylistItem).where(PlaylistItem.enabled == True)
             )

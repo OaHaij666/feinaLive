@@ -84,12 +84,15 @@ import SettingsPanel from './components/SettingsPanel.vue'
 import { useDanmakuStore } from '@/stores/danmaku'
 import { useStreamStore } from '@/stores/stream'
 import { useMusicStore } from '@/stores/music'
+import { useAvatarInput } from '@/composables/useAvatarInput'
 import { storeToRefs } from 'pinia'
 
 const danmakuStore = useDanmakuStore()
 const streamStore = useStreamStore()
 const musicStore = useMusicStore()
 const { current, isPlaying, audioUnlocked } = storeToRefs(musicStore)
+
+useAvatarInput()
 
 const showPlayUnlock = computed(() => {
   const hasCurrent = !!current.value
@@ -330,15 +333,14 @@ html, body {
 
 .live2d-floating {
   position: absolute;
-  bottom: 70px;
-  right: 500px;
+  bottom: 73px;
+  right: 250px;
   z-index: 100;
   pointer-events: none;
 }
 
 .live2d-wrapper {
-  width: 336px;
-  height: 420px;
+  width: 756px;
   position: relative;
 }
 </style>

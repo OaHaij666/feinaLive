@@ -101,6 +101,26 @@ class EasyVtuberManager:
     def get_runner(self):
         return self._runner
 
+    def get_input_process(self):
+        if self._runner and hasattr(self._runner, '_input_process'):
+            return self._runner._input_process
+        return None
+
+    def set_mouse_position(self, x: float, y: float):
+        input_process = self.get_input_process()
+        if input_process and hasattr(input_process, 'set_mouse_position'):
+            input_process.set_mouse_position(x, y)
+
+    def set_audio_level(self, level: float):
+        input_process = self.get_input_process()
+        if input_process and hasattr(input_process, 'set_audio_level'):
+            input_process.set_audio_level(level)
+
+    def set_speaking(self, speaking: bool):
+        input_process = self.get_input_process()
+        if input_process and hasattr(input_process, 'set_speaking'):
+            input_process.set_speaking(speaking)
+
 
 _manager: EasyVtuberManager | None = None
 

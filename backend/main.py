@@ -9,7 +9,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from apps.bilibili.router import router as bilibili_router
 from apps.music.router import router as music_router
 from apps.config_router import router as config_router
+from apps.ai.router import router as ai_router
+from apps.easyvtuber.router import router as easyvtuber_router
 from apps.exceptions import AppException
+from services.nginx_service import start_nginx, stop_nginx, get_nginx_service
 
 logging.basicConfig(
     level=logging.INFO,
@@ -25,21 +28,24 @@ async def lifespan(app: FastAPI):
     from apps.music.queue import get_music_queue
     from apps.music.up_videos import get_up_video_manager
     from apps.easyvtuber import get_easyvtuber_manager
-    
+
     queue = get_music_queue()
     logger.info(f"Music queue initialized: max_history={queue._history.maxlen}, max_queue={queue._queue.maxlen}")
-    
+
     up_manager = get_up_video_manager()
     await up_manager.initialize()
-    
+
     easyvtuber_manager = get_easyvtuber_manager()
     await easyvtuber_manager.start()
-    
+
+    await start_nginx()
+
     yield
-    
+
     logger.info("Application shutting down...")
     await queue.stop_auto_play()
     await easyvtuber_manager.stop()
+    await stop_nginx()
 
 
 app = FastAPI(
@@ -60,6 +66,8 @@ app.add_middleware(
 app.include_router(bilibili_router, prefix="/bilibili", tags=["Bilibili"])
 app.include_router(music_router, prefix="/music", tags=["Music"])
 app.include_router(config_router, tags=["Config"])
+app.include_router(ai_router, tags=["AI"])
+app.include_router(easyvtuber_router, tags=["Avatar"])
 
 
 @app.exception_handler(AppException)
@@ -94,6 +102,15 @@ async def root():
 @app.get("/health")
 async def health():
     return {"status": "healthy"}
+
+
+@app.get("/stream/status")
+async def stream_status():
+    nginx = get_nginx_service()
+    return {
+        "nginx_running": nginx.is_running(),
+        "urls": nginx.get_stream_urls() if nginx.is_running() else None,
+    }
 
 
 if __name__ == "__main__":

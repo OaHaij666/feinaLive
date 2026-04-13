@@ -7,8 +7,15 @@
         <div class="music-section">
           <div class="music-main">
             <div class="track-info">
-              <div class="track-title" :title="current?.title || '等待播放'">
-                {{ current?.title || '等待播放' }}
+              <div class="track-info-header">
+                <div class="track-title" :title="current?.title || '等待播放'">
+                  {{ current?.title || '等待播放' }}
+                </div>
+                <button class="test-btn" @click="handleTest" :disabled="isGenerating" title="测试AI回复">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
+                    <path d="M8 5v14l11-7z" fill="currentColor"/>
+                  </svg>
+                </button>
               </div>
               <div class="track-artist" v-if="hasCurrent">
                 <span>{{ current?.upName }}</span>
@@ -58,18 +65,31 @@
       </div>
 
       <div class="content-lower">
+        <Transition name="fade">
+          <div class="llm-content" v-if="isVisible" ref="llmContentRef">
+            <div class="marquee-wrapper" ref="marqueeWrapperRef">
+              <div class="marquee-content" :key="scrollKey">
+                <span class="text-content" ref="textContentRef">{{ displayContent }}</span>
+                <span class="typing-cursor" v-if="isGenerating"></span>
+              </div>
+            </div>
+          </div>
+        </Transition>
       </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, ref, watch, nextTick } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useMusicStore } from '@/stores/music'
+import { useLLMStore } from '@/stores/llm'
 
 const musicStore = useMusicStore()
+const llmStore = useLLMStore()
 const { current, queue, isPlaying, currentTime, duration } = storeToRefs(musicStore)
+const { isGenerating, displayText, latestAssistantMessage } = storeToRefs(llmStore)
 
 const hasCurrent = computed(() => !!current.value)
 
@@ -79,6 +99,107 @@ const progressPercent = computed(() => {
   if (!duration.value) return 0
   return (currentTime.value / duration.value) * 100
 })
+
+const latestMessage = computed(() => latestAssistantMessage.value)
+
+const marqueeWrapperRef = ref<HTMLElement | null>(null)
+const textContentRef = ref<HTMLElement | null>(null)
+
+const isVisible = ref(false)
+const displayContent = ref('')
+let hideTimer: ReturnType<typeof setTimeout> | null = null
+let scrollTimer: ReturnType<typeof setInterval> | null = null
+let scrollKey = ref(0)
+let renderedLength = 0
+
+const clearScrollTimer = () => {
+  if (scrollTimer) {
+    clearInterval(scrollTimer)
+    scrollTimer = null
+  }
+}
+
+const checkOverflowAndScroll = () => {
+  nextTick(() => {
+    if (textContentRef.value && marqueeWrapperRef.value) {
+      const textWidth = textContentRef.value.scrollWidth
+      const wrapperWidth = marqueeWrapperRef.value.clientWidth
+      
+      if (textWidth > wrapperWidth && displayContent.value.length > 0) {
+        clearScrollTimer()
+        
+        const currentDisplayLength = displayContent.value.length
+        renderedLength += currentDisplayLength
+        scrollKey.value++
+        
+        const remaining = displayText.value.slice(renderedLength)
+        
+        if (remaining.length > 0) {
+          displayContent.value = remaining
+          
+          scrollTimer = setInterval(() => {
+            if (!isVisible.value || !displayText.value) {
+              clearScrollTimer()
+              return
+            }
+            
+            const len = displayContent.value.length
+            renderedLength += len
+            scrollKey.value++
+            
+            const next = displayText.value.slice(renderedLength)
+            
+            if (next.length === 0) {
+              clearScrollTimer()
+              return
+            }
+            
+            displayContent.value = next
+            
+            nextTick(() => {
+              if (textContentRef.value && marqueeWrapperRef.value) {
+                const tw = textContentRef.value.scrollWidth
+                const ww = marqueeWrapperRef.value.clientWidth
+                if (tw <= ww) {
+                  clearScrollTimer()
+                }
+              }
+            })
+          }, 3000)
+        }
+      }
+    }
+  })
+}
+
+const startHideTimer = () => {
+  if (hideTimer) clearTimeout(hideTimer)
+  hideTimer = setTimeout(() => {
+    isVisible.value = false
+    displayContent.value = ''
+    scrollKey.value++
+    renderedLength = 0
+    clearScrollTimer()
+  }, 30000)
+}
+
+watch(displayText, (newText, oldText) => {
+  if (newText && newText.length > 0) {
+    const isNewSentence = !oldText || 
+                          newText.length < oldText.length || 
+                          !newText.startsWith(oldText)
+    
+    if (!isVisible.value || isNewSentence) {
+      renderedLength = 0
+      scrollKey.value++
+      clearScrollTimer()
+    }
+    displayContent.value = newText.slice(renderedLength)
+    isVisible.value = true
+    startHideTimer()
+    checkOverflowAndScroll()
+  }
+}, { immediate: true })
 
 function handleSeek(event: MouseEvent) {
   const bar = event.currentTarget as HTMLElement
@@ -92,6 +213,10 @@ function formatTime(seconds: number): string {
   const mins = Math.floor(seconds / 60)
   const secs = Math.floor(seconds % 60)
   return `${mins}:${secs.toString().padStart(2, '0')}`
+}
+
+async function handleTest() {
+  await llmStore.sendReply('测试用户', '你好，请用一句话介绍一下自己')
 }
 
 onMounted(() => {
@@ -138,26 +263,6 @@ onMounted(() => {
   pointer-events: none;
 }
 
-.unlock-hint {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  z-index: 10;
-  background: rgba(59, 130, 246, 0.9);
-  color: #fff;
-  padding: 10px 24px;
-  border-radius: 20px;
-  font-size: 14px;
-  cursor: pointer;
-  animation: pulse 1.5s ease-in-out infinite;
-}
-
-@keyframes pulse {
-  0%, 100% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
-  50% { opacity: 0.8; transform: translate(-50%, -50%) scale(1.05); }
-}
-
 .panel-content {
   flex: 1;
   display: flex;
@@ -173,6 +278,7 @@ onMounted(() => {
 .content-lower {
   flex: 1;
   border-top: 1px dashed rgba(147, 197, 253, 0.2);
+  padding: 6px 14px;
 }
 
 .music-section {
@@ -195,6 +301,13 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+
+.track-info-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
 }
 
 .track-title {
@@ -387,5 +500,92 @@ onMounted(() => {
   justify-content: center;
   color: rgba(30, 58, 95, 0.35);
   font-size: 10px;
+}
+
+.llm-content {
+  height: 100%;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.marquee-wrapper {
+  display: block;
+  width: 100%;
+  overflow: hidden;
+  position: relative;
+}
+
+.marquee-content {
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+}
+
+.text-content {
+  display: inline-block;
+  font-size: 26px;
+  font-weight: 500;
+  color: rgba(30, 58, 95, 0.95);
+  font-family: 'Noto Sans SC', 'Microsoft YaHei', 'PingFang SC', -apple-system, sans-serif;
+  letter-spacing: 1px;
+  padding: 0 20px;
+  text-shadow: 0 1px 2px rgba(255, 255, 255, 0.8);
+}
+
+.test-btn {
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #8b5cf6, #6366f1);
+  border: none;
+  border-radius: 6px;
+  color: white;
+  cursor: pointer;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.test-btn:hover:not(:disabled) {
+  transform: scale(1.1);
+  box-shadow: 0 2px 8px rgba(139, 92, 246, 0.4);
+}
+
+.test-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.typing-cursor {
+  width: 2px;
+  height: 14px;
+  background: #8b5cf6;
+  animation: blink-cursor 0.8s step-end infinite;
+}
+
+@keyframes blink-cursor {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+.llm-placeholder {
+  font-size: 24px;
+  color: rgba(30, 58, 95, 0.35);
+  font-family: 'Noto Sans SC', 'Microsoft YaHei', 'PingFang SC', -apple-system, sans-serif;
+  font-style: normal;
+}
+
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 1s ease;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
 }
 </style>

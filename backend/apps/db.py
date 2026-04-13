@@ -1,5 +1,6 @@
 """数据库连接和表定义"""
 
+from contextlib import asynccontextmanager
 from datetime import datetime
 
 from sqlalchemy import String, Integer, Boolean, DateTime, func
@@ -47,5 +48,11 @@ async def init_db():
 
 
 async def get_session():
+    async with async_session() as session:
+        yield session
+
+
+@asynccontextmanager
+async def get_db_session():
     async with async_session() as session:
         yield session

@@ -1,5 +1,5 @@
 <template>
-  <div class="live2d-container">
+  <div class="live2d-container" :style="containerStyle">
     <canvas ref="canvasRef" class="live2d-canvas"></canvas>
     <div v-if="!connected" class="connecting-overlay">
       <span>连接中...</span>
@@ -8,10 +8,17 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted, computed } from 'vue'
 
 const canvasRef = ref<HTMLCanvasElement | null>(null)
 const connected = ref(false)
+const aspectRatio = ref(1.25)
+
+const FIXED_WIDTH = 756
+
+const containerStyle = computed(() => ({
+  height: `${FIXED_WIDTH / aspectRatio.value}px`
+}))
 
 let ws: WebSocket | null = null
 let animationFrameId: number | null = null
@@ -74,14 +81,6 @@ function connectWebSocket() {
   }
 }
 
-function drawFrame(dataUrl: string) {
-  const img = new Image()
-  img.onload = () => {
-    drawImageToCanvas(img)
-  }
-  img.src = dataUrl
-}
-
 function drawImageToCanvas(img: HTMLImageElement) {
   if (!canvasRef.value) return
 
@@ -89,15 +88,17 @@ function drawImageToCanvas(img: HTMLImageElement) {
   const ctx = canvas.getContext('2d')
   if (!ctx) return
 
-  canvas.width = 336
-  canvas.height = 420
+  const imgAspect = img.width / img.height
+  aspectRatio.value = imgAspect
 
-  const scale = Math.min(336 / img.width, 420 / img.height)
-  const x = (336 - img.width * scale) / 2
-  const y = (420 - img.height * scale) / 2
+  const canvasWidth = FIXED_WIDTH
+  const canvasHeight = FIXED_WIDTH / imgAspect
 
-  ctx.clearRect(0, 0, 336, 420)
-  ctx.drawImage(img, x, y, img.width * scale, img.height * scale)
+  canvas.width = canvasWidth
+  canvas.height = canvasHeight
+
+  ctx.clearRect(0, 0, canvasWidth, canvasHeight)
+  ctx.drawImage(img, 0, 0, canvasWidth, canvasHeight)
 }
 
 onMounted(() => {
@@ -117,17 +118,17 @@ onUnmounted(() => {
 
 <style scoped>
 .live2d-container {
-  width: 100%;
-  height: 100%;
+  width: 756px;
   display: flex;
   align-items: center;
   justify-content: center;
   position: relative;
+  transition: height 0.3s ease;
 }
 
 .live2d-canvas {
-  width: 336px;
-  height: 420px;
+  width: 756px;
+  height: 100%;
 }
 
 .connecting-overlay {

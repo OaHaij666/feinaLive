@@ -91,6 +91,30 @@ class Config:
         return os.getenv("TTS_VOICE") or self._data.get("tts", {}).get("voice", "zh-CN-XiaoxiaoNeural")
 
     @property
+    def tts_provider(self) -> str:
+        return os.getenv("TTS_PROVIDER") or self._data.get("tts", {}).get("provider", "edge")
+
+    @property
+    def tts_encoding(self) -> str:
+        return self._data.get("tts", {}).get("encoding", "wav")
+
+    @property
+    def tts_speed_ratio(self) -> float:
+        return float(self._data.get("tts", {}).get("speed_ratio", 1.0))
+
+    @property
+    def volcano_appid(self) -> str:
+        return os.getenv("VOLCANO_APPID") or self._data.get("volcano", {}).get("appid", "")
+
+    @property
+    def volcano_access_token(self) -> str:
+        return os.getenv("VOLCANO_ACCESS_TOKEN") or self._data.get("volcano", {}).get("access_token", "")
+
+    @property
+    def volcano_speaker_id(self) -> str:
+        return os.getenv("VOLCANO_SPEAKER_ID") or self._data.get("volcano", {}).get("speaker_id", "")
+
+    @property
     def host_reply_interval(self) -> int:
         return int(self._data.get("host", {}).get("reply_interval", 5))
 
@@ -113,6 +137,10 @@ class Config:
     @property
     def host_max_tokens(self) -> int:
         return int(os.getenv("HOST_MAX_TOKENS") or self._data.get("host", {}).get("max_tokens", 200))
+
+    @property
+    def default_room_id(self) -> int:
+        return int(os.getenv("DEFAULT_ROOM_ID") or self._data.get("host", {}).get("room_id", 0))
 
     @property
     def easyvtuber_enabled(self) -> bool:

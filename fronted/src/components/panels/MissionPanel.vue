@@ -34,21 +34,21 @@
             <span class="mission-icon">⚔️</span>
             <span class="mission-label">角色</span>
           </div>
-          <span class="mission-value">{{ formatMissions(characterMissions) }}</span>
+          <span class="mission-value" v-html="highlightSpecial(formatMissions(characterMissions))"></span>
         </div>
         <div class="mission-row">
           <div class="mission-label-wrapper">
             <span class="mission-icon">🗡️</span>
             <span class="mission-label">武器</span>
           </div>
-          <span class="mission-value">{{ formatMissions(weaponMissions) }}</span>
+          <span class="mission-value" v-html="highlightSpecial(formatMissions(weaponMissions))"></span>
         </div>
         <div class="mission-row">
           <div class="mission-label-wrapper">
             <span class="mission-icon">🔮</span>
             <span class="mission-label">魔之楔</span>
           </div>
-          <span class="mission-value">{{ formatMissions(modMissions) }}</span>
+          <span class="mission-value" v-html="highlightSpecial(formatMissions(modMissions))"></span>
         </div>
       </div>
     </div>
@@ -68,6 +68,10 @@ let timer: number | null = null
 
 function formatMissionName(name: string): string {
   return name.replace(/\/无尽$/, '').trim()
+}
+
+function highlightSpecial(text: string): string {
+  return text.replace(/探险/g, '<span class="highlight-gold">探险</span>')
 }
 
 function formatMissions(missions: string[]): string {
@@ -276,5 +280,10 @@ onUnmounted(() => {
   flex: 1;
   word-break: break-all;
   font-weight: 500;
+}
+
+.mission-value :deep(.highlight-gold) {
+  color: #ef4444;
+  font-weight: 700;
 }
 </style>

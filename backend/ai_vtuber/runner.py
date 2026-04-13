@@ -93,19 +93,23 @@ class EasyVtuberRunner:
         args.cam_input = self.input_type == "webcam"
         args.mouse_input = self.input_type == "mouse"
         args.osf_input = self.input_type == "openseeface"
+        args.audio_input = self.input_type == "audio"
+        args.hybrid_input = self.input_type == "hybrid"
 
         args.model_version = "v3"
         args.model_seperable = False
         args.model_half = False
-        args.eyebrow = False
+        args.eyebrow = True
         args.simplify = 0
         args.use_tensorrt = False
         args.use_interpolation = False
         args.interpolation_scale = 1
         args.use_sr = False
         args.output_debug = False
+        args.breath_cycle = 4.0
+        args.blink_interval = 5.0
 
-        if not args.debug_input and not args.cam_input and not args.mouse_input and args.osf_input is None:
+        if not args.debug_input and not args.cam_input and not args.mouse_input and not args.audio_input and not args.hybrid_input and args.osf_input is None:
             args.debug_input = True
 
     async def start(self):
@@ -150,6 +154,12 @@ class EasyVtuberRunner:
         elif args.osf_input:
             from src.open_see_face_client import OSFClientProcess
             return OSFClientProcess(self._pose_position_shm)
+        elif args.audio_input:
+            from src.audio_client import AudioDrivenClientProcess
+            return AudioDrivenClientProcess(self._pose_position_shm)
+        elif args.hybrid_input:
+            from src.hybrid_input_client import HybridInputClientProcess
+            return HybridInputClientProcess(self._pose_position_shm)
         return None
 
     def _create_infer_process(self):

@@ -4,7 +4,10 @@ import logging
 import re
 from typing import Optional
 
+from sqlalchemy import select
+
 from apps.config import config
+from apps.db import get_db_session, PlaylistItem
 from apps.music.client import BilibiliMusicClient
 from apps.music.library import get_playlist_manager
 from apps.music.llm_verify import get_llm_verifier
@@ -60,10 +63,8 @@ class DanmakuMusicService:
     async def _search_playlist(self, keyword: str) -> Optional[str]:
         library = get_playlist_manager()
         await library.initialize()
-        async from apps.db import get_session, PlaylistItem
-        from sqlalchemy import select
         kw = keyword.strip().lower()
-        async with get_session() as session:
+        async with get_db_session() as session:
             result = await session.execute(
                 select(PlaylistItem).where(PlaylistItem.enabled == True)
             )

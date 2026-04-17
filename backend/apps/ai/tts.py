@@ -1,8 +1,6 @@
 """AI主播大脑 - TTS语音合成
 
-支持多种 TTS 提供商:
-- edge: Edge TTS (免费)
-- volcano: 火山引擎 TTS (声音复刻)
+火山引擎 TTS (声音复刻)
 
 同步方案:
 - 按句子分块同步，每个句子单独合成
@@ -12,6 +10,8 @@
 import asyncio
 import logging
 import re
+import base64
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from typing import AsyncIterator
@@ -34,45 +34,6 @@ class TTSSentenceResult:
     text: str
     sentence_index: int
     voice: str
-
-
-class EdgeTTSClient:
-    """Edge TTS 客户端 (免费)"""
-
-    def __init__(self, voice: str | None = None):
-        self.voice = voice or config.tts_voice
-
-    async def synthesize(self, text: str) -> TTSResult | None:
-        if not text.strip():
-            return None
-        try:
-            import edge_tts
-
-            communicate = edge_tts.Communicate(text, self.voice)
-            audio_data = b""
-            async for chunk in communicate.stream():
-                if chunk["type"] == "audio":
-                    audio_data += chunk["data"]
-            if not audio_data:
-                logger.warning("TTS生成音频为空")
-                return None
-            return TTSResult(audio_data=audio_data, text=text, voice=self.voice)
-        except ImportError:
-            logger.error("edge-tts未安装，请运行: pip install edge-tts")
-            return None
-        except Exception as e:
-            logger.error(f"TTS合成失败: {e}")
-            return None
-
-    async def synthesize_to_file(self, text: str, output_path: str | Path) -> Path | None:
-        result = await self.synthesize(text)
-        if not result:
-            return None
-        output_path = Path(output_path)
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        output_path.write_bytes(result.audio_data)
-        logger.info(f"TTS音频已保存: {output_path}")
-        return output_path
 
 
 class VolcanoTTSClient:
@@ -99,8 +60,6 @@ class VolcanoTTSClient:
             return None
 
         import aiohttp
-        import base64
-        import uuid
 
         url = "https://openspeech.bytedance.com/api/v1/tts"
         headers = {
@@ -204,18 +163,13 @@ class VolcanoTTSClient:
                 )
 
 
-_tts_client: EdgeTTSClient | VolcanoTTSClient | None = None
+_tts_client: VolcanoTTSClient | None = None
 
 
-def get_tts_client() -> EdgeTTSClient | VolcanoTTSClient:
+def get_tts_client() -> VolcanoTTSClient:
     """获取 TTS 客户端单例"""
     global _tts_client
     if _tts_client is None:
-        provider = config.tts_provider
-        if provider == "volcano":
-            _tts_client = VolcanoTTSClient()
-            logger.info(f"使用火山引擎 TTS, 音色: {config.volcano_speaker_id}")
-        else:
-            _tts_client = EdgeTTSClient()
-            logger.info(f"使用 Edge TTS, 音色: {config.tts_voice}")
+        _tts_client = VolcanoTTSClient()
+        logger.info(f"使用火山引擎 TTS, 音色: {config.volcano_speaker_id}")
     return _tts_client

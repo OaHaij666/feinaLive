@@ -20,9 +20,17 @@ class MusicQueue:
         self._play_callback: Optional[Callable[[MusicItem], Awaitable[None]]] = None
         self._play_task: Optional[asyncio.Task] = None
         self._total_played = 0
+        self._volume: float = 1.0
 
     def set_play_callback(self, callback: Callable[[MusicItem], Awaitable[None]]):
         self._play_callback = callback
+
+    def set_volume(self, volume: float):
+        self._volume = max(0.0, min(1.0, volume))
+        logger.info(f"音量已设置为 {self._volume}")
+
+    def get_volume(self) -> float:
+        return self._volume
 
     async def add(self, item: MusicItem) -> bool:
         async with self._lock:
@@ -79,6 +87,26 @@ class MusicQueue:
     async def get_current(self) -> Optional[MusicItem]:
         async with self._lock:
             return self._current
+
+    async def get_current_bvid(self) -> Optional[str]:
+        async with self._lock:
+            return self._current.bvid if self._current else None
+
+    async def skip_and_disable_current(self) -> Optional[str]:
+        async with self._lock:
+            bvid = self._current.bvid if self._current else None
+            if self._current:
+                self._current.status = MusicStatus.COMPLETED
+                self._current.playedAt = datetime.now()
+                self._history.append(self._current)
+                self._total_played += 1
+            if self._queue:
+                self._current = self._queue.popleft()
+                self._current.status = MusicStatus.PLAYING
+                self._current.playedAt = datetime.now()
+            else:
+                self._current = None
+            return bvid
 
     async def get_queue(self) -> list[MusicItem]:
         async with self._lock:

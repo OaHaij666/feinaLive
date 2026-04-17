@@ -1,10 +1,14 @@
 """B站弹幕 WebSocket 路由"""
 
+import asyncio
+import base64
 import logging
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from apps.bilibili.client import BilibiliClient
+from apps.ai.host_brain import get_host_brain
+from apps.config import config
 from core.websocket import manager
 
 logger = logging.getLogger(__name__)
@@ -31,6 +35,79 @@ async def danmaku_websocket(websocket: WebSocket, room_id: str):
             except Exception as e:
                 logger.error(f"Failed to send danmaku: {e}")
 
+            if msg_type == "danmaku" and hasattr(data, "content"):
+                from apps.music.service import get_danmaku_service
+                music_service = get_danmaku_service()
+                music_result = await music_service.process_danmaku(data.content, data.user)
+                if music_result.isMusicRequest:
+                    if music_result.musicItem:
+                        try:
+                            await manager.send_message(room_id, {
+                                "type": "music_added",
+                                "data": {
+                                    "user": data.user,
+                                    "title": music_result.musicItem.title,
+                                    "artist": music_result.musicItem.upName,
+                                }
+                            })
+                        except Exception as e:
+                            logger.error(f"Failed to send music added: {e}")
+                    elif music_result.error:
+                        try:
+                            await manager.send_message(room_id, {
+                                "type": "music_error",
+                                "data": {
+                                    "user": data.user,
+                                    "content": data.content,
+                                    "error": music_result.error,
+                                }
+                            })
+                        except Exception as e:
+                            logger.error(f"Failed to send music error: {e}")
+                    return
+
+                brain = get_host_brain(config.default_room_id)
+                accepted = brain.push_danmaku(
+                    msg_id=str(data.id) if hasattr(data, "id") else f"bilibili_{data.uid}_{data.timestamp}",
+                    user=data.user,
+                    content=data.content,
+                    uid=data.uid or 0
+                )
+                if accepted:
+                    asyncio.create_task(_process_ai_reply(room_id))
+
+        async def _process_ai_reply(room_id: str):
+            brain = get_host_brain(config.default_room_id)
+            reply = await brain.try_reply()
+            if reply:
+                try:
+                    await manager.send_message(room_id, {
+                        "type": "start",
+                        "data": {}
+                    })
+                    await manager.send_message(room_id, {
+                        "type": "text",
+                        "data": {"text": reply.text}
+                    })
+                    if reply.audio and reply.audio.audio_data:
+                        audio_base64 = base64.b64encode(reply.audio.audio_data).decode("utf-8")
+                        await manager.send_message(room_id, {
+                            "type": "audio",
+                            "data": {
+                                "audio": audio_base64,
+                                "text": reply.text,
+                                "sentence_index": 0,
+                                "char_offset": 0,
+                                "char_length": len(reply.text),
+                            }
+                        })
+                    await manager.send_message(room_id, {
+                        "type": "end",
+                        "data": {"text": reply.text}
+                    })
+                except Exception as e:
+                    logger.error(f"Failed to send AI reply: {e}")
+
         client.set_callback(on_message)
         await client.connect()
         _bilibili_clients[room_id] = client
@@ -48,57 +125,24 @@ async def danmaku_websocket(websocket: WebSocket, room_id: str):
         await manager.disconnect(room_id)
 
 
-@router.post("/room/{room_id}/close")
-async def close_room(room_id: str):
-    if room_id in _bilibili_clients:
-        client = _bilibili_clients[room_id]
-        await client.close()
-        del _bilibili_clients[room_id]
-        logger.info(f"Closed bilibili client for room {room_id}")
-        return {"status": "closed"}
-    return {"status": "not_running"}
+@router.websocket("/ws/test/{room_id}")
+async def test_danmaku_websocket(websocket: WebSocket, room_id: str):
+    await manager.connect(websocket, room_id)
 
+    async def receive_test_messages():
+        try:
+            while True:
+                data = await websocket.receive_text()
+                logger.debug(f"Received test message: {data}")
+        except WebSocketDisconnect:
+            logger.info(f"Test WebSocket disconnected for room {room_id}")
 
-@router.get("/room/{room_id}/status")
-async def get_room_status(room_id: str):
-    if room_id in _bilibili_clients:
-        client = _bilibili_clients[room_id]
-        return {"room_id": room_id, "status": "running", "connected": client.is_running}
-    return {"room_id": room_id, "status": "not_running", "connected": False}
+    asyncio.create_task(receive_test_messages())
 
-
-@router.get("/sessdata/verify")
-async def verify_sessdata():
-    from apps.config import config
-    sessdata = config.bilibili_sessdata
-    if not sessdata:
-        return {"valid": False, "error": "SESSDATA未填写"}
     try:
-        from bilibili_api import Credential
-        credential = Credential(sessdata=sessdata)
-        user_info = await credential.get_self_info()
-        return {
-            "valid": True,
-            "mid": user_info.get("mid"),
-            "uname": user_info.get("uname"),
-        }
+        while True:
+            await asyncio.sleep(1)
     except Exception as e:
-        return {"valid": False, "error": str(e)}
-
-
-@router.post("/sessdata/update")
-async def update_sessdata(new_sessdata: str):
-    from pathlib import Path
-    import yaml
-    config_path = Path(__file__).parent.parent.parent / "config.yaml"
-    try:
-        with open(config_path, "r", encoding="utf-8") as f:
-            data = yaml.safe_load(f) or {}
-        data.setdefault("bilibili", {})["sessdata"] = new_sessdata
-        with open(config_path, "w", encoding="utf-8") as f:
-            yaml.dump(data, f, allow_unicode=True)
-        from apps.config import Config
-        Config._instance = None
-        return {"success": True}
-    except Exception as e:
-        return {"success": False, "error": str(e)}
+        logger.error(f"Test WebSocket error: {e}")
+    finally:
+        await manager.disconnect(room_id)

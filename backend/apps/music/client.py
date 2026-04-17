@@ -19,6 +19,15 @@ class BilibiliMusicClient:
         self._credential: Optional[Credential] = None
         if sessdata:
             self._credential = Credential(sessdata=sessdata)
+        self._configure_bilibili_headers()
+
+    @staticmethod
+    def _configure_bilibili_headers() -> None:
+        try:
+            from bilibili_api import HEADERS
+            HEADERS["Accept-Encoding"] = "identity"
+        except Exception:
+            pass
 
     async def get_video_info(self, bvid: str) -> Optional[dict]:
         try:
@@ -53,7 +62,9 @@ class BilibiliMusicClient:
             logger.error(f"获取音频URL失败: {bvid}, error: {e}")
             return None
 
-    async def get_music_item(self, bvid: str, requestedBy: str) -> Optional[MusicItem]:
+    async def get_music_item_with_overrides(
+        self, bvid: str, requestedBy: str, title: str = None, artist: str = None
+    ) -> Optional[MusicItem]:
         info = await self.get_video_info(bvid)
         if not info:
             return None
@@ -66,8 +77,8 @@ class BilibiliMusicClient:
         return MusicItem(
             id=str(uuid.uuid4()),
             bvid=info["bvid"],
-            title=info["title"],
-            upName=owner.get("name", "未知UP主"),
+            title=title or info["title"],
+            upName=artist or owner.get("name", "未知UP主"),
             upFace=owner.get("face"),
             duration=info.get("duration", 0),
             audioUrl=audioUrl,

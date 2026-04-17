@@ -7,6 +7,7 @@ from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
+from apps.ai.admin_commands import get_admin_handler
 from apps.ai.host_brain import get_host_brain
 from apps.config import config
 
@@ -18,6 +19,11 @@ router = APIRouter(prefix="/ai", tags=["ai"])
 class ReplyRequest(BaseModel):
     user: str = "user"
     content: str = ""
+    uid: int = 0
+
+
+class AdminCommandRequest(BaseModel):
+    command: str = ""
 
 
 @router.post("/reply")
@@ -63,3 +69,29 @@ async def get_status():
         "buffer_size": brain.buffer_size,
         "unanswered_count": brain.unanswered_count,
     }
+
+
+@router.get("/admin/state")
+async def get_admin_state():
+    """获取管理员指令状态"""
+    handler = get_admin_handler()
+    return handler.get_state_dict()
+
+
+@router.post("/admin/command")
+async def send_admin_command(request: AdminCommandRequest):
+    """发送管理员指令（用于测试）"""
+    handler = get_admin_handler()
+    result = await handler.handle(
+        uid=config.admin_uid,
+        username=config.admin_username,
+        content=request.command
+    )
+    if result:
+        return {
+            "success": result.success,
+            "message": result.message,
+            "command": result.command,
+            "state": result.new_state,
+        }
+    return {"success": False, "message": "非管理员或无效指令"}

@@ -206,6 +206,20 @@ export const useMusicStore = defineStore('music', () => {
     }
   }
 
+  function setVolume(volume: number) {
+    audio.volume = Math.max(0, Math.min(1, volume))
+  }
+
+  function setPaused(isPaused: boolean) {
+    if (isPaused) {
+      audio.pause()
+    } else if (current.value?.audioUrl && audioUnlocked.value) {
+      audio.play().catch(() => {
+        error('播放失败')
+      })
+    }
+  }
+
   return {
     current,
     queue,
@@ -226,5 +240,7 @@ export const useMusicStore = defineStore('music', () => {
     unlockAndPlay,
     togglePlay,
     seekTo,
+    setVolume,
+    setPaused,
   }
 })

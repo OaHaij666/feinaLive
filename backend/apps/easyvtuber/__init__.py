@@ -53,8 +53,6 @@ class EasyVtuberManager:
             self._runner = get_easyvtuber_runner(
                 character=config.easyvtuber_character,
                 input_type=config.easyvtuber_input_type,
-                ws_host=config.easyvtuber_ws_host,
-                ws_port=config.easyvtuber_ws_port,
                 frame_rate=config.easyvtuber_frame_rate,
             )
 
@@ -120,6 +118,22 @@ class EasyVtuberManager:
         input_process = self.get_input_process()
         if input_process and hasattr(input_process, 'set_speaking'):
             input_process.set_speaking(speaking)
+
+    def set_auto_mode(self, enabled: bool):
+        input_process = self.get_input_process()
+        if input_process and hasattr(input_process, 'set_auto_mode'):
+            input_process.set_auto_mode(enabled)
+        else:
+            logger.warning("当前输入进程不支持自动/鼠标模式切换，请确认 easyvtuber.input.type=hybrid")
+
+    def set_face_mode(self, mode: str):
+        # hybrid 输入中: auto_mode=True 为漫步, False 为鼠标追踪
+        if mode == "mouse_tracking":
+            self.set_auto_mode(False)
+            logger.info("EasyVtuber 已切换到鼠标追踪模式")
+        else:
+            self.set_auto_mode(True)
+            logger.info("EasyVtuber 已切换到漫步模式")
 
 
 _manager: EasyVtuberManager | None = None

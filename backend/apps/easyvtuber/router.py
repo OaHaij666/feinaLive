@@ -10,6 +10,41 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+@router.post("/avatar/speaking")
+async def set_speaking(speaking: bool):
+    manager = get_easyvtuber_manager()
+    manager.set_speaking(speaking)
+    return {"success": True}
+
+
+@router.post("/avatar/start")
+async def start_avatar():
+    manager = get_easyvtuber_manager()
+    await manager.start()
+    return {"success": True, "running": manager.is_running}
+
+
+@router.post("/avatar/stop")
+async def stop_avatar():
+    manager = get_easyvtuber_manager()
+    await manager.stop()
+    return {"success": True, "running": manager.is_running}
+
+
+@router.get("/avatar/status")
+async def get_avatar_status():
+    manager = get_easyvtuber_manager()
+    return {"running": manager.is_running}
+
+
+@router.post("/avatar/audio-level")
+async def set_audio_level(level: float, speaking: bool = True):
+    manager = get_easyvtuber_manager()
+    manager.set_audio_level(level)
+    manager.set_speaking(speaking)
+    return {"success": True}
+
+
 @router.websocket("/avatar/input")
 async def avatar_input_websocket(websocket: WebSocket):
     await websocket.accept()

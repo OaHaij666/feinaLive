@@ -27,12 +27,18 @@
         </div>
 
         <!-- 错误状态 -->
-        <div v-if="error" class="error-overlay">
+        <div v-if="error && !isReconnecting" class="error-overlay">
           <svg width="48" height="48" viewBox="0 0 24 24" fill="none">
             <path d="M12 9v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
           </svg>
           <span>{{ error }}</span>
-          <button @click="retryConnection" class="retry-btn">重试</button>
+          <button @click="manualRetry" class="retry-btn">重试</button>
+        </div>
+
+        <!-- 重连中状态 -->
+        <div v-if="isReconnecting" class="loading-overlay">
+          <div class="spinner"></div>
+          <span>正在重新连接...</span>
         </div>
 
         <!-- LIVE 标签 -->
@@ -72,8 +78,10 @@ const {
   isPlaying,
   isLoading,
   error,
+  isReconnecting,
   initPlayer,
   destroyPlayer,
+  manualRetry,
 } = useHlsPlayer()
 
 async function fetchStreamUrl() {
@@ -96,22 +104,15 @@ async function fetchStreamUrl() {
   }
 }
 
-function retryConnection() {
-  if (streamUrl.value && videoRef.value) {
-    destroyPlayer()
-    initPlayer(videoRef.value, streamUrl.value)
-  }
-}
-
 onMounted(async () => {
-  await fetchStreamUrl()
+    await fetchStreamUrl()
 
-  if (streamUrl.value && videoRef.value) {
-    initPlayer(videoRef.value, streamUrl.value)
-  } else {
-    isLoading.value = false
-  }
-})
+    if (streamUrl.value && videoRef.value) {
+      initPlayer(videoRef.value, streamUrl.value)
+    } else {
+      isLoading.value = false
+    }
+  })
 
 onUnmounted(() => {
   destroyPlayer()

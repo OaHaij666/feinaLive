@@ -23,14 +23,17 @@ from .utils.fps import FPS, Interval
 from typing import List
 
 class ModelClientProcess(Process):
-    def __init__(self, input_image, pose_position_shm: shared_memory.SharedMemory , input_fps, output_debug=False):
+    def __init__(self, input_image, pose_position_shm: shared_memory.SharedMemory , input_fps, output_debug=False, output_virtual_cam=False, alpha_split=False, green_screen=False):
         super().__init__()
         self.input_image = input_image
         self.pose_position_shm = pose_position_shm  # 45 floats for pose, 4 floats for position
         self._output_debug = output_debug
-        
-        self.alpha_width_scale = 2 if args.alpha_split else 1
-        self.ret_channels = 3 if args.output_virtual_cam or output_debug else 4
+        self._output_virtual_cam = output_virtual_cam
+        self._alpha_split = alpha_split
+        self._green_screen = green_screen
+
+        self.alpha_width_scale = 2 if self._alpha_split else 1
+        self.ret_channels = 3 if self._output_virtual_cam or output_debug else 4
         self.ret_shape = (args.interpolation_scale, args.model_output_size, self.alpha_width_scale * args.model_output_size, self.ret_channels)
         self.ret_nbytes = self.alpha_width_scale * args.interpolation_scale * args.model_output_size * args.model_output_size * self.ret_channels # RGBA
         self.ret_shared_mem = shared_memory.SharedMemory(create=True, size=self.ret_nbytes)
@@ -60,6 +63,9 @@ class ModelClientProcess(Process):
             pass
 
         args.output_debug = self._output_debug
+        args.output_virtual_cam = self._output_virtual_cam
+        args.alpha_split = self._alpha_split
+        args.green_screen = self._green_screen
 
         import torch
 
@@ -205,9 +211,15 @@ class ModelClientProcess(Process):
                     bgr_channels = cv2.cvtColor(bgra_image, cv2.COLOR_BGRA2BGR)
                 ret.append(bgr_channels)
             elif args.output_virtual_cam:
-                if not args.alpha_split:
-                    rgb_channels = cv2.cvtColor(bgra_image, cv2.COLOR_BGRA2RGB)
-                ret.append(rgb_channels)
+                if getattr(args, 'green_screen', False):
+                    rgb = cv2.cvtColor(bgra_image, cv2.COLOR_BGRA2RGB)
+                    a = bgra_image[:, :, 3]
+                    mask = (a > 0)[:, :, np.newaxis]
+                    green = np.array([0, 255, 0], dtype=np.uint8)
+                    rgb = np.where(mask, rgb, green)
+                elif not args.alpha_split:
+                    rgb = cv2.cvtColor(bgra_image, cv2.COLOR_BGRA2RGB)
+                ret.append(rgb)
             else:
                 rgba_image = cv2.cvtColor(bgra_image, cv2.COLOR_BGRA2RGBA)
                 ret.append(rgba_image)

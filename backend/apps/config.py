@@ -35,6 +35,10 @@ class Config:
         return os.getenv("BILIBILI_SESSDATA") or self._data.get("bilibili", {}).get("sessdata")
 
     @property
+    def bilibili_room_id(self) -> int:
+        return int(os.getenv("BILIBILI_ROOM_ID") or self._data.get("bilibili", {}).get("room_id", 0))
+
+    @property
     def trusted_ups(self) -> list[dict]:
         return self._data.get("trusted_ups", [])
 
@@ -213,6 +217,14 @@ class Config:
     @property
     def easyvtuber_ws_host(self) -> str:
         return self._data.get("easyvtuber", {}).get("output", {}).get("websocket", {}).get("host", "localhost")
+
+    @property
+    def admin_uid(self) -> int:
+        return int(self._data.get("admin", {}).get("uid", 378810242))
+
+    @property
+    def admin_username(self) -> str:
+        return self._data.get("admin", {}).get("username", "RongR0Ng")
 
 
 config = Config()

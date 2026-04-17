@@ -1,63 +1,59 @@
 import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import type { DanmakuMessage } from '@/types/danmaku'
 import { DanmakuType } from '@/types/danmaku'
-import { mockDanmakuMessages, generateRandomDanmaku } from '@/mock/data'
+import { useBilibiliDanmaku, type DanmakuMessage as WsDanmaku } from '@/composables/useBilibiliDanmaku'
+import { useAdminCommands } from '@/composables/useAdminCommands'
 
-function createSpecialMessages(): DanmakuMessage[] {
-  return [
-    {
-      id: `special-1-${Date.now()}`,
-      user: '✨月兔酱✨',
-      content: '来了来了！打卡打卡！',
-      timestamp: new Date(),
-      type: DanmakuType.WELCOME,
-      badge: '粉丝牌'
-    },
-    {
-      id: `special-2-${Date.now()}`,
-      user: '技术宅',
-      content: '请问这个配置大概多少钱？想组装一台类似的',
-      timestamp: new Date(),
-      type: DanmakuType.HIGHLIGHT,
-      color: '#6b8cce'
-    },
-    {
-      id: `special-3-${Date.now()}`,
-      user: '系统消息',
-      content: '感谢「星辰大海」赠送的火箭 x1 🚀',
-      timestamp: new Date(),
-      type: DanmakuType.GIFT
-    },
-    {
-      id: `special-4-${Date.now()}`,
-      user: '音乐精灵',
-      content: '666666 太秀了！',
-      timestamp: new Date(),
-      type: DanmakuType.NORMAL
-    },
-    {
-      id: `special-5-${Date.now()}`,
-      user: '星空漫步者',
-      content: '主播声音好好听~',
-      timestamp: new Date(),
-      type: DanmakuType.NORMAL
-    }
-  ]
-}
+const ADMIN_UID = 378810242
+const ADMIN_USERNAME = 'RongR0Ng'
 
 export const useDanmakuStore = defineStore('danmaku', () => {
-  const danmakuList = ref<DanmakuMessage[]>([...mockDanmakuMessages])
+  const danmakuList = ref<DanmakuMessage[]>([])
   const isConnected = ref(false)
   const maxCount = 9
 
+  const { danmakuList: wsDanmakuList, isConnected: wsConnected, connect, disconnect } = useBilibiliDanmaku()
+  const { shouldHideDanmaku, adminState } = useAdminCommands()
+
   const sortedList = computed(() => {
-    return [...danmakuList.value].sort((a, b) => 
+    return [...danmakuList.value].sort((a, b) =>
       b.timestamp.getTime() - a.timestamp.getTime()
     )
   })
 
+  watch(() => wsDanmakuList.value.length, () => {
+    const list = wsDanmakuList.value
+    if (list.length > 0) {
+      const latest = list[list.length - 1]
+      if (shouldHideDanmaku(latest.uid || 0, latest.user)) {
+        return
+      }
+      const msg: DanmakuMessage = {
+        id: latest.id,
+        user: latest.user,
+        content: latest.content,
+        timestamp: latest.timestamp,
+        type: latest.type as DanmakuType,
+        color: latest.color,
+        badge: latest.badge,
+        uid: latest.uid,
+      }
+      addDanmaku(msg)
+    }
+  })
+
+  watch(wsConnected, (connected) => {
+    isConnected.value = connected
+  })
+
   function addDanmaku(message: DanmakuMessage) {
+    if (shouldHideDanmaku(message.uid || 0, message.user)) {
+      return
+    }
+    if (danmakuList.value.some((item) => item.id === message.id)) {
+      return
+    }
     danmakuList.value.push(message)
     if (danmakuList.value.length > maxCount) {
       danmakuList.value = danmakuList.value.slice(-maxCount)
@@ -68,39 +64,28 @@ export const useDanmakuStore = defineStore('danmaku', () => {
     danmakuList.value = []
   }
 
-  function connect() {
-    isConnected.value = true
+  function connectToRoom(roomId: number) {
+    if (roomId && roomId > 0) {
+      connect(roomId)
+    }
   }
 
-  function disconnect() {
-    isConnected.value = false
+  function disconnectFromRoom() {
+    disconnect()
   }
 
   function startMockGeneration() {
-    const specialMessages = createSpecialMessages()
-    let index = 0
-    const showInitialMessages = () => {
-      if (index < specialMessages.length) {
-        addDanmaku(specialMessages[index])
-        index++
-        setTimeout(showInitialMessages, 800)
-      } else {
-        setInterval(() => {
-          addDanmaku(generateRandomDanmaku())
-        }, 3000)
-      }
-    }
-    setTimeout(showInitialMessages, 500)
   }
 
   return {
     danmakuList,
     sortedList,
     isConnected,
+    adminState,
     addDanmaku,
     clearDanmaku,
-    connect,
-    disconnect,
+    connectToRoom,
+    disconnectFromRoom,
     startMockGeneration
   }
 })

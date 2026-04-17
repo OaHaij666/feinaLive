@@ -22,6 +22,7 @@ class DanmakuMessage:
     type: DanmakuType = DanmakuType.NORMAL
     color: str = "#FFFFFF"
     badge: str | None = None
+    uid: int = 0
 
     def to_dict(self) -> dict:
         return {
@@ -32,6 +33,7 @@ class DanmakuMessage:
             "type": self.type.value,
             "color": self.color,
             "badge": self.badge,
+            "uid": self.uid,
         }
 
 

@@ -25,6 +25,17 @@ class LLMVerifyResult:
 class LLMMusicVerifier:
     def __init__(self):
         self._ai = get_ai_client()
+        self._configure_bilibili_headers()
+
+    @staticmethod
+    def _configure_bilibili_headers() -> None:
+        # 规避部分运行环境中 br 解码失败，强制服务端返回未压缩响应。
+        try:
+            from bilibili_api import HEADERS
+            HEADERS["Accept-Encoding"] = "identity"
+        except Exception:
+            # 不影响主流程，失败时保持默认请求头
+            pass
 
     async def verify(self, bvid: str) -> LLMVerifyResult | None:
         if not self._ai.available:

@@ -3,6 +3,7 @@ database:
 
 bilibili:
   sessdata: ""
+  room_id: 0
 
 trusted_ups:
   - uid: 3493093607213343

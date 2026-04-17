@@ -201,7 +201,7 @@ const config = ref({
 
 async function loadConfig() {
   try {
-    const res = await fetch('/api/config')
+    const res = await fetch('/config')
     const data = await res.json()
     config.value = data
   } catch (e) {
@@ -211,7 +211,7 @@ async function loadConfig() {
 
 async function loadCharacters() {
   try {
-    const res = await fetch('/api/config/easyvtuber/characters')
+    const res = await fetch('/config/easyvtuber/characters')
     const data = await res.json()
     characters.value = data.characters || []
   } catch (e) {
@@ -221,7 +221,7 @@ async function loadCharacters() {
 
 async function saveConfig() {
   try {
-    const res = await fetch('/api/config', {
+    const res = await fetch('/config', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(config.value),

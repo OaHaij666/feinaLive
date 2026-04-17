@@ -1,132 +1,138 @@
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref } from 'vue'
 
-const AVATAR_INPUT_WS_URL = `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/avatar/input`
+interface AvatarInputApi {
+  sendAudioData: (level: number, speaking: boolean) => void
+  setSpeaking: (speaking: boolean) => void
+  connect: () => void
+  disconnect: () => void
+}
 
-let globalWs: WebSocket | null = null
-let globalSendAudioData: ((level: number, speaking: boolean) => void) | null = null
-let globalSetSpeaking: ((speaking: boolean) => void) | null = null
+let ws: WebSocket | null = null
+let reconnectTimer: ReturnType<typeof setTimeout> | null = null
+const isConnected = ref(false)
+let mouseListenerAttached = false
 
-export function getAvatarInputApi() {
-  return {
-    sendAudioData: globalSendAudioData,
-    setSpeaking: globalSetSpeaking
+function sendMouseData(x: number, y: number) {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({
+      type: 'mouse',
+      x,
+      y,
+    }))
   }
 }
 
-export function useAvatarInput() {
-  const ws = ref<WebSocket | null>(null)
-  const connected = ref(false)
-  const isSpeaking = ref(false)
-  const audioLevel = ref(0)
+function attachMouseListener() {
+  if (mouseListenerAttached) return
+  mouseListenerAttached = true
+  window.addEventListener('mousemove', handleMouseMove)
+}
 
-  let lastMouseX = 0.5
-  let lastMouseY = 0.5
-  let mouseThrottleTimer: number | null = null
+function detachMouseListener() {
+  if (!mouseListenerAttached) return
+  mouseListenerAttached = false
+  window.removeEventListener('mousemove', handleMouseMove)
+}
 
-  function connect() {
-    if (ws.value) {
-      ws.value.close()
-    }
+function handleMouseMove(event: MouseEvent) {
+  const x = Math.max(0, Math.min(1, event.clientX / window.innerWidth))
+  const y = Math.max(0, Math.min(1, event.clientY / window.innerHeight))
+  sendMouseData(x, y)
+}
 
-    ws.value = new WebSocket(AVATAR_INPUT_WS_URL)
-    globalWs = ws.value
-
-    ws.value.onopen = () => {
-      console.log('Avatar input WebSocket 连接成功')
-      connected.value = true
-    }
-
-    ws.value.onclose = () => {
-      console.log('Avatar input WebSocket 断开')
-      connected.value = false
-      setTimeout(() => {
-        if (!ws.value || ws.value.readyState === WebSocket.CLOSED) {
-          connect()
-        }
-      }, 3000)
-    }
-
-    ws.value.onerror = (error) => {
-      console.error('Avatar input WebSocket 错误:', error)
-      connected.value = false
-    }
+function connect() {
+  if (ws && (ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.OPEN)) {
+    return
   }
 
-  function sendMousePosition(x: number, y: number) {
-    lastMouseX = x
-    lastMouseY = y
-    
-    if (mouseThrottleTimer) return
-    
-    mouseThrottleTimer = window.setTimeout(() => {
-      mouseThrottleTimer = null
-      if (ws.value && ws.value.readyState === WebSocket.OPEN) {
-        ws.value.send(JSON.stringify({
-          type: 'mouse',
-          x: lastMouseX,
-          y: lastMouseY
-        }))
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+  const wsUrl = `${protocol}//${window.location.host}/avatar/input`
+
+  try {
+    ws = new WebSocket(wsUrl)
+
+    ws.onopen = () => {
+      console.log('[AvatarInput] WebSocket connected')
+      isConnected.value = true
+      attachMouseListener()
+      if (reconnectTimer) {
+        clearTimeout(reconnectTimer)
+        reconnectTimer = null
       }
-    }, 16)
-  }
-
-  function sendAudioData(level: number, speaking: boolean) {
-    audioLevel.value = level
-    isSpeaking.value = speaking
-    
-    if (ws.value && ws.value.readyState === WebSocket.OPEN) {
-      ws.value.send(JSON.stringify({
-        type: 'audio',
-        level,
-        speaking
-      }))
     }
-  }
 
-  function setSpeaking(speaking: boolean) {
-    isSpeaking.value = speaking
-    
-    if (ws.value && ws.value.readyState === WebSocket.OPEN) {
-      ws.value.send(JSON.stringify({
-        type: 'speaking',
-        speaking
-      }))
+    ws.onclose = () => {
+      console.log('[AvatarInput] WebSocket disconnected')
+      isConnected.value = false
+      detachMouseListener()
+      ws = null
+      scheduleReconnect()
     }
+
+    ws.onerror = (error) => {
+      console.error('[AvatarInput] WebSocket error:', error)
+    }
+  } catch (error) {
+    console.error('[AvatarInput] Failed to create WebSocket:', error)
+    scheduleReconnect()
   }
+}
 
-  function handleMouseMove(event: MouseEvent) {
-    const x = event.clientX / window.innerWidth
-    const y = event.clientY / window.innerHeight
-    sendMousePosition(x, y)
-  }
-
-  globalSendAudioData = sendAudioData
-  globalSetSpeaking = setSpeaking
-
-  onMounted(() => {
+function scheduleReconnect() {
+  if (reconnectTimer) return
+  reconnectTimer = setTimeout(() => {
+    reconnectTimer = null
+    console.log('[AvatarInput] Attempting to reconnect...')
     connect()
-    window.addEventListener('mousemove', handleMouseMove)
-  })
+  }, 3000)
+}
 
-  onUnmounted(() => {
-    window.removeEventListener('mousemove', handleMouseMove)
-    if (ws.value) {
-      ws.value.close()
-      ws.value = null
-    }
-    if (mouseThrottleTimer) {
-      clearTimeout(mouseThrottleTimer)
-    }
-    globalSendAudioData = null
-    globalSetSpeaking = null
-  })
+function disconnect() {
+  if (reconnectTimer) {
+    clearTimeout(reconnectTimer)
+    reconnectTimer = null
+  }
+  if (ws) {
+    ws.close()
+    ws = null
+  }
+  detachMouseListener()
+  isConnected.value = false
+}
 
+function sendAudioData(level: number, speaking: boolean) {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({
+      type: 'audio',
+      level,
+      speaking,
+    }))
+  }
+}
+
+function setSpeaking(speaking: boolean) {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({
+      type: 'speaking',
+      speaking,
+    }))
+  }
+}
+
+export function useAvatarInput(): AvatarInputApi {
   return {
-    connected,
-    isSpeaking,
-    audioLevel,
-    sendMousePosition,
     sendAudioData,
-    setSpeaking
+    setSpeaking,
+    connect,
+    disconnect,
+  }
+}
+
+export function getAvatarInputApi(): AvatarInputApi {
+  return {
+    sendAudioData,
+    setSpeaking,
+    connect,
+    disconnect,
   }
 }

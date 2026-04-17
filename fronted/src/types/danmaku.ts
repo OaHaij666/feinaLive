@@ -14,4 +14,5 @@ export interface DanmakuMessage {
   type: DanmakuType
   color?: string
   badge?: string
+  uid?: number
 }

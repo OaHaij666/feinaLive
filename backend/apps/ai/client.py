@@ -84,6 +84,8 @@ class AIClient:
         headers = {
             "Content-Type": "application/json",
             "Authorization": f"Bearer {self._api_key}",
+            # 避免服务端返回 br 压缩，规避部分环境下 brotli 解码异常
+            "Accept-Encoding": "identity",
         }
         try:
             async with httpx.AsyncClient(timeout=60) as client:
@@ -97,6 +99,9 @@ class AIClient:
                 return self._parse_response(data)
         except httpx.HTTPStatusError as e:
             logger.error(f"AI请求HTTP错误 {e.response.status_code}: {e.response.text}")
+            return None
+        except httpx.DecodingError as e:
+            logger.error(f"AI响应解码失败(可能为brotli压缩问题): {e}")
             return None
         except Exception as e:
             logger.error(f"AI请求失败: {e}")
@@ -125,6 +130,8 @@ class AIClient:
         headers = {
             "Content-Type": "application/json",
             "Authorization": f"Bearer {self._api_key}",
+            # 流式场景同样禁用压缩，避免 br 解码失败导致流中断
+            "Accept-Encoding": "identity",
         }
         try:
             async with httpx.AsyncClient(timeout=120) as client:

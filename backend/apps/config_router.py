@@ -58,6 +58,7 @@ class EasyVtuberConfig(BaseModel):
 
 
 class HostConfig(BaseModel):
+    room_id: int = 0
     reply_interval: int = 5
     max_reply_length: int = 100
     model: str = "doubao-seed-character-251128"
@@ -67,11 +68,17 @@ class HostConfig(BaseModel):
     disable_thinking: bool = True
 
 
+class BilibiliConfig(BaseModel):
+    room_id: int = 0
+    sessdata: str = ""
+
+
 class TTSConfig(BaseModel):
     voice: str = "zh-CN-XiaoxiaoNeural"
 
 
 class FullConfig(BaseModel):
+    bilibili: BilibiliConfig = BilibiliConfig()
     host: HostConfig = HostConfig()
     tts: TTSConfig = TTSConfig()
     easyvtuber: EasyVtuberConfig = EasyVtuberConfig()
@@ -80,7 +87,11 @@ class FullConfig(BaseModel):
 @router.get("", response_model=FullConfig)
 async def get_full_config():
     return FullConfig(
+        bilibili=BilibiliConfig(
+            room_id=config.bilibili_room_id,
+        ),
         host=HostConfig(
+            room_id=config.default_room_id,
             reply_interval=config.host_reply_interval,
             max_reply_length=config.host_max_reply_length,
             model=config.host_model,
@@ -129,6 +140,8 @@ async def update_full_config(config_data: FullConfig):
         with open(CONFIG_FILE, "r", encoding="utf-8") as f:
             data = yaml.safe_load(f) or {}
 
+        if config_data.bilibili:
+            data["bilibili"] = config_data.bilibili.model_dump()
         data["host"] = config_data.host.model_dump()
         data["tts"] = config_data.tts.model_dump()
         data["easyvtuber"] = config_data.easyvtuber.model_dump()

@@ -93,17 +93,18 @@ class DanmakuMusicService:
         verifier = get_llm_verifier()
         verify_result = await verifier.verify(bvid)
         if verify_result is None:
-            logger.warning(f"LLM验证跳过，直接使用原始信息: {bvid}")
-            music_item = await self._client.get_music_item(bvid, user)
-            return None, music_item
+            logger.warning(f"LLM验证失败，拒绝播放: {bvid}")
+            return None, None
         if not verify_result.is_music:
             logger.info(f"LLM判定非音乐视频: {bvid}, 原因: {verify_result.reason}")
             return {"is_music": False, "reason": verify_result.reason}, None
-        music_item = await self._client.get_music_item(bvid, user)
+        music_item = await self._client.get_music_item_with_overrides(
+            bvid, user,
+            title=verify_result.song_name,
+            artist=verify_result.artist
+        )
         if not music_item:
-            return {"is_music": False, "reason": "获取音乐信息失败"}, None
-        music_item.title = verify_result.song_name
-        music_item.upName = verify_result.artist
+            return {"is_music": False, "reason": "获取音频URL失败"}, None
         llm_info = {
             "is_music": True,
             "song_name": verify_result.song_name,

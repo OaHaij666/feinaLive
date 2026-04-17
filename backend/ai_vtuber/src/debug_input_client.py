@@ -11,31 +11,68 @@ class DebugInputClientProcess(Process):
         super().__init__()
         self.pose_position_shm = pose_position_shm
         self.fps = Value('f', 60.0)
+        self._is_speaking = Value('i', 0)
+
+    def set_speaking(self, speaking: bool):
+        self._is_speaking.value = 1 if speaking else 0
 
     def run(self):
         last_time : float = time.perf_counter()
-        interval : float = 1.0 / 60 # 60 FPS
+        interval : float = 1.0 / 60
         pose_position_shm_guard = SharedMemoryGuard(self.pose_position_shm, ctrl_name="pose_position_shm_ctrl")
         np_pose_shm = np.ndarray((45,), dtype=np.float32, buffer=self.pose_position_shm.buf[:45 * 4])
         np_position_shm = np.ndarray((4,), dtype=np.float32, buffer=self.pose_position_shm.buf[45 * 4:45 * 4 + 4 * 4])
-        # 呼吸循环参数
         breath_start_time = time.perf_counter()
+        blink_timer = 0.0
+        blink_interval = args.blink_interval if hasattr(args, 'blink_interval') else 5.0
+        is_blinking = False
+        blink_duration = 0.15
+        blink_start = 0.0
+        blink_value = 1.0
+
         while True:
             eyebrow_vector = [0.0] * 12
             mouth_eye_vector = [0.0] * 27
             pose_vector = [0.0] * 6
             position_vector = [0, 0, 0, 1]
 
-            # 计算呼吸效果（使用 sin 函数，在 breath_cycle 时间内从 0 到 1 再到 0）
             breath_elapsed = (time.perf_counter() - breath_start_time) % args.breath_cycle
-            # 使用 sin 函数，让值在一个周期内从 0 -> 1 -> 0
-            # sin 在 0 到 π 之间从 0 到 1 到 0
             breath_value = np.sin(breath_elapsed / args.breath_cycle * np.pi)
 
-            mouth_eye_vector[2] = math.sin(time.perf_counter() * 3)
-            mouth_eye_vector[3] = math.sin(time.perf_counter() * 3)
+            blink_timer += 1.0 / 60
+            if not is_blinking and blink_timer >= blink_interval:
+                is_blinking = True
+                blink_start = time.perf_counter()
+                blink_timer = 0.0
+            if is_blinking:
+                blink_elapsed = time.perf_counter() - blink_start
+                if blink_elapsed < blink_duration:
+                    blink_value = max(0.0, 1.0 - blink_elapsed / (blink_duration * 0.3))
+                else:
+                    blink_value = max(0.0, (blink_elapsed - blink_duration) / (blink_duration * 0.7))
+                    if blink_value >= 1.0:
+                        blink_value = 1.0
+                        is_blinking = False
+                        blink_interval = args.blink_interval if hasattr(args, 'blink_interval') else 5.0
+                        blink_timer = 0.0
+            else:
+                blink_value = 1.0
 
-            mouth_eye_vector[14] = 0
+            is_speaking = self._is_speaking.value == 1
+
+            if is_speaking:
+                mouth_open = 0.4 + math.sin(time.perf_counter() * 12) * 0.15
+                mouth_eye_vector[2] = blink_value * 0.3 + mouth_open * 0.2
+                mouth_eye_vector[3] = blink_value * 0.3 + mouth_open * 0.15
+                mouth_eye_vector[14] = mouth_open
+                eyebrow_vector[6] = math.sin(time.perf_counter() * 1.1) + 0.08
+                eyebrow_vector[7] = math.sin(time.perf_counter() * 1.1) + 0.08
+            else:
+                mouth_eye_vector[2] = blink_value * 0.5 + math.sin(time.perf_counter() * 2.5) * 0.08
+                mouth_eye_vector[3] = blink_value * 0.5 + math.sin(time.perf_counter() * 2.5) * 0.08
+                mouth_eye_vector[14] = math.sin(time.perf_counter() * 1.8) * 0.15
+                eyebrow_vector[6] = math.sin(time.perf_counter() * 1.1)
+                eyebrow_vector[7] = math.sin(time.perf_counter() * 1.1)
 
             mouth_eye_vector[25] = math.sin(time.perf_counter() * 2.2) * 0.2
             mouth_eye_vector[26] = math.sin(time.perf_counter() * 3.5) * 0.8
@@ -46,8 +83,6 @@ class DebugInputClientProcess(Process):
             pose_vector[3] = pose_vector[1]
             pose_vector[4] = pose_vector[2]
             pose_vector[5] = breath_value
-            eyebrow_vector[6] = math.sin(time.perf_counter() * 1.1)
-            eyebrow_vector[7] = math.sin(time.perf_counter() * 1.1)
 
             model_input_arr = eyebrow_vector
             model_input_arr.extend(mouth_eye_vector)

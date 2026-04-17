@@ -29,18 +29,26 @@ async def proxy_audio(url: str):
         "Referer": "https://www.bilibili.com",
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
     }
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        try:
+
+    async def stream_with_error_handling():
+        async with httpx.AsyncClient(timeout=30.0) as client:
             req = client.build_request("GET", url, headers=headers)
             response = await client.send(req, stream=True)
-            return StreamingResponse(
-                response.aiter_raw(),
-                headers=dict(response.headers),
-                media_type="audio/mp4",
-            )
-        except Exception as e:
-            logger.error(f"代理音频失败: {e}")
-            raise HTTPException(status_code=502, detail="音频代理失败")
+            try:
+                async for chunk in response.aiter_raw():
+                    yield chunk
+            except httpx.ReadError as e:
+                logger.error(f"流式传输中断（ReadError）: {e}")
+            except httpx.HTTPError as e:
+                logger.error(f"流式传输HTTP错误: {e}")
+            except Exception as e:
+                logger.error(f"流式传输未知错误: {e}")
+
+    return StreamingResponse(
+        stream_with_error_handling(),
+        headers={"Content-Type": "audio/mp4"},
+        media_type="audio/mp4",
+    )
 
 
 @router.get("/queue", response_model=MusicQueueResponse)
@@ -70,6 +78,19 @@ async def get_current():
     return current
 
 
+@router.get("/volume")
+async def get_volume():
+    queue = get_music_queue()
+    return {"volume": queue.get_volume()}
+
+
+@router.patch("/volume")
+async def set_volume(volume: float):
+    queue = get_music_queue()
+    queue.set_volume(volume)
+    return {"volume": queue.get_volume()}
+
+
 @router.post("/next")
 async def play_next() -> Optional[MusicItem]:
     queue = get_music_queue()
@@ -79,7 +100,11 @@ async def play_next() -> Optional[MusicItem]:
         picked = await library.random_pick()
         if picked:
             client = BilibiliMusicClient()
-            full_item = await client.get_music_item(picked.bvid, "system")
+            full_item = await client.get_music_item_with_overrides(
+                picked.bvid, "system",
+                title=picked.title,
+                artist=picked.upName
+            )
             if full_item:
                 await queue.add(full_item)
                 music_item = await queue.next()
@@ -90,6 +115,17 @@ async def play_next() -> Optional[MusicItem]:
 async def skip_current() -> Optional[MusicItem]:
     queue = get_music_queue()
     return await queue.skip()
+
+
+@router.post("/remove-current")
+async def remove_current_and_skip():
+    queue = get_music_queue()
+    library = get_playlist_manager()
+    bvid = await queue.skip_and_disable_current()
+    if bvid:
+        await library.set_enabled(bvid, False)
+        return {"message": f"已移除 {bvid} 并跳到下一首"}
+    return {"message": "没有正在播放的歌曲"}
 
 
 @router.delete("/queue/{item_id}")

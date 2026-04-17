@@ -27,6 +27,7 @@ class DanmakuHandler:
             content = info[1] if len(info) > 1 else ""
             user_info = info[2] if len(info) > 2 else []
             user_name = user_info[1] if len(user_info) > 1 else "未知用户"
+            uid = user_info[0] if user_info else 0
             badge_info = info[5] if len(info) > 5 else []
 
             badge = None
@@ -51,6 +52,7 @@ class DanmakuHandler:
                 type=danmaku_type,
                 color=danmaku_color,
                 badge=badge,
+                uid=uid,
             )
         except (KeyError, IndexError, ValueError) as e:
             logger.warning(f"Failed to parse danmu message: {e}")

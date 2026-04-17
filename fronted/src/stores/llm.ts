@@ -421,6 +421,83 @@ export const useLLMStore = defineStore('llm', () => {
     }
   }
 
+  function handleExternalChunk(data: {
+    type: string
+    text?: string
+    audio?: string
+    sentence_index?: number
+    char_offset?: number
+    char_length?: number
+    is_final?: boolean
+    data?: {
+      text?: string
+      audio?: string
+      sentence_index?: number
+      char_offset?: number
+      char_length?: number
+      is_final?: boolean
+    }
+  }) {
+    const normalized = normalizeExternalChunk(data)
+
+    if (normalized.type === 'start') {
+      isGenerating.value = true
+      currentText.value = ''
+      displayText.value = ''
+      pendingText = ''
+      audioReady = false
+      audioPlayer.stop()
+      audioPlayer.reset()
+      
+      audioPlayer.setOnFirstAudioPlay(() => {
+        audioReady = true
+        displayText.value = ''
+      })
+      
+      audioPlayer.setOnAudioProgress((charIndex: number) => {
+        if (pendingText && charIndex <= pendingText.length) {
+          displayText.value = pendingText.substring(0, charIndex)
+        }
+      })
+    }
+    
+    handleStreamChunk(normalized)
+    
+    if (normalized.type === 'end') {
+      isGenerating.value = false
+      finalizeCurrentText()
+    }
+  }
+
+  function normalizeExternalChunk(data: {
+    type: string
+    text?: string
+    audio?: string
+    sentence_index?: number
+    char_offset?: number
+    char_length?: number
+    is_final?: boolean
+    data?: {
+      text?: string
+      audio?: string
+      sentence_index?: number
+      char_offset?: number
+      char_length?: number
+      is_final?: boolean
+    }
+  }) {
+    const payload = data.data || {}
+    return {
+      type: data.type,
+      text: data.text ?? payload.text,
+      audio: data.audio ?? payload.audio,
+      sentence_index: data.sentence_index ?? payload.sentence_index,
+      char_offset: data.char_offset ?? payload.char_offset,
+      char_length: data.char_length ?? payload.char_length,
+      is_final: data.is_final ?? payload.is_final,
+    }
+  }
+
   return {
     isGenerating,
     currentText,
@@ -433,5 +510,6 @@ export const useLLMStore = defineStore('llm', () => {
     finalizeCurrentText,
     clearMessages,
     sendReply,
+    handleExternalChunk,
   }
 })

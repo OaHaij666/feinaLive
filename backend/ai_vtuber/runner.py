@@ -1,4 +1,4 @@
-"""EasyVtuber 启动入口 - 集成 WebSocket 推送和 AI 主播对接"""
+"""EasyVtuber 启动入口 - AI 主播虚拟摄像头输出"""
 
 import os
 _venv_root = os.path.join(os.path.dirname(__file__), '..', '.venv')
@@ -12,6 +12,11 @@ try:
     os.add_dll_directory(_cuda_bin)
 except (AttributeError, OSError):
     pass
+
+try:
+    import pyvirtualcam
+except ImportError:
+    pyvirtualcam = None
 
 import asyncio
 import logging
@@ -33,7 +38,6 @@ from src.utils.preprocess import resize_to_512_center, apply_color_curves
 from src.utils.shared_mem_guard import SharedMemoryGuard
 from src.utils.timer_wait import wait_until
 from src.utils.fps import FPS
-from src.ws_streamer import FrameStreamer, get_frame_streamer
 
 logger = logging.getLogger(__name__)
 
@@ -43,22 +47,18 @@ class EasyVtuberRunner:
         self,
         character: str = "lambda_00",
         input_type: str = "debug",
-        ws_host: str = "localhost",
-        ws_port: int = 8765,
         frame_rate: int = 30,
     ):
         self.character = character
         self.input_type = input_type
-        self.ws_host = ws_host
-        self.ws_port = ws_port
         self.frame_rate = frame_rate
 
         self._input_image: np.ndarray | None = None
         self._pose_position_shm: shared_memory.SharedMemory | None = None
         self._input_process = None
         self._infer_process = None
-        self._streamer: FrameStreamer | None = None
         self._running = False
+        self._virtual_cam = None
 
     def _load_character_image(self) -> np.ndarray:
         img_path = EASYVTUBER_DIR / "data" / "images" / f"{self.character}.png"
@@ -105,7 +105,10 @@ class EasyVtuberRunner:
         args.use_interpolation = False
         args.interpolation_scale = 1
         args.use_sr = False
+        args.output_virtual_cam = True
         args.output_debug = False
+        args.alpha_split = False
+        args.green_screen = True
         args.breath_cycle = 4.0
         args.blink_interval = 5.0
 
@@ -135,11 +138,8 @@ class EasyVtuberRunner:
             self._infer_process.daemon = True
             self._infer_process.start()
 
-        self._streamer = get_frame_streamer(self.ws_host, self.ws_port)
-        await self._streamer.start()
-
         self._running = True
-        logger.info(f"EasyVtuber 启动完成，WebSocket: ws://{self.ws_host}:{self.ws_port}")
+        logger.info("EasyVtuber 启动完成，虚拟摄像头输出")
 
     def _create_input_process(self):
         if args.debug_input:
@@ -166,10 +166,13 @@ class EasyVtuberRunner:
         from src.model_infer_client import ModelClientProcess
         input_fps = self._input_process.fps if self._input_process else None
         return ModelClientProcess(
-            self._input_image, 
-            self._pose_position_shm, 
-            input_fps, 
-            output_debug=getattr(args, 'output_debug', False)
+            self._input_image,
+            self._pose_position_shm,
+            input_fps,
+            output_debug=getattr(args, 'output_debug', False),
+            output_virtual_cam=args.output_virtual_cam,
+            alpha_split=args.alpha_split,
+            green_screen=args.green_screen,
         )
 
     async def stop(self):
@@ -178,8 +181,9 @@ class EasyVtuberRunner:
 
         self._running = False
 
-        if self._streamer:
-            await self._streamer.stop()
+        if self._virtual_cam:
+            self._virtual_cam.close()
+            self._virtual_cam = None
 
         if self._input_process:
             self._input_process.terminate()
@@ -225,6 +229,20 @@ class EasyVtuberRunner:
         interval: float = 1.0 / self.frame_rate if self.frame_rate > 0 else 0.0
         n_frames = getattr(args, 'interpolation_scale', 1)
 
+        if args.output_virtual_cam:
+            if pyvirtualcam is None:
+                logger.warning("pyvirtualcam 不可用，虚拟摄像头输出被禁用")
+                args.output_virtual_cam = False
+            else:
+                self._virtual_cam = pyvirtualcam.Camera(
+                    width=cam_width_scale * getattr(args, 'model_output_size', 512),
+                    height=getattr(args, 'model_output_size', 512),
+                    fps=self.frame_rate,
+                    backend='obs',
+                    fmt=pyvirtualcam.PixelFormat.RGB
+                )
+                logger.info(f"虚拟摄像头已启动: {self._virtual_cam.device}")
+
         logger.info("EasyVtuber 渲染循环启动")
 
         while self._running:
@@ -241,8 +259,8 @@ class EasyVtuberRunner:
 
                 frame = np_ret_shms[i]
 
-                if self._streamer and self._streamer.client_count > 0:
-                    await self._streamer.broadcast_frame(frame)
+                if self._virtual_cam:
+                    self._virtual_cam.send(frame)
 
                 if interval > 0:
                     last_time += interval
@@ -255,10 +273,6 @@ class EasyVtuberRunner:
     def is_running(self) -> bool:
         return self._running
 
-    @property
-    def client_count(self) -> int:
-        return self._streamer.client_count if self._streamer else 0
-
 
 _runner: EasyVtuberRunner | None = None
 
@@ -266,8 +280,6 @@ _runner: EasyVtuberRunner | None = None
 def get_easyvtuber_runner(
     character: str = "lambda_00",
     input_type: str = "debug",
-    ws_host: str = "localhost",
-    ws_port: int = 8765,
     frame_rate: int = 30,
 ) -> EasyVtuberRunner:
     global _runner
@@ -275,8 +287,6 @@ def get_easyvtuber_runner(
         _runner = EasyVtuberRunner(
             character=character,
             input_type=input_type,
-            ws_host=ws_host,
-            ws_port=ws_port,
             frame_rate=frame_rate,
         )
     return _runner
@@ -288,8 +298,6 @@ async def main():
     parser = ap.ArgumentParser()
     parser.add_argument("--character", type=str, default="lambda_00")
     parser.add_argument("--input", type=str, default="debug", choices=["debug", "webcam", "mouse", "openseeface"])
-    parser.add_argument("--ws-host", type=str, default="localhost")
-    parser.add_argument("--ws-port", type=int, default=8765)
     parser.add_argument("--frame-rate", type=int, default=30)
     cli_args = parser.parse_args()
 
@@ -301,8 +309,6 @@ async def main():
     runner = get_easyvtuber_runner(
         character=cli_args.character,
         input_type=cli_args.input,
-        ws_host=cli_args.ws_host,
-        ws_port=cli_args.ws_port,
         frame_rate=cli_args.frame_rate,
     )
 

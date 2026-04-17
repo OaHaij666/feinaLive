@@ -1,9 +1,10 @@
 """数据库连接和表定义"""
 
+import json
 from contextlib import asynccontextmanager
 from datetime import datetime
 
-from sqlalchemy import String, Integer, Boolean, DateTime, func
+from sqlalchemy import BigInteger, Boolean, DateTime, Integer, String, Text, func
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -18,6 +19,23 @@ class Base(DeclarativeBase):
     pass
 
 
+class UserProfileDB(Base):
+    __tablename__ = "user_profiles"
+
+    user_id: Mapped[str] = mapped_column(String(50), primary_key=True)
+    username: Mapped[str] = mapped_column(String(100), default="")
+    danmaku_count: Mapped[int] = mapped_column(Integer, default=0)
+    interaction_count: Mapped[int] = mapped_column(Integer, default=0)
+    key_topics: Mapped[str] = mapped_column(Text, default="[]")
+    impression: Mapped[str] = mapped_column(Text, default="")
+    long_term_memory: Mapped[str] = mapped_column(Text, default="")
+    recent_messages: Mapped[str] = mapped_column(Text, default="[]")
+    last_danmaku: Mapped[str] = mapped_column(Text, default="")
+    last_interaction: Mapped[float] = mapped_column(Integer, default=0)
+    last_summary_count: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[float] = mapped_column(Integer, default=0)
+
+
 class UpVideo(Base):
     __tablename__ = "up_videos"
 
@@ -25,7 +43,7 @@ class UpVideo(Base):
     bvid: Mapped[str] = mapped_column(String(20), unique=True, index=True)
     title: Mapped[str] = mapped_column(String(255))
     up_name: Mapped[str] = mapped_column(String(100))
-    up_uid: Mapped[int] = mapped_column(Integer, index=True)
+    up_uid: Mapped[int] = mapped_column(BigInteger, index=True)
     duration: Mapped[int] = mapped_column(Integer, default=0)
     cover_url: Mapped[str] = mapped_column(String(500), default="")
     fetched_at: Mapped[datetime] = mapped_column(DateTime, default=func.now())

@@ -34,6 +34,7 @@ parser.add_argument('--output_spout2', action='store_true')
 parser.add_argument('--output_debug', action='store_true')
 
 parser.add_argument('--alpha_split', action='store_true')
+parser.add_argument('--green_screen', action='store_true')
 
 parser.add_argument('--filter_min_cutoff', type=float, default=10.0)
 parser.add_argument('--filter_beta', type=float, default=0.3)

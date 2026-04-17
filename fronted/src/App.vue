@@ -22,6 +22,12 @@
       <!-- 顶部装饰 -->
       <TopDecoration />
 
+      <!-- AI主播开关 -->
+      <button class="avatar-toggle-btn" @click="toggleAvatar" :class="{ active: avatarRunning }">
+        <span class="avatar-toggle-icon">{{ avatarRunning ? '🎮' : '⏸' }}</span>
+        <span class="avatar-toggle-text">{{ avatarRunning ? 'AI主播' : 'AI停止' }}</span>
+      </button>
+
       <!-- 主内容区 -->
       <div class="main-content">
         <MainView />
@@ -51,18 +57,14 @@
       <!-- 音乐播放解锁弹窗 -->
       <PlayUnlockModal :visible="showPlayUnlock" @confirm="handlePlayUnlock" />
 
-      <!-- Live2D 浮动层 -->
-      <div class="live2d-floating">
-        <div class="live2d-wrapper">
-          <Live2DViewer />
-        </div>
-      </div>
-
       <!-- 信息栏 -->
       <InfoBar />
 
       <!-- 设置面板 -->
       <SettingsPanel :visible="showSettings" @close="toggleSettings" />
+
+      <!-- 测试面板 -->
+      <DanmakuTestPanel :visible="showTestPanel" @close="showTestPanel = false" />
     </div>
   </div>
 </template>
@@ -79,8 +81,9 @@ import PlaceholderPanel from './components/panels/PlaceholderPanel.vue'
 import NotificationToast from './components/NotificationToast.vue'
 import PlayUnlockModal from './components/PlayUnlockModal.vue'
 import SessdataWarningModal from './components/SessdataWarningModal.vue'
-import Live2DViewer from './components/live2d/Live2DViewer.vue'
+
 import SettingsPanel from './components/SettingsPanel.vue'
+import DanmakuTestPanel from './components/DanmakuTestPanel.vue'
 import { useDanmakuStore } from '@/stores/danmaku'
 import { useStreamStore } from '@/stores/stream'
 import { useMusicStore } from '@/stores/music'
@@ -90,9 +93,8 @@ import { storeToRefs } from 'pinia'
 const danmakuStore = useDanmakuStore()
 const streamStore = useStreamStore()
 const musicStore = useMusicStore()
+const avatarInput = useAvatarInput()
 const { current, isPlaying, audioUnlocked } = storeToRefs(musicStore)
-
-useAvatarInput()
 
 const showPlayUnlock = computed(() => {
   const hasCurrent = !!current.value
@@ -106,6 +108,44 @@ const showSessdataWarning = ref(false)
 const sessdataError = ref('')
 const sessdataIgnored = ref(false)
 const showSettings = ref(false)
+const showTestPanel = ref(false)
+const avatarRunning = ref(false)
+const bilibiliRoomId = ref<number | null>(null)
+
+async function fetchConfig() {
+  try {
+    const res = await fetch('/config')
+    const data = await res.json()
+    const roomId = data.bilibili?.room_id || data.host?.room_id || null
+    bilibiliRoomId.value = roomId
+  } catch (e) {
+    console.error('Failed to fetch config:', e)
+  }
+}
+
+async function toggleAvatar() {
+  try {
+    if (avatarRunning.value) {
+      await fetch('/api/easyvtuber/avatar/stop', { method: 'POST' })
+      avatarRunning.value = false
+    } else {
+      await fetch('/api/easyvtuber/avatar/start', { method: 'POST' })
+      avatarRunning.value = true
+    }
+  } catch (e) {
+    console.error('Avatar toggle error:', e)
+  }
+}
+
+async function checkAvatarStatus() {
+  try {
+    const res = await fetch('/api/easyvtuber/avatar/status')
+    const data = await res.json()
+    avatarRunning.value = data.running
+  } catch (e) {
+    console.error('Avatar status error:', e)
+  }
+}
 
 function toggleSettings() {
   showSettings.value = !showSettings.value
@@ -187,21 +227,32 @@ const layoutStyle = computed(() => ({
 
 onMounted(() => {
   streamStore.startClock()
-  danmakuStore.startMockGeneration()
   updateScale()
   window.addEventListener('resize', updateScale)
   checkSessdata()
+  checkAvatarStatus()
+  avatarInput.connect()
+  fetchConfig().then(() => {
+    if (bilibiliRoomId.value) {
+      danmakuStore.connectToRoom(bilibiliRoomId.value)
+    }
+  })
   
   window.addEventListener('keydown', (e) => {
     if (e.ctrlKey && e.shiftKey && e.key === 'S') {
       e.preventDefault()
       toggleSettings()
     }
+    if (e.ctrlKey && e.shiftKey && e.key === 'D') {
+      e.preventDefault()
+      showTestPanel.value = !showTestPanel.value
+    }
   })
 })
 
 onUnmounted(() => {
   window.removeEventListener('resize', updateScale)
+  avatarInput.disconnect()
 })
 </script>
 
@@ -331,16 +382,43 @@ html, body {
   z-index: 99;
 }
 
-.live2d-floating {
+.avatar-toggle-btn {
   position: absolute;
-  bottom: 73px;
-  right: 250px;
+  top: 12px;
+  left: 16px;
   z-index: 100;
-  pointer-events: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: rgba(255, 255, 255, 0.15);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 20px;
+  cursor: pointer;
+  opacity: 0.4;
+  transition: opacity 0.2s, background 0.2s;
+  font-size: 12px;
+  color: #666;
 }
 
-.live2d-wrapper {
-  width: 756px;
-  position: relative;
+.avatar-toggle-btn:hover {
+  opacity: 0.8;
+  background: rgba(255, 255, 255, 0.25);
+}
+
+.avatar-toggle-btn.active {
+  opacity: 0.9;
+  background: rgba(59, 130, 246, 0.2);
+  border-color: rgba(59, 130, 246, 0.4);
+  color: #3b82f6;
+}
+
+.avatar-toggle-icon {
+  font-size: 14px;
+}
+
+.avatar-toggle-text {
+  font-weight: 500;
 }
 </style>

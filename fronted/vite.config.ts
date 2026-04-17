@@ -25,7 +25,7 @@ export default defineConfig({
         target: 'http://localhost:8000',
         changeOrigin: true,
       },
-      '/api': {
+      '/config': {
         target: 'http://localhost:8000',
         changeOrigin: true,
       },
@@ -39,6 +39,11 @@ export default defineConfig({
       },
       '/hls': {
         target: 'http://localhost:8080',
+        changeOrigin: true,
+        ws: true,
+      },
+      '/test': {
+        target: 'http://localhost:8000',
         changeOrigin: true,
         ws: true,
       },

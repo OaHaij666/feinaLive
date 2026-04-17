@@ -1,5 +1,6 @@
 """FastAPI 应用入口"""
 
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
@@ -11,7 +12,9 @@ from apps.music.router import router as music_router
 from apps.config_router import router as config_router
 from apps.ai.router import router as ai_router
 from apps.easyvtuber.router import router as easyvtuber_router
+from apps.test_router import router as test_router
 from apps.exceptions import AppException
+from apps.config import config
 from services.nginx_service import start_nginx, stop_nginx, get_nginx_service
 
 logging.basicConfig(
@@ -28,6 +31,8 @@ async def lifespan(app: FastAPI):
     from apps.music.queue import get_music_queue
     from apps.music.up_videos import get_up_video_manager
     from apps.easyvtuber import get_easyvtuber_manager
+    from apps.ai.admin_commands import get_admin_handler
+    from apps.ai.memory import init_user_profiles, save_all_profiles
 
     queue = get_music_queue()
     logger.info(f"Music queue initialized: max_history={queue._history.maxlen}, max_queue={queue._queue.maxlen}")
@@ -35,14 +40,68 @@ async def lifespan(app: FastAPI):
     up_manager = get_up_video_manager()
     await up_manager.initialize()
 
+    await init_user_profiles()
+
     easyvtuber_manager = get_easyvtuber_manager()
     await easyvtuber_manager.start()
+
+    admin_handler = get_admin_handler()
+
+    def on_face_mode_change(mode):
+        easyvtuber_manager.set_face_mode(mode.value)
+
+    admin_handler.register_face_mode_callback(on_face_mode_change)
+    easyvtuber_manager.set_face_mode(admin_handler.get_state().face_mode.value)
+
+    from core.websocket import manager as ws_manager
+
+    async def broadcast_music_control(action: str, data: dict = None):
+        message = {"type": "music_control", "data": {"action": action, **(data or {})}}
+        target_rooms = set()
+        target_rooms.add("test_room")
+        if config.bilibili_room_id > 0:
+            target_rooms.add(str(config.bilibili_room_id))
+        if config.default_room_id > 0:
+            target_rooms.add(str(config.default_room_id))
+        for room_id in target_rooms:
+            try:
+                await ws_manager.send_message(room_id, message)
+            except Exception:
+                pass
+
+    def on_volume_change(volume: float):
+        queue.set_volume(volume)
+        asyncio.create_task(broadcast_music_control("volume", {"volume": volume}))
+
+    def on_pause_change(is_paused: bool):
+        if is_paused:
+            asyncio.create_task(queue.stop_auto_play())
+        else:
+            asyncio.create_task(queue.start_auto_play())
+        asyncio.create_task(broadcast_music_control("pause", {"is_paused": is_paused}))
+
+    async def on_next_track():
+        await queue.skip()
+        await broadcast_music_control("next")
+
+    async def on_remove_track():
+        bvid = await queue.skip_and_disable_current()
+        if bvid:
+            library = get_playlist_manager()
+            await library.set_enabled(bvid, False)
+        await broadcast_music_control("rm")
+
+    admin_handler.register_volume_change_callback(on_volume_change)
+    admin_handler.register_pause_change_callback(on_pause_change)
+    admin_handler.register_next_track_callback(lambda: asyncio.create_task(on_next_track()))
+    admin_handler.register_remove_track_callback(lambda: asyncio.create_task(on_remove_track()))
 
     await start_nginx()
 
     yield
 
     logger.info("Application shutting down...")
+    await save_all_profiles()
     await queue.stop_auto_play()
     await easyvtuber_manager.stop()
     await stop_nginx()
@@ -68,6 +127,7 @@ app.include_router(music_router, prefix="/music", tags=["Music"])
 app.include_router(config_router, tags=["Config"])
 app.include_router(ai_router, tags=["AI"])
 app.include_router(easyvtuber_router, tags=["Avatar"])
+app.include_router(test_router, tags=["Test"])
 
 
 @app.exception_handler(AppException)

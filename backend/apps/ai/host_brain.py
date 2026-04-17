@@ -16,35 +16,41 @@ import logging
 import re
 import time
 from dataclasses import dataclass, field
-from typing import AsyncIterator, Generator, Optional, TypedDict
+from typing import AsyncIterator, Callable, Generator, Optional, TypedDict
 
+from apps.ai.admin_commands import (
+    AdminCommandHandler,
+    CommandResult,
+    FaceMode,
+    get_admin_handler,
+)
 from apps.ai.client import ChatMessage, ChatRequest, get_ai_client
 from apps.ai.history import SessionHistory, get_session
 from apps.ai.memory import (
     UserProfile,
     get_user_profile,
-    generate_user_memory_summary,
-    summarize_if_needed,
+    trigger_summary_if_needed,
 )
 from apps.ai.prompt import build_chat_prompt, get_host_system_prompt
 from apps.ai.tts import (
-    TTSSentenceResult,
     TTSResult,
     VolcanoTTSClient,
     get_tts_client,
 )
 from apps.config import config
+from apps.easyvtuber import get_easyvtuber_manager
 from langgraph.graph import StateGraph, END
 
 logger = logging.getLogger(__name__)
 
 
 class DanmakuInput:
-    def __init__(self, msg_id: str = "", user: str = "", content: str = "", timestamp: float = 0):
+    def __init__(self, msg_id: str = "", user: str = "", content: str = "", timestamp: float = 0, uid: int = 0):
         self.msg_id = msg_id
         self.user = user
         self.content = content
         self.timestamp = timestamp or time.time()
+        self.uid = uid
 
     def to_dict(self) -> dict:
         return {
@@ -52,6 +58,7 @@ class DanmakuInput:
             "user": self.user,
             "content": self.content,
             "timestamp": self.timestamp,
+            "uid": self.uid,
         }
 
 
@@ -203,13 +210,7 @@ async def update_user_memory(state: ChatState) -> ChatState:
     user_profile = get_user_profile(user)
     user_profile.add_conversation(content, response)
     
-    if user_profile.should_summarize():
-        try:
-            result = await summarize_if_needed(user_profile)
-            if result:
-                logger.info(f"用户 {user} 记忆摘要完成")
-        except Exception as e:
-            logger.error(f"生成用户摘要失败: {e}")
+    trigger_summary_if_needed(user_profile)
     
     logger.debug(f"用户 {user} 记忆已更新 (互动次数: {user_profile.interaction_count})")
     return state
@@ -291,20 +292,42 @@ class AIHostBrain:
         self._is_replying: bool = False
         self._on_reply_callback = None
         self._on_stream_callback = None
+        self._admin_handler = get_admin_handler()
+        self._admin_result_callback: Optional[Callable[[CommandResult], None]] = None
 
     def set_on_reply(self, callback):
         self._on_reply_callback = callback
 
     def set_on_stream(self, callback):
-        """设置流式回调，用于实时发送文字和音频"""
         self._on_stream_callback = callback
 
-    def push_danmaku(self, msg_id: str, user: str, content: str):
-        danmaku = DanmakuInput(msg_id=msg_id, user=user, content=content)
+    def set_on_admin_command_result(self, callback: Callable[[CommandResult], None]):
+        self._admin_result_callback = callback
+
+    def push_danmaku(self, msg_id: str, user: str, content: str, uid: int = 0) -> bool:
+        if content.strip() == "/clear":
+            from apps.ai.memory import clear_user_profile
+            clear_user_profile(user)
+            logger.info(f"用户 {user} 清除了自己的记忆")
+            return False
+
+        cmd_result = self._admin_handler.sync_handle(uid, user, content)
+        if cmd_result:
+            logger.info(f"Admin command executed: {cmd_result.message}")
+            if self._admin_result_callback:
+                self._admin_result_callback(cmd_result)
+            return False
+
+        if not self._admin_handler.should_process_danmaku(uid, user):
+            logger.debug(f"弹幕被过滤 (sleep模式): [{user}] {content}")
+            return False
+
+        danmaku = DanmakuInput(msg_id=msg_id, user=user, content=content, uid=uid)
         self._danmaku_buffer.append(danmaku)
         if len(self._danmaku_buffer) > 20:
             self._danmaku_buffer = self._danmaku_buffer[-20:]
         logger.debug(f"弹幕入缓冲: [{user}] {content}")
+        return True
 
     def get_unanswered(self) -> list[DanmakuInput]:
         history = get_session(self.room_id)
@@ -318,11 +341,17 @@ class AIHostBrain:
         if self._is_replying:
             return None
 
+        if self._admin_handler.get_state().is_sleeping:
+            return None
+
         elapsed = time.time() - self._last_reply_time
         if elapsed < config.host_reply_interval:
             return None
 
-        unanswered = self.get_unanswered()
+        unanswered = [
+            d for d in self.get_unanswered()
+            if self._admin_handler.should_process_danmaku(d.uid, d.user)
+        ]
         if not unanswered:
             return None
 
@@ -351,11 +380,6 @@ class AIHostBrain:
 
         combined_text = "\n".join(combined_contents)
         history = get_session(self.room_id)
-        history.add_user_message(
-            content=combined_text,
-            sender=user,
-            msg_id=combined_msg_ids[0],
-        )
         history.mark_answered_batch(combined_msg_ids)
 
         state: ChatState = {
@@ -389,7 +413,7 @@ class AIHostBrain:
         reply = HostReply(
             text=full_response,
             audio=audio_result,
-            source_danmaku=target,
+            source_danmaku=first,
         )
 
         if self._on_reply_callback:
@@ -472,19 +496,24 @@ class AIHostBrain:
 
         async def process_sentence(sentence: str, idx: int, offset: int):
             """处理单个句子的 TTS"""
-            if isinstance(tts, VolcanoTTSClient):
-                result = await tts.synthesize(sentence)
-                if result:
-                    return StreamReplyChunk(
-                        type="audio",
-                        text=sentence,
-                        audio_data=result.audio_data,
-                        sentence_index=idx,
-                        char_offset=offset,
-                    )
+            result = await tts.synthesize(sentence)
+            if result:
+                return StreamReplyChunk(
+                    type="audio",
+                    text=sentence,
+                    audio_data=result.audio_data,
+                    sentence_index=idx,
+                    char_offset=offset,
+                )
             return None
 
         yield StreamReplyChunk(type="start")
+
+        try:
+            manager = get_easyvtuber_manager()
+            manager.set_speaking(True)
+        except Exception as e:
+            logger.warning(f"设置 speaking 状态失败: {e}")
 
         async for chunk in ai.chat_stream(request):
             full_response += chunk
@@ -494,13 +523,12 @@ class AIHostBrain:
                 sentence_offsets.append((char_offset, sentence))
                 yield StreamReplyChunk(type="text", text=sentence)
 
-                if isinstance(tts, VolcanoTTSClient):
-                    task = asyncio.create_task(
-                        process_sentence(sentence, sentence_index, char_offset)
-                    )
-                    tts_tasks.append(task)
-                    sentence_index += 1
-                
+                task = asyncio.create_task(
+                    process_sentence(sentence, sentence_index, char_offset)
+                )
+                tts_tasks.append(task)
+                sentence_index += 1
+
                 char_offset += len(sentence)
 
         remaining = sentence_buffer.flush()
@@ -508,14 +536,13 @@ class AIHostBrain:
             sentence_offsets.append((char_offset, remaining))
             yield StreamReplyChunk(type="text", text=remaining)
 
-            if isinstance(tts, VolcanoTTSClient):
-                task = asyncio.create_task(
-                    process_sentence(remaining, sentence_index, char_offset)
-                )
-                tts_tasks.append(task)
+            task = asyncio.create_task(
+                process_sentence(remaining, sentence_index, char_offset)
+            )
+            tts_tasks.append(task)
 
-        for task in tts_tasks:
-            result = await task
+        for completed in asyncio.as_completed(tts_tasks):
+            result = await completed
             if result:
                 yield result
 
@@ -523,18 +550,18 @@ class AIHostBrain:
 
         user_profile.add_conversation(content, full_response)
         
-        if user_profile.should_summarize():
-            try:
-                result = await summarize_if_needed(user_profile)
-                if result:
-                    logger.info(f"用户 {user} 记忆摘要完成")
-            except Exception as e:
-                logger.error(f"生成用户摘要失败: {e}")
+        trigger_summary_if_needed(user_profile)
 
         if len(full_response) > config.host_max_reply_length:
             full_response = full_response[:config.host_max_reply_length]
 
         yield StreamReplyChunk(type="end", text=full_response, is_final=True)
+
+        try:
+            manager = get_easyvtuber_manager()
+            manager.set_speaking(False)
+        except Exception as e:
+            logger.warning(f"设置 speaking 状态失败: {e}")
 
         logger.info(f"AI主播流式回复 [{user}]: {full_response}")
 

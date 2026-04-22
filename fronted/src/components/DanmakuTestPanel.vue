@@ -212,8 +212,12 @@ function connectWebSocket() {
         } else if (action === 'rm') {
           musicStore.fetchQueue()
           addLog('[音乐] 移除当前歌曲', 'system')
+        }
         } else if (msg.type === 'music_added') {
-          addLog(`[音乐] 点歌成功: ${msg.data.title} - ${msg.data.artist}`, 'system')
+          musicStore.fetchQueue()
+          const title = (msg.data.title || '').replace(/\n/g, ' ').trim()
+          const artist = (msg.data.artist || '').replace(/\n/g, ' ').trim()
+          addLog(`[音乐] 点歌成功: ${title} - ${artist}`, 'system')
         } else if (msg.type === 'music_error') {
           addLog(`[音乐] 点歌失败: ${msg.data.error}`, 'error')
         }

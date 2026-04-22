@@ -42,12 +42,14 @@ export function useBilibiliDanmaku() {
   }
 
   function connect(roomId: number) {
+    console.log('[BilibiliDanmaku] connect called with roomId:', roomId)
     if (ws) {
       ws.close()
     }
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-    const wsUrl = `${protocol}//${window.location.host}/api/bilibili/ws/${roomId}`
+    const wsUrl = `${protocol}//${window.location.host}/bilibili/ws/${roomId}`
+    console.log('[BilibiliDanmaku] Connecting to', wsUrl)
 
     ws = new WebSocket(wsUrl)
 

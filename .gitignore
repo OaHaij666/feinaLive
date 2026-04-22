@@ -1,8 +1,8 @@
 # 忽略的目录
 oss-referances/
 
-# ai_vtuber 模型文件 (大文件不上传)
-backend/ai_vtuber/data/models/
+# EasyVtuber 模型文件 (大文件不上传)
+backend/EasyVtuber/data/models/
 *.onnx
 *.pth
 *.pt
@@ -10,15 +10,6 @@ backend/ai_vtuber/data/models/
 *.safetensors
 *.engine
 *.plan
-
-# 但保留 ai_vtuber 代码
-!backend/ai_vtuber/**/*.py
-!backend/ai_vtuber/**/*.yaml
-!backend/ai_vtuber/**/*.json
-!backend/ai_vtuber/**/*.md
-
-# 但保留 docs 目录中的以下文件
-# (通过否定规则)
 
 # IDE
 .idea/

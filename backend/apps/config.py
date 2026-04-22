@@ -147,6 +147,10 @@ class Config:
         return int(os.getenv("DEFAULT_ROOM_ID") or self._data.get("host", {}).get("room_id", 0))
 
     @property
+    def announcement(self) -> str:
+        return self._data.get("announcement", "直播间24小时随机刷新开播。AI主播是小笨蛋不要欺负她喵。白天基本上是无人直播间喵，夜间可能会真人代播。直播间指令：输入 点歌 歌名 或者 点歌 BVid进行点歌，推荐使用BV号点歌。输入/clear 清除AI对你的记忆。")
+
+    @property
     def easyvtuber_enabled(self) -> bool:
         return self._data.get("easyvtuber", {}).get("enabled", True)
 

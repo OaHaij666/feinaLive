@@ -13,13 +13,20 @@ export default defineConfig({
     port: 5173,
     host: true,
     proxy: {
+      '/api': {
+        target: 'ws://localhost:8000',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api/, ''),
+        ws: true,
+      },
       '/music': {
         target: 'http://localhost:8000',
         changeOrigin: true,
       },
       '/bilibili': {
-        target: 'http://localhost:8000',
+        target: 'ws://localhost:8000',
         changeOrigin: true,
+        ws: true,
       },
       '/ai': {
         target: 'http://localhost:8000',

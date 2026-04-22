@@ -8,7 +8,7 @@ async def test_music_control_chain():
     print("=== 测试音乐控制链路 ===\n")
 
     print("1. 初始化组件...")
-    from apps.music.queue import get_music_queue
+    from apps.live.music.queue import get_music_queue
     from apps.ai.admin_commands import AdminCommandHandler, get_admin_handler
     from core.websocket import manager
 

@@ -8,19 +8,10 @@
           <div class="music-main">
             <div class="track-info">
               <div class="track-info-header">
-                <div class="track-title" :title="current?.title || '等待播放'">
-                  {{ current?.title || '等待播放' }}
+                <div class="track-title" :title="current?.title ? `${current.title} - ${current.upName}` : '等待播放'">
+                  {{ current?.title ? `${current.title} - ${current.upName}` : '等待播放' }}
                 </div>
-                <button class="test-btn" @click="handleTest" :disabled="isGenerating" title="测试AI回复">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
-                    <path d="M8 5v14l11-7z" fill="currentColor"/>
-                  </svg>
-                </button>
               </div>
-              <div class="track-artist" v-if="hasCurrent">
-                <span>{{ current?.upName }}</span>
-              </div>
-              <div class="track-artist placeholder" v-else>暂无歌曲</div>
 
               <div class="progress-section" v-if="hasCurrent">
                 <div class="progress-bar" @click.stop="handleSeek">
@@ -42,7 +33,7 @@
               <span class="queue-label">播放列表</span>
               <span class="queue-count">{{ displayQueue.length }}首</span>
             </div>
-            <div class="queue-list" v-if="displayQueue.length > 0">
+            <div class="queue-list" ref="queueListRef" v-if="displayQueue.length > 0">
               <div
                 v-for="(item, index) in displayQueue"
                 :key="item.id"
@@ -51,8 +42,7 @@
               >
                 <div class="item-index">{{ index + 1 }}</div>
                 <div class="item-info">
-                  <div class="item-title">{{ item.title }}</div>
-                  <div class="item-artist">{{ item.upName }}</div>
+                  <div class="item-title">{{ item.title }} - {{ item.upName }}</div>
                 </div>
                 <div class="item-duration">{{ formatTime(item.duration) }}</div>
               </div>
@@ -81,7 +71,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch, nextTick } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch, nextTick } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useMusicStore } from '@/stores/music'
 import { useLLMStore } from '@/stores/llm'
@@ -104,6 +94,7 @@ const latestMessage = computed(() => latestAssistantMessage.value)
 
 const marqueeWrapperRef = ref<HTMLElement | null>(null)
 const textContentRef = ref<HTMLElement | null>(null)
+const queueListRef = ref<HTMLElement | null>(null)
 
 const isVisible = ref(false)
 const displayContent = ref('')
@@ -111,12 +102,54 @@ let hideTimer: ReturnType<typeof setTimeout> | null = null
 let scrollTimer: ReturnType<typeof setInterval> | null = null
 let scrollKey = ref(0)
 let renderedLength = 0
+let queueScrollTimer: ReturnType<typeof setInterval> | null = null
+let queueScrollDirection = 1
+let queueScrollPaused = false
 
 const clearScrollTimer = () => {
   if (scrollTimer) {
     clearInterval(scrollTimer)
     scrollTimer = null
   }
+}
+
+const clearQueueScrollTimer = () => {
+  if (queueScrollTimer) {
+    clearInterval(queueScrollTimer)
+    queueScrollTimer = null
+  }
+}
+
+const startQueueAutoScroll = () => {
+  clearQueueScrollTimer()
+  nextTick(() => {
+    if (!queueListRef.value) return
+    const el = queueListRef.value
+    const hasOverflow = el.scrollHeight > el.clientHeight
+    if (!hasOverflow) return
+    
+    queueScrollTimer = setInterval(() => {
+      if (!queueListRef.value || queueScrollPaused) return
+      const el = queueListRef.value
+      const maxScroll = el.scrollHeight - el.clientHeight
+      
+      if (queueScrollDirection === 1) {
+        el.scrollTop += 1
+        if (el.scrollTop >= maxScroll) {
+          queueScrollDirection = -1
+          setTimeout(() => { queueScrollPaused = false }, 2000)
+          queueScrollPaused = true
+        }
+      } else {
+        el.scrollTop -= 1
+        if (el.scrollTop <= 0) {
+          queueScrollDirection = 1
+          setTimeout(() => { queueScrollPaused = false }, 2000)
+          queueScrollPaused = true
+        }
+      }
+    }, 50)
+  })
 }
 
 const checkOverflowAndScroll = () => {
@@ -201,6 +234,10 @@ watch(displayText, (newText, oldText) => {
   }
 }, { immediate: true })
 
+watch(queue, () => {
+  startQueueAutoScroll()
+})
+
 function handleSeek(event: MouseEvent) {
   const bar = event.currentTarget as HTMLElement
   const rect = bar.getBoundingClientRect()
@@ -215,12 +252,13 @@ function formatTime(seconds: number): string {
   return `${mins}:${secs.toString().padStart(2, '0')}`
 }
 
-async function handleTest() {
-  await llmStore.sendReply('测试用户', '你好，请用一句话介绍一下自己')
-}
-
 onMounted(() => {
   musicStore.fetchQueue()
+  startQueueAutoScroll()
+})
+
+onUnmounted(() => {
+  clearQueueScrollTimer()
 })
 </script>
 
@@ -317,19 +355,6 @@ onMounted(() => {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-.track-artist {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 11px;
-  color: rgba(30, 58, 95, 0.6);
-}
-
-.track-artist.placeholder {
-  color: rgba(30, 58, 95, 0.4);
-  font-style: italic;
 }
 
 .progress-section {
@@ -478,14 +503,6 @@ onMounted(() => {
   text-overflow: ellipsis;
 }
 
-.item-artist {
-  font-size: 9px;
-  color: rgba(30, 58, 95, 0.45);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
 .item-duration {
   font-size: 10px;
   color: rgba(30, 58, 95, 0.4);
@@ -533,31 +550,6 @@ onMounted(() => {
   letter-spacing: 1px;
   padding: 0 20px;
   text-shadow: 0 1px 2px rgba(255, 255, 255, 0.8);
-}
-
-.test-btn {
-  width: 22px;
-  height: 22px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: linear-gradient(135deg, #8b5cf6, #6366f1);
-  border: none;
-  border-radius: 6px;
-  color: white;
-  cursor: pointer;
-  transition: all 0.2s;
-  flex-shrink: 0;
-}
-
-.test-btn:hover:not(:disabled) {
-  transform: scale(1.1);
-  box-shadow: 0 2px 8px rgba(139, 92, 246, 0.4);
-}
-
-.test-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
 }
 
 .typing-cursor {

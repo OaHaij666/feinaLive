@@ -49,7 +49,7 @@ class CommandResult:
 
 
 class AdminCommandHandler:
-    ADMIN_COMMANDS = ["/sleep", "/face", "/voice", "/hide", "/sound", "/next", "/pause", "/rm", "/add_music", "/help"]
+    ADMIN_COMMANDS = ["sleep", "face", "voice", "hide", "sound", "next", "pause", "rm", "add_music", "help"]
     COMMAND_PATTERN = re.compile(r"^/(\w+)\s*(\S*)$")
 
     def __init__(self):
@@ -380,8 +380,8 @@ class AdminCommandHandler:
                 message="无效的BV号，BV号应以BV开头",
                 command="/add_music"
             )
-        from apps.music.llm_verify import get_llm_verifier
-        from apps.music.library import get_playlist_manager
+        from apps.live.music.llm_verify import get_llm_verifier
+        from apps.live.music.library import get_playlist_manager
         verifier = get_llm_verifier()
         library = get_playlist_manager()
         logger.info(f"Admin command: /add_music {bvid} - 正在发送给LLM验证")

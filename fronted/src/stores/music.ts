@@ -50,7 +50,14 @@ export const useMusicStore = defineStore('music', () => {
   })
 
   audio.addEventListener('error', (e) => {
-    console.error('Audio error:', e)
+    const audioEl = e.target as HTMLAudioElement
+    console.error('[Audio Error]', {
+      src: audioEl.src,
+      error: audioEl.error,
+      networkState: audioEl.networkState,
+      readyState: audioEl.readyState,
+      currentSrc: audioEl.currentSrc,
+    })
     error('音频播放失败')
     isPlaying.value = false
   })
@@ -63,11 +70,21 @@ export const useMusicStore = defineStore('music', () => {
     isPlaying.value = false
   })
 
-  watch(current, async (newCurrent) => {
+  watch(current, async (newCurrent, oldCurrent) => {
+    if (newCurrent?.id === oldCurrent?.id) {
+      return
+    }
     if (newCurrent?.audioUrl) {
-      audio.src = toProxyUrl(newCurrent.audioUrl)
+      const proxyUrl = toProxyUrl(newCurrent.audioUrl)
+      console.log('[Music Store] 设置音频源:', {
+        title: newCurrent.title,
+        originalUrl: newCurrent.audioUrl,
+        proxyUrl: proxyUrl,
+      })
+      audio.src = proxyUrl
       if (audioUnlocked.value) {
-        audio.play().catch(() => {
+        audio.play().catch((e) => {
+          console.error('[Music Store] 播放失败:', e)
           error('播放失败')
         })
         isPlaying.value = true
@@ -75,6 +92,7 @@ export const useMusicStore = defineStore('music', () => {
         isPlaying.value = false
       }
     } else {
+      console.log('[Music Store] 清空音频源 (无 audioUrl)')
       audio.src = ''
       isPlaying.value = false
       currentTime.value = 0

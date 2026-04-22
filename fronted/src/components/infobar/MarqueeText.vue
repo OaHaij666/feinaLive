@@ -3,7 +3,7 @@
     <div class="marquee-separator">▌</div>
     <div class="marquee-container">
       <div class="marquee-text" :style="{ animationDuration: `${duration}s` }">
-        {{ text }} &nbsp;&nbsp;&nbsp; {{ text }}
+        {{ text }}<span class="spacer"></span>{{ text }}
       </div>
     </div>
   </div>
@@ -49,10 +49,14 @@ const duration = computed(() => {
   display: inline-block;
   white-space: nowrap;
   animation: marquee linear infinite;
-  padding-right: 50px;
   color: #4a5a6a;
   font-size: 14px;
   line-height: 1.5;
+}
+
+.spacer {
+  display: inline-block;
+  width: 800px;
 }
 
 @keyframes marquee {

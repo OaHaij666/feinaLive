@@ -20,7 +20,7 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-EASYVTUBER_DIR = Path(__file__).parent.parent.parent / "ai_vtuber"
+EASYVTUBER_DIR = Path(__file__).parent.parent.parent / "EasyVtuber"
 
 
 class EasyVtuberManager:

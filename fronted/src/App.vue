@@ -114,22 +114,30 @@ const bilibiliRoomId = ref<number | null>(null)
 
 async function fetchConfig() {
   try {
+    console.log('[App] Fetching config from /config...')
     const res = await fetch('/config')
+    console.log('[App] Config response status:', res.status)
+    if (!res.ok) {
+      console.error('[App] Config fetch failed:', res.status, res.statusText)
+      return
+    }
     const data = await res.json()
+    console.log('[App] Config data:', data)
     const roomId = data.bilibili?.room_id || data.host?.room_id || null
     bilibiliRoomId.value = roomId
+    console.log('[App] fetchConfig: roomId =', roomId, 'bilibiliRoomId =', bilibiliRoomId.value)
   } catch (e) {
-    console.error('Failed to fetch config:', e)
+    console.error('[App] Failed to fetch config:', e)
   }
 }
 
 async function toggleAvatar() {
   try {
     if (avatarRunning.value) {
-      await fetch('/api/easyvtuber/avatar/stop', { method: 'POST' })
+      await fetch('/avatar/stop', { method: 'POST' })
       avatarRunning.value = false
     } else {
-      await fetch('/api/easyvtuber/avatar/start', { method: 'POST' })
+      await fetch('/avatar/start', { method: 'POST' })
       avatarRunning.value = true
     }
   } catch (e) {
@@ -139,7 +147,7 @@ async function toggleAvatar() {
 
 async function checkAvatarStatus() {
   try {
-    const res = await fetch('/api/easyvtuber/avatar/status')
+    const res = await fetch('/avatar/status')
     const data = await res.json()
     avatarRunning.value = data.running
   } catch (e) {
@@ -153,7 +161,7 @@ function toggleSettings() {
 
 async function checkSessdata() {
   try {
-    const res = await fetch('/api/bilibili/sessdata/verify')
+    const res = await fetch('/bilibili/sessdata/verify')
     const data = await res.json()
     if (!data.valid) {
       sessdataError.value = data.error || 'SESSDATA无效'
@@ -175,10 +183,10 @@ function handleSessdataIgnore() {
 
 async function handleSessdataUpdate(newSessdata: string) {
   try {
-    const res = await fetch('/api/bilibili/sessdata/update', {
+    const res = await fetch('/bilibili/sessdata/update', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(newSessdata),
+      body: JSON.stringify({ sessdata: newSessdata }),
     })
     const data = await res.json()
     if (data.success) {
@@ -227,14 +235,19 @@ const layoutStyle = computed(() => ({
 
 onMounted(() => {
   streamStore.startClock()
+  streamStore.fetchConfig()
   updateScale()
   window.addEventListener('resize', updateScale)
   checkSessdata()
   checkAvatarStatus()
   avatarInput.connect()
   fetchConfig().then(() => {
-    if (bilibiliRoomId.value) {
+    console.log('[App] fetchConfig promise resolved, bilibiliRoomId.value =', bilibiliRoomId.value, 'type =', typeof bilibiliRoomId.value)
+    if (bilibiliRoomId.value && bilibiliRoomId.value > 0) {
+      console.log('[App] Calling danmakuStore.connectToRoom with', bilibiliRoomId.value)
       danmakuStore.connectToRoom(bilibiliRoomId.value)
+    } else {
+      console.warn('[App] bilibiliRoomId is falsy, skipping danmaku connection. Value:', bilibiliRoomId.value)
     }
   })
   

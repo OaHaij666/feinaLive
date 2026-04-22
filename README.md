@@ -1,6 +1,7 @@
 # feinaLive
 
-飞娜直播间项目 - 包含后端服务、前端界面和虚拟形象渲染
+这是一个仿照 Neuro-Sama 完成的包含前后端的项目。由于是个人开发的练习项目，有诸多不完善的地方，前端后端很多组件也是根据自身需求打造。
+推流时建议使用OBS，安装spout2插件，在OBS中捕获数字人图像。
 
 ## 项目结构
 
@@ -11,7 +12,7 @@ feinaLive/
 │   │   ├── easyvtuber/    # EasyVtuber 集成模块
 │   │   ├── music/         # 音乐播放管理
 │   │   └── ...
-│   ├── ai_vtuber/         # 虚拟形象渲染引擎
+│   ├── EasyVtuber/         # 虚拟形象渲染引擎
 │   └── main.py            # 入口文件
 ├── fronted/           # Vue 前端界面
 └── oss-referances/    # 参考文档（不上传）
@@ -41,11 +42,11 @@ EasyVtuber 需要下载模型文件才能运行：
 
 **下载地址**: [Google Drive](https://drive.google.com/file/d/1pWKIpjWeqfpa3Rub185FVvxDr5H09pOi/view?usp=drive_link)
 
-下载后解压到 `backend/ai_vtuber/data/models/` 目录下。
+下载后解压到 `backend/EasyVtuber/data/models/` 目录下。
 
 目录结构应为：
 ```
-backend/ai_vtuber/data/models/
+backend/EasyVtuber/data/models/
 ├── rife/
 ├── sr/
 ├── tha3/

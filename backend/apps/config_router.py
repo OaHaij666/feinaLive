@@ -82,6 +82,7 @@ class FullConfig(BaseModel):
     host: HostConfig = HostConfig()
     tts: TTSConfig = TTSConfig()
     easyvtuber: EasyVtuberConfig = EasyVtuberConfig()
+    announcement: str = ""
 
 
 @router.get("", response_model=FullConfig)
@@ -131,6 +132,7 @@ async def get_full_config():
                 )
             ),
         ),
+        announcement=config.announcement,
     )
 
 
@@ -216,7 +218,7 @@ async def update_easyvtuber_config(config_data: EasyVtuberConfig):
 async def list_characters():
     from pathlib import Path
 
-    images_dir = Path(__file__).parent.parent.parent / "ai_vtuber" / "data" / "images"
+    images_dir = Path(__file__).parent.parent.parent / "EasyVtuber" / "data" / "images"
     characters = []
 
     if images_dir.exists():

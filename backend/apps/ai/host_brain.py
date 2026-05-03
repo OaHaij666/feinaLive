@@ -15,31 +15,29 @@ import asyncio
 import logging
 import re
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import AsyncIterator, Callable, Generator, Optional, TypedDict
 
+from langgraph.graph import END, StateGraph
+
 from apps.ai.admin_commands import (
-    AdminCommandHandler,
     CommandResult,
-    FaceMode,
     get_admin_handler,
 )
 from apps.ai.client import ChatMessage, ChatRequest, get_ai_client
-from apps.ai.history import SessionHistory, get_session
+from apps.ai.history import get_session
 from apps.ai.memory import (
-    UserProfile,
     get_user_profile,
     trigger_summary_if_needed,
 )
+from apps.ai.messaging.queue import PRIORITY_NORMAL, Message, get_message_queue
 from apps.ai.prompt import build_chat_prompt, get_host_system_prompt
 from apps.ai.tts import (
     TTSResult,
-    VolcanoTTSClient,
     get_tts_client,
 )
 from apps.config import config
 from apps.easyvtuber import get_easyvtuber_manager
-from langgraph.graph import StateGraph, END
 
 logger = logging.getLogger(__name__)
 
@@ -120,7 +118,7 @@ async def retrieve_rag(state: ChatState) -> ChatState:
 async def retrieve_user_memory(state: ChatState) -> ChatState:
     user = state["user"]
     user_profile = get_user_profile(user)
-    
+
     state["user_memory_context"] = user_profile.get_memory_context()
     logger.debug(f"用户 {user} 记忆上下文: {state['user_memory_context'][:100] if state['user_memory_context'] else '(无)'}...")
     return state
@@ -130,11 +128,11 @@ async def build_prompt(state: ChatState) -> ChatState:
     history = get_session(state["session_id"])
     history_entries = history.get_recent_dicts(10)
     system_prompt = get_host_system_prompt()
-    
+
     if state.get("rag_context"):
         rag_text = "\n".join(state["rag_context"])
         system_prompt += f"\n\n【相关知识】\n{rag_text}"
-    
+
     if state.get("user_memory_context"):
         system_prompt += f"\n\n{state['user_memory_context']}"
 
@@ -203,15 +201,15 @@ async def update_user_memory(state: ChatState) -> ChatState:
     user = state["user"]
     content = state["text"]
     response = state["response"]
-    
+
     if not response:
         return state
-    
+
     user_profile = get_user_profile(user)
     user_profile.add_conversation(content, response)
-    
+
     trigger_summary_if_needed(user_profile)
-    
+
     logger.debug(f"用户 {user} 记忆已更新 (互动次数: {user_profile.interaction_count})")
     return state
 
@@ -337,34 +335,34 @@ class AIHostBrain:
                 unanswered.append(d)
         return unanswered
 
-    async def try_reply(self) -> HostReply | None:
+    async def try_reply(self) -> bool:
         if self._is_replying:
-            return None
+            return False
 
         if self._admin_handler.get_state().is_sleeping:
-            return None
+            return False
 
         elapsed = time.time() - self._last_reply_time
         if elapsed < config.host_reply_interval:
-            return None
+            return False
 
         unanswered = [
             d for d in self.get_unanswered()
             if self._admin_handler.should_process_danmaku(d.uid, d.user)
         ]
         if not unanswered:
-            return None
+            return False
 
         self._is_replying = True
         try:
-            return await self._generate_reply(unanswered)
+            return await self._enqueue_danmaku(unanswered)
         finally:
             self._is_replying = False
             self._last_reply_time = time.time()
 
-    async def _generate_reply(self, unanswered: list[DanmakuInput]) -> HostReply | None:
+    async def _enqueue_danmaku(self, unanswered: list[DanmakuInput]) -> bool:
         if not unanswered:
-            return None
+            return False
 
         first = unanswered[0]
         user = first.user
@@ -382,45 +380,24 @@ class AIHostBrain:
         history = get_session(self.room_id)
         history.mark_answered_batch(combined_msg_ids)
 
-        state: ChatState = {
-            "text": combined_text,
-            "msg_id": first.msg_id,
-            "user": user,
-            "session_id": self.room_id,
-            "rag_context": [],
-            "user_memory_context": "",
-            "prompt": [],
-            "llm_stream": None,
-            "response": "",
-            "audio_data": None,
-        }
+        queue = get_message_queue()
+        enqueued = await queue.put(Message(
+            priority=PRIORITY_NORMAL,
+            source="danmaku",
+            msg_type="danmaku",
+            content=combined_text,
+            data={"user": user, "uid": first.uid, "msg_id": first.msg_id},
+            user_id=str(first.uid),
+            expire_at=time.time() + 25,
+        ))
 
-        full_response = ""
-        async for chunk_result in chat_graph.astream(state):
-            if "stream_llm" in chunk_result:
-                full_response = chunk_result["stream_llm"].get("response", "")
-
-        if not full_response:
-            logger.warning("AI主播回复为空")
-            return None
-
-        if len(full_response) > config.host_max_reply_length:
-            full_response = full_response[:config.host_max_reply_length]
-
-        tts = get_tts_client()
-        audio_result = await tts.synthesize(full_response)
-
-        reply = HostReply(
-            text=full_response,
-            audio=audio_result,
-            source_danmaku=first,
-        )
+        if enqueued:
+            logger.debug(f"弹幕入队: [{user}] {combined_text[:30]}")
 
         if self._on_reply_callback:
-            await self._on_reply_callback(reply)
+            await self._on_reply_callback(True)
 
-        logger.info(f"AI主播回复 [{user}]: {full_response}")
-        return reply
+        return enqueued
 
     async def stream_reply(self, user: str, content: str) -> AsyncIterator[StreamReplyChunk]:
         """流式同步回复 - 按句子同步发送文字和音频
@@ -458,13 +435,13 @@ class AIHostBrain:
 
         user_profile = get_user_profile(user)
         user_memory_context = user_profile.get_memory_context()
-        
+
         history_entries = history.get_recent_dicts(10)
         system_prompt = get_host_system_prompt()
-        
+
         if user_memory_context:
             system_prompt += f"\n\n{user_memory_context}"
-        
+
         prompt = build_chat_prompt(
             user_text=content,
             history_entries=history_entries,
@@ -549,11 +526,16 @@ class AIHostBrain:
         history.add_assistant_message(full_response)
 
         user_profile.add_conversation(content, full_response)
-        
+
         trigger_summary_if_needed(user_profile)
 
         if len(full_response) > config.host_max_reply_length:
             full_response = full_response[:config.host_max_reply_length]
+
+        await self._shared_context.add_host_entry(
+            danmaku=content,
+            reply=full_response,
+        )
 
         yield StreamReplyChunk(type="end", text=full_response, is_final=True)
 
@@ -565,7 +547,7 @@ class AIHostBrain:
 
         logger.info(f"AI主播流式回复 [{user}]: {full_response}")
 
-    async def reply_to_text(self, user: str, content: str) -> HostReply | None:
+    async def reply_to_text(self, user: str, content: str) -> bool:
         msg_id = f"manual_{int(time.time() * 1000)}"
         self.push_danmaku(msg_id=msg_id, user=user, content=content)
         return await self.try_reply()

@@ -1,13 +1,12 @@
 """弹幕处理逻辑 - 被真实弹幕和测试弹幕共用"""
 
 import asyncio
-import base64
 import logging
 from dataclasses import dataclass
-from typing import Optional, Callable, Awaitable
+from typing import Awaitable, Callable, Optional
 
-from apps.ai.host_brain import get_host_brain
 from apps.ai.admin_commands import get_admin_handler
+from apps.ai.host_brain import get_host_brain
 from apps.config import config
 from apps.live.music.service import get_danmaku_service
 from core.websocket import manager
@@ -136,29 +135,6 @@ async def _process_ai_reply(
     broadcast_fn: Optional[Callable[[dict], Awaitable[None]]] = None,
 ):
     brain = get_host_brain(config.default_room_id)
-    reply = await brain.try_reply()
-    if reply:
-        await _broadcast_to_rooms(room_ids, {"type": "start", "data": {}}, broadcast_fn)
-
-        await _broadcast_to_rooms(room_ids, {
-            "type": "text",
-            "data": {"text": reply.text}
-        }, broadcast_fn)
-
-        if reply.audio and reply.audio.audio_data:
-            audio_base64 = base64.b64encode(reply.audio.audio_data).decode("utf-8")
-            await _broadcast_to_rooms(room_ids, {
-                "type": "audio",
-                "data": {
-                    "audio": audio_base64,
-                    "text": reply.text,
-                    "sentence_index": 0,
-                    "char_offset": 0,
-                    "char_length": len(reply.text),
-                }
-            }, broadcast_fn)
-
-        await _broadcast_to_rooms(room_ids, {
-            "type": "end",
-            "data": {"text": reply.text}
-        }, broadcast_fn)
+    enqueued = await brain.try_reply()
+    if enqueued:
+        logger.debug("弹幕已入队，等待主播 LLM 消费回复")

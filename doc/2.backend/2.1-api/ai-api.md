@@ -432,3 +432,170 @@ POST /ai/admin/command
 
 - [B站弹幕 API](./bilibili-api.md)
 - [AI回复流程](../../4.business/ai-reply-flow.md)
+- [MCP游戏集成架构](../../1.architecture/mcp-game-integration.md)
+
+---
+
+## 游戏集成 API
+
+游戏集成模块提供 AI 主播玩游戏的能力，支持 MCP 协议的游戏。
+
+### 获取游戏状态
+
+获取当前游戏集成的运行状态。
+
+```
+GET /game/status
+```
+
+**响应示例**：
+
+```json
+{
+  "running": true,
+  "games": {
+    "slay_the_spire": {
+      "running": true
+    }
+  },
+  "host_running": true,
+  "memory_running": true
+}
+```
+
+**响应字段**：
+
+| 字段 | 类型 | 说明 |
+|-----|------|------|
+| running | boolean | 游戏管理器是否运行 |
+| games | object | 已注册游戏的状态 |
+| host_running | boolean | 主播 Graph 是否运行 |
+| memory_running | boolean | 记忆总结服务是否运行 |
+
+---
+
+### 启动游戏集成
+
+启动游戏集成服务。
+
+```
+POST /game/start
+```
+
+**请求体** (可选)：
+
+```json
+{
+  "game_id": "slay_the_spire",
+  "mcp_url": "http://127.0.0.1:8080"
+}
+```
+
+**请求字段**：
+
+| 字段 | 类型 | 必填 | 说明 |
+|-----|------|------|------|
+| game_id | string | 否 | 游戏标识，默认使用配置 |
+| mcp_url | string | 否 | MCP 服务地址，默认使用配置 |
+
+**响应示例**：
+
+```json
+{
+  "success": true,
+  "status": {
+    "running": true,
+    "games": {
+      "slay_the_spire": {
+        "running": true
+      }
+    },
+    "host_running": true,
+    "memory_running": true
+  }
+}
+```
+
+---
+
+### 停止游戏集成
+
+停止游戏集成服务。
+
+```
+POST /game/stop
+```
+
+**响应示例**：
+
+```json
+{
+  "success": true,
+  "status": {
+    "running": false,
+    "games": {},
+    "host_running": false,
+    "memory_running": false
+  }
+}
+```
+
+---
+
+### 获取共享上下文
+
+获取游戏 Graph 和主播 Graph 之间的共享上下文数据。
+
+```
+GET /game/context
+```
+
+**响应示例**：
+
+```json
+{
+  "host_history": [
+    {
+      "danmaku": "主播加油",
+      "reply": "谢谢支持！",
+      "timestamp": 1700000000.0
+    }
+  ],
+  "game_history": [
+    {
+      "action": "play_card",
+      "params": {"card_index": 0},
+      "result": "success",
+      "timestamp": 1700000001.0
+    }
+  ],
+  "memory": {
+    "summary": "主播正在玩杀戮尖塔，第一层战斗中...",
+    "key_events": ["击败了第一个精英怪"],
+    "last_updated": 1700000002.0
+  }
+}
+```
+
+**响应字段**：
+
+| 字段 | 类型 | 说明 |
+|-----|------|------|
+| host_history | array | 主播回答历史 (最近10条) |
+| game_history | array | 游戏操作历史 (最近10条) |
+| memory | object | 总记忆摘要 |
+
+---
+
+## 游戏集成配置
+
+在 `config.yaml` 中配置：
+
+```yaml
+game:
+  enabled: false          # 是否启用游戏集成
+  mcp_url: "http://127.0.0.1:8080"  # MCP 服务地址
+  adapter: "slay_the_spire"         # 游戏适配器
+  poll_interval: 1.0      # 轮询间隔(秒)
+  memory_threshold: 30    # 记忆总结阈值
+```

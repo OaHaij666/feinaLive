@@ -27,7 +27,7 @@ class ChatRequest:
     max_tokens: int | None = None
     stream: bool = False
     json_format: bool = False
-    disable_thinking: bool = False
+    disable_thinking: bool | None = None
     extra: dict = field(default_factory=dict)
 
 
@@ -42,10 +42,11 @@ class ChatResponse:
 
 
 class AIClient:
-    def __init__(self):
-        self._api_url = config.llm_api_url.rstrip("/")
-        self._api_key = config.llm_api_key
-        self._default_model = config.llm_model
+    def __init__(self, api_url: str = "", api_key: str = "", default_model: str = "", disable_thinking: bool | None = None):
+        self._api_url = (api_url or config.llm_api_url).rstrip("/")
+        self._api_key = api_key or config.llm_api_key
+        self._default_model = default_model or config.llm_model
+        self._disable_thinking = disable_thinking
 
     @property
     def available(self) -> bool:
@@ -60,7 +61,10 @@ class AIClient:
         }
         if request.json_format:
             params["response_format"] = {"type": "json_object"}
-        if request.disable_thinking or config.llm_disable_thinking:
+        should_disable = request.disable_thinking
+        if should_disable is None:
+            should_disable = self._disable_thinking if self._disable_thinking is not None else config.llm_disable_thinking
+        if should_disable:
             params["thinking"] = {"type": "disabled"}
         return params
 
@@ -81,6 +85,10 @@ class AIClient:
             "stream": request.stream,
             **request.extra,
         }
+        if "response_format" in params:
+            payload["response_format"] = params["response_format"]
+        if "thinking" in params:
+            payload["thinking"] = params["thinking"]
         headers = {
             "Content-Type": "application/json",
             "Authorization": f"Bearer {self._api_key}",
@@ -166,7 +174,12 @@ class AIClient:
         content = ""
         finish_reason = ""
         if choices:
-            content = choices[0].get("message", {}).get("content", "")
+            msg = choices[0].get("message", {})
+            content = msg.get("content", "")
+            if not content:
+                rc = msg.get("reasoning_content", "")
+                if rc:
+                    content = rc
             finish_reason = choices[0].get("finish_reason", "")
         usage = data.get("usage", {})
         return ChatResponse(
@@ -198,3 +211,18 @@ def get_ai_client() -> AIClient:
     if _ai_client is None:
         _ai_client = AIClient()
     return _ai_client
+
+
+_game_ai_client: AIClient | None = None
+
+
+def get_game_ai_client() -> AIClient:
+    global _game_ai_client
+    if _game_ai_client is None:
+        _game_ai_client = AIClient(
+            api_url=config.game_api_url,
+            api_key=config.game_api_key or "",
+            default_model=config.game_model,
+            disable_thinking=True,
+        )
+    return _game_ai_client

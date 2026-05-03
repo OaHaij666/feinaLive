@@ -3,19 +3,21 @@
 import asyncio
 import logging
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
-from fastapi.middleware.cors import CORSMiddleware
 
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+
+from apps.ai.game_router import router as game_router
+from apps.ai.router import router as ai_router
+from apps.config import config
+from apps.config_router import router as config_router
+from apps.easyvtuber.router import router as easyvtuber_router
+from apps.exceptions import AppException
 from apps.live.bilibili.router import router as bilibili_router
 from apps.live.music.router import router as music_router
-from apps.config_router import router as config_router
-from apps.ai.router import router as ai_router
-from apps.easyvtuber.router import router as easyvtuber_router
 from apps.test_router import router as test_router
-from apps.exceptions import AppException
-from apps.config import config
-from services.nginx_service import start_nginx, stop_nginx, get_nginx_service
+from services.nginx_service import get_nginx_service, start_nginx, stop_nginx
 
 logging.basicConfig(
     level=logging.INFO,
@@ -28,13 +30,13 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Application starting up...")
-    from apps.live.music.queue import get_music_queue
-    from apps.live.music.up_videos import get_up_video_manager
-    from apps.live.music.library import get_playlist_manager
-    from apps.live.music.client import BilibiliMusicClient
-    from apps.easyvtuber import get_easyvtuber_manager
     from apps.ai.admin_commands import get_admin_handler
     from apps.ai.memory import init_user_profiles, save_all_profiles
+    from apps.easyvtuber import get_easyvtuber_manager
+    from apps.live.music.client import BilibiliMusicClient
+    from apps.live.music.library import get_playlist_manager
+    from apps.live.music.queue import get_music_queue
+    from apps.live.music.up_videos import get_up_video_manager
 
     queue = get_music_queue()
     logger.info(f"Music queue initialized: max_history={queue._history.maxlen}, max_queue={queue._queue.maxlen}")
@@ -155,6 +157,20 @@ async def lifespan(app: FastAPI):
 
     await start_nginx()
 
+    if config.game_enabled:
+        from apps.ai.game_manager import get_game_manager
+        game_manager = get_game_manager()
+
+        def on_sleep_mute(state_dict: dict):
+            if state_dict.get("is_sleeping"):
+                game_manager.mute()
+            else:
+                game_manager.unmute()
+
+        admin_handler.register_state_change_callback(on_sleep_mute)
+        await game_manager.start()
+        logger.info("游戏集成服务已启动")
+
     yield
 
     logger.info("Application shutting down...")
@@ -162,6 +178,12 @@ async def lifespan(app: FastAPI):
     await queue.stop_auto_play()
     await easyvtuber_manager.stop()
     await stop_nginx()
+
+    if config.game_enabled:
+        from apps.ai.game_manager import get_game_manager
+        game_manager = get_game_manager()
+        await game_manager.stop()
+        logger.info("游戏集成服务已停止")
 
 
 app = FastAPI(
@@ -183,6 +205,7 @@ app.include_router(bilibili_router, prefix="/bilibili", tags=["Bilibili"])
 app.include_router(music_router, prefix="/music", tags=["Music"])
 app.include_router(config_router, tags=["Config"])
 app.include_router(ai_router, tags=["AI"])
+app.include_router(game_router, tags=["Game"])
 app.include_router(easyvtuber_router, tags=["Avatar"])
 app.include_router(test_router, tags=["Test"])
 

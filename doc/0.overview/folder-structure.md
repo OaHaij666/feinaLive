@@ -85,9 +85,25 @@ backend/apps/
 │   ├── prompt.py         # Prompt 构建
 │   ├── router.py          # AI API 路由
 │   ├── tts.py            # 火山引擎 TTS 客户端
-│   └── memory/           # 用户记忆系统
-│       ├── summarizer.py # 记忆摘要生成
-│       └── user_profile.py # 用户画像管理
+│   ├── shared_context.py # 共享存储层（游戏/主播Graph共享）
+│   ├── game_graph.py     # 游戏决策 Graph
+│   ├── host_graph.py     # 主播解说 Graph
+│   ├── game_manager.py   # 游戏集成管理器
+│   ├── game_router.py    # 游戏 API 路由
+│   │
+│   ├── memory/           # 用户记忆系统
+│   │   ├── summarizer.py # 记忆摘要生成
+│   │   ├── user_profile.py # 用户画像管理
+│   │   └── game_memory.py # 游戏记忆总结服务
+│   │
+│   ├── mcp/              # MCP 游戏集成模块
+  │   ├── client.py     # MCP JSON-RPC 客户端
+  │   ├── base_adapter.py # 游戏适配器基类
+  │   └── adapters/     # 游戏适配器（在此实现具体游戏适配）
+│   │
+│   └── messaging/        # 消息队列模块
+│       ├── queue.py      # 优先级消息队列
+│       └── rate_limiter.py # 频率限制器
 │
 ├── easyvtuber/            # 虚拟形象控制模块
 │   ├── __init__.py       # EasyVtuberManager 管理器
@@ -273,3 +289,7 @@ nginx-rtmp-win32/
 | AI对话 | backend/apps/ai/host_brain.py |
 | TTS | backend/apps/ai/tts.py |
 | 虚拟形象 | backend/apps/easyvtuber/ |
+| 游戏集成 | backend/apps/ai/game_manager.py |
+| 游戏决策 | backend/apps/ai/game_graph.py |
+| 主播解说 | backend/apps/ai/host_graph.py |
+| MCP客户端 | backend/apps/ai/mcp/client.py |

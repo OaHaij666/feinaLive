@@ -128,7 +128,7 @@ class Config:
 
     @property
     def host_model(self) -> str:
-        return os.getenv("HOST_MODEL") or self._data.get("host", {}).get("model", "doubao-seed-character-251128")
+        return os.getenv("HOST_MODEL") or self._data.get("host", {}).get("model", "")
 
     @property
     def host_temperature(self) -> float:
@@ -141,6 +141,38 @@ class Config:
     @property
     def host_max_tokens(self) -> int:
         return int(os.getenv("HOST_MAX_TOKENS") or self._data.get("host", {}).get("max_tokens", 200))
+
+    @property
+    def game_model(self) -> str:
+        return os.getenv("GAME_MODEL") or self._data.get("game", {}).get("model", "")
+
+    @property
+    def game_temperature(self) -> float:
+        return float(os.getenv("GAME_TEMPERATURE") or self._data.get("game", {}).get("temperature", 0.4))
+
+    @property
+    def game_max_tokens(self) -> int:
+        return int(os.getenv("GAME_MAX_TOKENS") or self._data.get("game", {}).get("max_tokens", 500))
+
+    @property
+    def game_api_url(self) -> str:
+        return os.getenv("GAME_API_URL") or self._data.get("game", {}).get("api_url", "")
+
+    @property
+    def game_api_key(self) -> str | None:
+        return os.getenv("GAME_API_KEY") or self._data.get("game", {}).get("api_key")
+
+    @property
+    def game_min_step_interval(self) -> float:
+        return float(os.getenv("GAME_MIN_STEP_INTERVAL") or self._data.get("game", {}).get("min_step_interval", 3.0))
+
+    @property
+    def game_commentary_eagerness(self) -> int:
+        return int(os.getenv("GAME_COMMENTARY_EAGERNESS") or self._data.get("game", {}).get("commentary_eagerness", 3))
+
+    @property
+    def game_memory_eagerness(self) -> int:
+        return int(os.getenv("GAME_MEMORY_EAGERNESS") or self._data.get("game", {}).get("memory_eagerness", 3))
 
     @property
     def default_room_id(self) -> int:
@@ -229,6 +261,26 @@ class Config:
     @property
     def admin_username(self) -> str:
         return self._data.get("admin", {}).get("username", "RongR0Ng")
+
+    @property
+    def game_enabled(self) -> bool:
+        return self._data.get("game", {}).get("enabled", False)
+
+    @property
+    def game_mcp_url(self) -> str:
+        return os.getenv("GAME_MCP_URL") or self._data.get("game", {}).get("mcp_url", "http://127.0.0.1:8080")
+
+    @property
+    def game_adapter(self) -> str:
+        return self._data.get("game", {}).get("adapter", "slay_the_spire")
+
+    @property
+    def game_poll_interval(self) -> float:
+        return float(self._data.get("game", {}).get("poll_interval", 1.0))
+
+    @property
+    def game_memory_threshold(self) -> int:
+        return int(self._data.get("game", {}).get("memory_threshold", 30))
 
 
 config = Config()

@@ -50,3 +50,10 @@ volcano:
   appid: "7532660763"
   access_token: "your_access_token"
   speaker_id: "S_n7lZ1klZ1"
+
+game:
+  enabled: false
+  mcp_url: "http://127.0.0.1:8080"
+  adapter: "slay_the_spire"
+  poll_interval: 1.0
+  memory_threshold: 30

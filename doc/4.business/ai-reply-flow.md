@@ -4,6 +4,12 @@
 
 AI 回复流程是系统的核心功能之一，负责接收弹幕、调用大语言模型生成回复、合成语音并推送到前端。
 
+> **架构变更说明**: AI 回复流程存在两条路径：
+> - **消息队列路径**（主要路径）: B站弹幕 → AIHostBrain → PriorityMessageQueue → HostGraph → LLM + TTS。游戏解说也走此路径：GameGraph → PriorityMessageQueue → HostGraph。
+> - **流式 API 路径**（兼容路径）: `/ai/reply` 端点仍使用 LangGraph 状态机直接生成流式回复，用于前端测试面板等场景。
+>
+> 两条路径共享同一个 LLM 客户端和 TTS 服务，但提示词构建和记忆管理各自独立。
+
 ## 整体流程图
 
 ```

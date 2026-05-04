@@ -30,7 +30,8 @@ from apps.ai.memory import (
     get_user_profile,
     trigger_summary_if_needed,
 )
-from apps.ai.messaging.queue import PRIORITY_NORMAL, Message, get_message_queue
+from apps.ai.messaging.dynamic_priority import get_priority_manager
+from apps.ai.messaging.queue import Message, get_message_queue
 from apps.ai.prompt import build_chat_prompt, get_host_system_prompt
 from apps.ai.tts import (
     TTSResult,
@@ -283,6 +284,8 @@ class SentenceBuffer:
 
 
 class AIHostBrain:
+    POLL_INTERVAL_SECONDS = 10.0
+
     def __init__(self, room_id: int | str):
         self.room_id = str(room_id)
         self._danmaku_buffer: list[DanmakuInput] = []
@@ -292,6 +295,8 @@ class AIHostBrain:
         self._on_stream_callback = None
         self._admin_handler = get_admin_handler()
         self._admin_result_callback: Optional[Callable[[CommandResult], None]] = None
+        self._poll_running: bool = False
+        self._poll_task: asyncio.Task | None = None
 
     def set_on_reply(self, callback):
         self._on_reply_callback = callback
@@ -327,6 +332,47 @@ class AIHostBrain:
         logger.debug(f"弹幕入缓冲: [{user}] {content}")
         return True
 
+    async def start_polling(self):
+        if self._poll_running:
+            return
+        self._poll_running = True
+        self._poll_task = asyncio.create_task(self._poll_loop())
+        logger.info(f"弹幕轮询启动 (间隔={self.POLL_INTERVAL_SECONDS}s)")
+
+    async def stop_polling(self):
+        self._poll_running = False
+        if self._poll_task and not self._poll_task.done():
+            self._poll_task.cancel()
+            try:
+                await self._poll_task
+            except asyncio.CancelledError:
+                pass
+        logger.info("弹幕轮询停止")
+
+    async def _poll_loop(self):
+        while self._poll_running:
+            try:
+                await asyncio.sleep(self.POLL_INTERVAL_SECONDS)
+                await self._poll_danmaku()
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"弹幕轮询异常: {e}", exc_info=True)
+                await asyncio.sleep(1)
+
+    async def _poll_danmaku(self):
+        if self._admin_handler.get_state().is_sleeping:
+            return
+
+        unanswered = [
+            d for d in self.get_unanswered()
+            if self._admin_handler.should_process_danmaku(d.uid, d.user)
+        ]
+        if not unanswered:
+            return
+
+        await self._enqueue_danmaku(unanswered)
+
     def get_unanswered(self) -> list[DanmakuInput]:
         history = get_session(self.room_id)
         unanswered = []
@@ -336,14 +382,7 @@ class AIHostBrain:
         return unanswered
 
     async def try_reply(self) -> bool:
-        if self._is_replying:
-            return False
-
         if self._admin_handler.get_state().is_sleeping:
-            return False
-
-        elapsed = time.time() - self._last_reply_time
-        if elapsed < config.host_reply_interval:
             return False
 
         unanswered = [
@@ -353,12 +392,7 @@ class AIHostBrain:
         if not unanswered:
             return False
 
-        self._is_replying = True
-        try:
-            return await self._enqueue_danmaku(unanswered)
-        finally:
-            self._is_replying = False
-            self._last_reply_time = time.time()
+        return await self._enqueue_danmaku(unanswered)
 
     async def _enqueue_danmaku(self, unanswered: list[DanmakuInput]) -> bool:
         if not unanswered:
@@ -380,19 +414,22 @@ class AIHostBrain:
         history = get_session(self.room_id)
         history.mark_answered_batch(combined_msg_ids)
 
+        pm = get_priority_manager()
+        priority = pm.get_danmaku_priority()
+
         queue = get_message_queue()
         enqueued = await queue.put(Message(
-            priority=PRIORITY_NORMAL,
+            priority=priority,
             source="danmaku",
             msg_type="danmaku",
             content=combined_text,
             data={"user": user, "uid": first.uid, "msg_id": first.msg_id},
             user_id=str(first.uid),
-            expire_at=time.time() + 25,
+            expire_at=time.time() + 60,
         ))
 
         if enqueued:
-            logger.debug(f"弹幕入队: [{user}] {combined_text[:30]}")
+            logger.debug(f"弹幕入队: [{user}] {combined_text[:30]} (优先级={priority})")
 
         if self._on_reply_callback:
             await self._on_reply_callback(True)

@@ -1,10 +1,15 @@
 """消息模块 - 优先级消息队列与频率限制"""
 
-from apps.ai.messaging.queue import (
+from apps.ai.messaging.dynamic_priority import (
+    PRIORITY_DISPOSABLE,
     PRIORITY_HIGH,
-    PRIORITY_INTERRUPT,
+    PRIORITY_HIGHEST,
     PRIORITY_LOW,
     PRIORITY_NORMAL,
+    DynamicPriorityManager,
+    get_priority_manager,
+)
+from apps.ai.messaging.queue import (
     Message,
     PriorityMessageQueue,
     get_message_queue,
@@ -17,8 +22,11 @@ __all__ = [
     "get_message_queue",
     "RateLimiter",
     "get_rate_limiter",
+    "PRIORITY_HIGHEST",
     "PRIORITY_HIGH",
-    "PRIORITY_INTERRUPT",
-    "PRIORITY_LOW",
     "PRIORITY_NORMAL",
+    "PRIORITY_LOW",
+    "PRIORITY_DISPOSABLE",
+    "DynamicPriorityManager",
+    "get_priority_manager",
 ]

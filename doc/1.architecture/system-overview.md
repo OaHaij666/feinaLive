@@ -153,6 +153,7 @@
   - `/music/*` - 音乐播放相关
   - `/ai/*` - AI对话相关
   - `/avatar/*` - 虚拟形象控制
+  - `/game/*` - 游戏集成相关
 
 #### WebSocket Manager
 - **类**：`ConnectionManager`
@@ -173,16 +174,23 @@
            │
            ├── 点歌请求 ──▶ DanmakuMusicService ──▶ MusicQueue
            │
-           └── 普通弹幕 ──▶ AIHostBrain ──▶ LLM + TTS
+           └── 普通弹幕 ──▶ AIHostBrain ──▶ PriorityMessageQueue ──▶ HostGraph ──▶ LLM + TTS
 ```
 
 #### AI对话模块
-- **核心类**：`AIHostBrain`
-- **流程编排**：LangGraph 状态机
+- **核心类**：`AIHostBrain`（弹幕缓冲+入队）、`HostGraph`（消息消费+话术生成）
+- **流程编排**：AIHostBrain 将弹幕推入消息队列，HostGraph 消费队列并调用主播 LLM
 - **记忆架构**：
   - 短期：SessionHistory（50条）
   - 中期：UserProfile（用户画像）
   - 长期：RAG（知识库）
+
+#### 游戏集成模块
+- **核心类**：`GameGraph`（游戏决策）、`HostGraph`（主播解说）、`GameManager`（统一管理）
+- **通信协议**：MCP (Model Context Protocol)，HTTP JSON-RPC
+- **共享状态**：SharedContext（主播历史+游戏历史+三层记忆）
+- **消息传递**：PriorityMessageQueue（5级优先级）
+- **详细文档**：[MCP游戏集成架构](./mcp-game-integration.md)
 
 ### 3. 渲染引擎层
 

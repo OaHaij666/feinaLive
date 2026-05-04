@@ -13,6 +13,8 @@ import time
 from collections import deque
 from dataclasses import dataclass, field
 
+from apps.config import config
+
 logger = logging.getLogger(__name__)
 
 
@@ -77,12 +79,17 @@ class LongTermMemory:
 class SharedContext:
     def __init__(
         self,
-        host_history_maxlen: int = 50,
-        game_history_maxlen: int = 30,
+        host_history_maxlen: int | None = None,
+        game_history_maxlen: int | None = None,
     ):
-        self._host_history: deque[HostHistoryEntry] = deque(maxlen=host_history_maxlen)
-        self._game_history: deque[GameHistoryEntry] = deque(maxlen=game_history_maxlen)
+        _host_maxlen = host_history_maxlen if host_history_maxlen is not None else config.game_host_history_maxlen
+        _game_maxlen = game_history_maxlen if game_history_maxlen is not None else config.game_game_history_maxlen
+        self._host_history: deque[HostHistoryEntry] = deque(maxlen=_host_maxlen)
+        self._game_history: deque[GameHistoryEntry] = deque(maxlen=_game_maxlen)
         self._memory = LongTermMemory()
+        self._game_step_id: int = 0
+        self._last_commentary_time: float = 0
+        self._last_commentary_step: int = 0
         self._lock = asyncio.Lock()
 
     async def add_host_entry(self, danmaku: str, reply: str, user: str = ""):
@@ -94,6 +101,23 @@ class SharedContext:
         async with self._lock:
             self._game_history.append(GameHistoryEntry(action=action, params=params, result=result))
             logger.debug(f"游戏历史更新: {action}({params})")
+
+    async def advance_game_step(self):
+        async with self._lock:
+            self._game_step_id += 1
+
+    async def get_game_step_id(self) -> int:
+        async with self._lock:
+            return self._game_step_id
+
+    async def record_commentary_request(self):
+        async with self._lock:
+            self._last_commentary_time = time.time()
+            self._last_commentary_step = self._game_step_id
+
+    async def get_commentary_info(self) -> tuple[float, int]:
+        async with self._lock:
+            return self._last_commentary_time, self._last_commentary_step
 
     async def get_host_history(self, limit: int = 20) -> list[HostHistoryEntry]:
         async with self._lock:

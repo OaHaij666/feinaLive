@@ -167,8 +167,12 @@ class Config:
         return float(os.getenv("GAME_MIN_STEP_INTERVAL") or self._data.get("game", {}).get("min_step_interval", 3.0))
 
     @property
-    def game_commentary_eagerness(self) -> int:
-        return int(os.getenv("GAME_COMMENTARY_EAGERNESS") or self._data.get("game", {}).get("commentary_eagerness", 3))
+    def game_step_jitter(self) -> float:
+        return float(os.getenv("GAME_STEP_JITTER") or self._data.get("game", {}).get("step_jitter", 0.5))
+
+    @property
+    def game_commentary_interval(self) -> float:
+        return float(os.getenv("GAME_COMMENTARY_INTERVAL") or self._data.get("game", {}).get("commentary_interval", 30.0))
 
     @property
     def game_memory_eagerness(self) -> int:
@@ -281,6 +285,26 @@ class Config:
     @property
     def game_memory_threshold(self) -> int:
         return int(self._data.get("game", {}).get("memory_threshold", 30))
+
+    @property
+    def game_default_character(self) -> str:
+        return self._data.get("game", {}).get("default_character", "IRONCLAD")
+
+    @property
+    def game_min_commentary_interval(self) -> float:
+        return float(self._data.get("game", {}).get("min_commentary_interval", 15.0))
+
+    @property
+    def game_queue_max_size(self) -> int:
+        return int(self._data.get("game", {}).get("queue_max_size", 20))
+
+    @property
+    def game_host_history_maxlen(self) -> int:
+        return int(self._data.get("game", {}).get("host_history_maxlen", 50))
+
+    @property
+    def game_game_history_maxlen(self) -> int:
+        return int(self._data.get("game", {}).get("game_history_maxlen", 30))
 
 
 config = Config()

@@ -1,59 +1,127 @@
+# ============================================================
+# FeinaLive 配置文件示例
+# 复制此文件为 config.yaml 并填入实际值
+# ============================================================
+
+# 数据库配置
 database:
-  url: "mysql+aiomysql://root:root@localhost:3306/feinalive?charset=utf8mb4"
+  url: "mysql+aiomysql://root:password@localhost:3306/feinalive?charset=utf8mb4"
 
+# B站直播配置
 bilibili:
-  sessdata: ""
-  room_id: 0
+  sessdata: ""  # B站登录凭证，从浏览器 Cookie 获取
+  room_id: 0    # 直播间 ID
 
-announcement: "直播间24小时随机刷新开播。AI主播是小笨蛋不要欺负她喵。白天基本上是无人直播间喵，夜间可能会真人代播。直播间指令：输入 点歌 歌名 或者 点歌 BVid进行点歌，推荐使用BV号点歌。输入/clear 清除AI对你的记忆。"
+# 直播间公告（显示在直播间标题下方）
+announcement: "AI主播是小笨蛋不要欺负她喵。输入 点歌 歌名 进行点歌。输入/clear 清除AI对你的记忆。"
 
+# 信任的UP主列表（用于视频采集，会自动采集这些UP主的视频）
 trusted_ups:
-  - uid: 3493093607213343
-    name: "JLRS-LeoFM"
+  - uid: 0
+    name: "UP主名称"
 
+# UP主视频采集配置
 up_videos:
-  incremental_days: 5
-  full_refresh_days: 30
+  incremental_days: 5      # 增量刷新天数
+  full_refresh_days: 30    # 全量刷新天数
 
+# 默认播放列表（无点歌时播放）
 default_playlist:
-  - bvid: "BV17zDeBHENi"
-    title: "重铸黑白"
-    artist: "胡彦斌"
+  - bvid: "BVxxxxxxxxx"
+    title: "歌曲名称"
+    artist: "歌手"
 
+# ============================================================
+# LLM 配置
+# ============================================================
+
+# 通用 LLM 配置
+# 用途：RAG 检索、用户记忆总结、游戏记忆总结等通用任务
 llm:
   api_url: "https://ark.cn-beijing.volces.com/api/v3"
-  api_key: ""
+  api_key: "your_api_key"
   model: "doubao-seed-2-0-mini-260215"
   temperature: 0.1
   top_p: 0.9
   max_tokens: 200
-  auto_collect_min_views: 20000
-  prompts:
-    music_verify: |
-      判断视频是否为音乐视频，提取歌名和歌手。
+  auto_collect_min_views: 20000  # 自动采集视频的最小播放量
+  disable_thinking: true         # 禁用模型的思考过程输出
 
-      请返回JSON格式：
-      {"is_music": true/false, "song_name": "歌名", "artist": "歌手"}
+# 主播大脑 LLM 配置
+# 用途：AI 主播对话、弹幕回复、风格化解说
+host:
+  reply_interval: 5       # 弹幕回复间隔（秒）
+  max_reply_length: 100   # 单条回复最大长度
+  model: "doubao-seed-character-251128"
+  temperature: 0.7
+  top_p: 0.9
+  max_tokens: 200
 
-      注意：
-      - is_music: true表示是音乐视频，false表示不是
-      - song_name: 歌曲名称，如果无法确定则填原标题
-      - artist: 演唱者/创作者，如果无法确定则填"未知"
+# ============================================================
+# TTS 语音合成配置
+# ============================================================
 
 tts:
-  provider: volcano
-  voice: "zh-CN-XiaoxiaoNeural"
-  encoding: wav
-  speed_ratio: 1.0
+  provider: volcano  # TTS 提供商: volcano | edge
+  voice: "zh-CN-XiaoxiaoNeural"  # 语音名称
+  encoding: wav      # 输出格式: wav | mp3
+  speed_ratio: 1.0   # 语速倍率
 
+# 火山引擎 TTS 配置（provider=volcano 时使用）
 volcano:
-  appid: "7532660763"
+  appid: "your_appid"
   access_token: "your_access_token"
-  speaker_id: "S_n7lZ1klZ1"
+  speaker_id: "your_speaker_id"
+
+# ============================================================
+# 游戏 AI 配置
+# ============================================================
 
 game:
-  enabled: false
-  mcp_url: "http://127.0.0.1:8080"
-  adapter: "slay_the_spire"
-  poll_interval: 1.0
-  memory_threshold: 30
+  enabled: false          # 是否启用游戏 AI
+  mcp_url: "http://127.0.0.1:8080"  # MCP 服务地址
+  api_url: "https://api.deepseek.com"
+  api_key: "your_api_key"
+  model: "deepseek-v4-flash"
+  temperature: 0.4
+  max_tokens: 8000
+  poll_interval: 1.0      # 轮询游戏状态的间隔（秒）
+  memory_threshold: 30    # 记忆条数阈值，超过后自动总结
+  min_step_interval: 3.0  # 游戏操作最小间隔（秒），模拟真人操作速度
+  step_jitter: 0.5        # 操作间隔随机误差范围（±秒），使操作更自然
+  commentary_interval: 30.0 # 解说建议间隔（秒），只是建议，无值得说的事时不强行解说
+  memory_eagerness: 3     # 记忆积极度 1-5，越大越爱记录
+  default_character: "IRONCLAD"  # 默认游戏角色（杀戮尖塔: IRONCLAD/SILENT/DEFECT/WATCHER）
+  min_commentary_interval: 15.0  # GameGraph 层解说请求最小间隔（秒）
+  queue_max_size: 20      # 消息队列最大容量
+  host_history_maxlen: 50 # 主播回答历史最大条数
+  game_history_maxlen: 30 # 游戏操作历史最大条数
+
+# ============================================================
+# EasyVTuber Live2D 配置
+# ============================================================
+
+easyvtuber:
+  enabled: true
+  character: "lambda_00"  # 角色名称
+  input:
+    type: "hybrid"        # 输入类型: hybrid(混合) | osf(仅OSF) | mouse(仅鼠标)
+    osf_address: "127.0.0.1:11573"  # OSF 服务地址
+    mouse_range: "0,0,1920,1080"    # 鼠标活动范围
+  model:
+    version: "v3"         # 模型版本: v2 | v3
+    precision: "full"     # 精度: full | half
+    separable: false      # 是否使用可分离卷积
+    use_tensorrt: true    # 是否使用 TensorRT 加速
+    use_eyebrow: true     # 是否启用眉毛追踪
+  performance:
+    frame_rate: 30        # 输出帧率
+    interpolation: "x2"   # 插值倍率: x1 | x2 | x4
+    super_resolution: "x2"  # 超分辨率倍率: x1 | x2 | x4
+    ram_cache: "2gb"      # 内存缓存大小
+    vram_cache: "2gb"     # 显存缓存大小
+  output:
+    websocket:
+      enabled: true
+      port: 8765
+      host: "localhost"

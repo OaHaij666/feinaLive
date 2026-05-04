@@ -262,3 +262,54 @@ class SlayTheSpireAdapter(BaseGameAdapter):
             game_specific=game_specific,
             raw_state=raw,
         )
+
+    def format_state_for_prompt(self, raw: dict, fallback: str) -> str:
+        lines = []
+        screen = raw.get("screen_type", "?")
+        floor = raw.get("floor", "?")
+        hp = raw.get("current_hp", "?")
+        max_hp = raw.get("max_hp", "?")
+
+        lines.append(f"画面: {screen} | 楼层: {floor}")
+        lines.append(f"HP: {hp}/{max_hp}")
+
+        combat = raw.get("combat_state", {})
+        player_combat = combat.get("player", {})
+        energy = player_combat.get("current_energy", raw.get("current_energy", raw.get("energy")))
+        if energy is not None:
+            lines.append(f"费用: {energy}")
+
+        monsters = combat.get("monsters", raw.get("monsters", []))
+        if monsters:
+            lines.append("敌人:")
+            for i, m in enumerate(monsters, 1):
+                if m.get("is_gone"):
+                    continue
+                intent = m.get("intent", "?")
+                move = m.get("move", {})
+                damage = move.get("damage") if move else None
+                hits = move.get("hits", "") if move else ""
+                intent_detail = intent
+                if damage:
+                    intent_detail += f" {damage}"
+                    if hits and hits > 1:
+                        intent_detail += f"x{hits}"
+                block = m.get("block", 0)
+                block_str = f" [格挡{block}]" if block else ""
+                lines.append(f"  [{i}] {m.get('name')} HP:{m.get('current_hp')}/{m.get('max_hp')} 意图:{intent_detail}{block_str}")
+
+        hand = combat.get("hand", raw.get("hand", []))
+        if hand:
+            lines.append("手牌:")
+            for i, c in enumerate(hand, 1):
+                playable = "可出" if c.get("is_playable") else "不可出"
+                target = " 需目标" if c.get("has_target") else ""
+                lines.append(f"  {i}. {c.get('name')} 费{c.get('cost')} {playable}{target}")
+
+        choices = raw.get("choice_list", [])
+        if choices:
+            lines.append("选项:")
+            for i, ch in enumerate(choices, 1):
+                lines.append(f"  {i}. {ch}")
+
+        return "\n".join(lines)

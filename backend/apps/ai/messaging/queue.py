@@ -3,9 +3,9 @@
 所有消息由主播 LLM 消费，生成话术后 TTS 输出。
 
 消息来源:
-  - game:commentary_request  GameGraph 请求主播解说(带草稿要点) (priority=1)
-  - danmaku:danmaku          观众弹幕原文 (priority=2)
-  - gift:gift_thanks         礼物感谢 (priority=3)
+  - game:commentary_request  GameGraph 请求主播解说(带草稿要点) (priority=2)
+  - danmaku:danmaku          观众弹幕原文 (priority=3)
+  - gift:gift_thanks         礼物感谢 (priority=动态)
 
 消费端: HostGraph._host_loop() → 主播 LLM 生成话术 → TTS
 """
@@ -16,17 +16,22 @@ import time
 import uuid
 from dataclasses import dataclass, field
 
+from apps.ai.messaging.dynamic_priority import (
+    PRIORITY_DISPOSABLE,
+    PRIORITY_HIGH,
+    PRIORITY_HIGHEST,
+    PRIORITY_LOW,
+    PRIORITY_NORMAL,
+    get_priority_manager,
+)
 from apps.ai.messaging.rate_limiter import RateLimiter, get_rate_limiter
+from apps.config import config
 
 logger = logging.getLogger(__name__)
 
 USER_COOLDOWN_SECONDS = 3.0
-PRIORITY_INTERRUPT = 0
-PRIORITY_HIGH = 1
-PRIORITY_NORMAL = 2
-PRIORITY_LOW = 3
-PRIORITY_DISPOSABLE = 4
-PRIORITY_NEVER_DROP = {PRIORITY_INTERRUPT, PRIORITY_HIGH}
+PRIORITY_NEVER_DROP = {PRIORITY_HIGHEST, PRIORITY_HIGH}
+DEFAULT_TTL_SECONDS = 30.0
 
 
 @dataclass
@@ -51,7 +56,7 @@ class Message:
         if not self.created_at:
             self.created_at = time.time()
         if not self.expire_at:
-            self.expire_at = self.created_at + 30
+            self.expire_at = self.created_at + DEFAULT_TTL_SECONDS
 
     @property
     def is_expired(self) -> bool:
@@ -71,12 +76,12 @@ class PriorityMessageQueue:
     def __init__(
         self,
         rate_limiter: RateLimiter | None = None,
-        max_size: int = 20,
-        default_ttl: float = 30.0,
+        max_size: int | None = None,
+        default_ttl: float = DEFAULT_TTL_SECONDS,
     ):
         self._queue: asyncio.PriorityQueue[Message] = asyncio.PriorityQueue()
         self._rate_limiter = rate_limiter or get_rate_limiter()
-        self._max_size = max_size
+        self._max_size = max_size if max_size is not None else config.game_queue_max_size
         self._default_ttl = default_ttl
         self._pending_merge: dict[str, Message] = {}
         self._cancelled_keys: set[str] = set()
@@ -111,11 +116,21 @@ class PriorityMessageQueue:
                 return False
             self._user_last_msg[msg.user_id] = time.time()
 
+        pm = get_priority_manager()
+        if msg.source == "danmaku" and pm.danmaku_priority_override is not None:
+            original = msg.priority
+            msg.priority = pm.danmaku_priority_override
+            logger.debug(f"弹幕优先级覆盖: {original} → {msg.priority}")
+        elif msg.source == "gift" and pm.gift_priority_override is not None:
+            original = msg.priority
+            msg.priority = pm.gift_priority_override
+            logger.debug(f"礼物优先级覆盖: {original} → {msg.priority}")
+
         if self._queue.qsize() >= self._max_size:
             if msg.priority in PRIORITY_NEVER_DROP:
                 pass
             elif msg.priority == PRIORITY_NORMAL and msg.allow_skip:
-                logger.warning(f"队列已满，丢弃中优先级: {msg.content[:20]}")
+                logger.warning(f"队列已满，丢弃普通优先级: {msg.content[:20]}")
                 self._total_dropped += 1
                 return False
             elif msg.priority >= PRIORITY_LOW:
@@ -148,9 +163,18 @@ class PriorityMessageQueue:
                 continue
             if msg.is_expired and msg.allow_skip:
                 logger.debug(f"消息已过期，跳过: {msg.content[:20]}")
+                self._total_dropped += 1
                 continue
             self._total_consumed += 1
+            self._record_consumption(msg)
             return msg
+
+    def _record_consumption(self, msg: Message):
+        pm = get_priority_manager()
+        if msg.source == "danmaku":
+            pm.record_danmaku_consumed()
+        elif msg.source == "gift":
+            pm.record_gift_consumed()
 
     async def get_nowait(self) -> Message | None:
         try:
@@ -161,11 +185,48 @@ class PriorityMessageQueue:
                 self._cancelled_keys.discard(msg.cancel_key)
                 return None
             if msg.is_expired and msg.allow_skip:
+                self._total_dropped += 1
                 return None
             self._total_consumed += 1
             return msg
         except asyncio.QueueEmpty:
             return None
+
+    def apply_priority_override(self):
+        """重建队列，应用当前的优先级覆盖（降级/升级队列中已有消息）"""
+        pm = get_priority_manager()
+        danmaku_override = pm.danmaku_priority_override
+        gift_override = pm.gift_priority_override
+
+        if danmaku_override is None and gift_override is None:
+            return
+
+        temp_list: list[Message] = []
+        while True:
+            try:
+                msg = self._queue.get_nowait()
+                temp_list.append(msg)
+            except asyncio.QueueEmpty:
+                break
+
+        changed = 0
+        for msg in temp_list:
+            if msg.source == "danmaku" and danmaku_override is not None:
+                if msg.priority != danmaku_override:
+                    logger.debug(f"弹幕优先级调整: {msg.priority} → {danmaku_override}")
+                    msg.priority = danmaku_override
+                    changed += 1
+            elif msg.source == "gift" and gift_override is not None:
+                if msg.priority != gift_override:
+                    logger.debug(f"礼物优先级调整: {msg.priority} → {gift_override}")
+                    msg.priority = gift_override
+                    changed += 1
+
+        for msg in temp_list:
+            self._queue.put_nowait(msg)
+
+        if changed > 0:
+            logger.info(f"队列优先级调整完成: {changed}条消息")
 
     def cancel(self, cancel_key: str):
         self._cancelled_keys.add(cancel_key)

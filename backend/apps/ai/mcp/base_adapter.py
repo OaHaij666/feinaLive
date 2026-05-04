@@ -91,5 +91,8 @@ class BaseGameAdapter(ABC):
     @abstractmethod
     async def get_tools_definition(self) -> list[dict]: ...
 
+    def format_state_for_prompt(self, raw: dict, fallback: str) -> str:
+        return fallback
+
     async def health_check(self) -> bool:
         return False

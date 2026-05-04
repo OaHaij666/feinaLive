@@ -8,6 +8,8 @@ import httpx
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 
+from apps.ai.messaging.dynamic_priority import get_priority_manager
+from apps.ai.messaging.queue import Message, get_message_queue
 from apps.live.bilibili.client import BilibiliClient
 from apps.config import config
 from apps.live.danmaku_handler import DanmakuData as ProcessDanmakuData, process_danmaku
@@ -108,6 +110,30 @@ async def danmaku_websocket(websocket: WebSocket, room_id: str):
                     ),
                     room_ids=[room_id],
                 )
+
+            elif msg_type == "gift" and hasattr(data, "gift_name"):
+                gift_info = f"{data.uname} 送了 {data.gift_name}x{data.num}"
+                pm = get_priority_manager()
+                total_coin = getattr(data, "total_coin", 0) or 0
+                priority = pm.get_gift_priority(total_coin)
+                queue = get_message_queue()
+                await queue.put(Message(
+                    priority=priority,
+                    source="gift",
+                    msg_type="gift_thanks",
+                    content=gift_info,
+                    data={
+                        "gift_info": gift_info,
+                        "user": data.uname,
+                        "uid": data.uid,
+                        "gift_name": data.gift_name,
+                        "num": data.num,
+                        "total_coin": total_coin,
+                    },
+                    expire_at=time.time() + 60,
+                    allow_skip=True,
+                ))
+                logger.info(f"礼物事件入队: {gift_info} (价值={total_coin}, 优先级={priority})")
 
         client.set_callback(on_message)
         await client.connect()

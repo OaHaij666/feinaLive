@@ -2,11 +2,13 @@
 
 流程:
 1. 数据收集 (并行): MCP游戏状态 + 主播历史 + 游戏历史 + 总记忆
-2. 构建提示词: 组合所有上下文 + MCP tools + 内置tool
-3. LLM 决策: 生成 tool_calls
-4. 并发执行: MCP工具立即执行, request_host_commentary 放入消息队列
-5. 更新历史: 记录本次操作
-6. 进入下一轮
+2. 检查缓冲动作: 如有则直接执行（跳过 LLM 决策）
+3. 构建提示词: 组合所有上下文 + MCP tools + 内置tool
+4. LLM 决策: 生成 tool_calls
+5. 执行工具: 非游戏工具并行，游戏工具只执行第一个，其余入缓冲
+   - 每个游戏动作间隔 min_step_interval，模拟真人操作节奏
+6. 更新历史: 记录本次操作
+7. 进入下一轮
 """
 
 import asyncio
@@ -24,49 +26,57 @@ from apps.config import config
 
 logger = logging.getLogger(__name__)
 
+NON_GAME_TOOLS = {"request_host_commentary", "request_memory_update"}
 
-def _commentary_prompt(eagerness: int) -> str:
-    if eagerness <= 1:
-        return "- 只在极端情况（BOSS战、即将死亡）时调用 request_host_commentary 让主播解说"
-    elif eagerness <= 2:
-        return "- 残血、精英战、BOSS战时调用 request_host_commentary 让主播解说\n- 例如\"观众们小心，铁甲战士只剩10点血了\""
-    elif eagerness <= 3:
-        return "- 战斗有趣或有挑战时调用 request_host_commentary 让主播解说\n- 拿到好卡/遗物时也值得解说，如\"我拿到了死灵之书，配合重锤会很厉害！\""
-    elif eagerness <= 4:
-        return (
-            "- 经常调用 request_host_commentary 让主播解说，像游戏主播一样保持直播活跃\n"
-            "- 遇到以下情况时主动解说:\n"
-            "  打出一套漂亮连招时 → \"观众们看好了，旋风斩配合双发清场！\"\n"
-            "  获得新卡/遗物时 → \"这个遗物正好配合我的牌组\"\n"
-            "  遭遇精英/Boss时 → \"前方高能，遇到精英怪了！\"\n"
-            "  战术发生变化时 → \"我决定这局走攻击路线\"\n"
-            "  状况危急或大获全胜时 → 分享兴奋或担忧\n"
-            "  事件触发时 → \"涅奥给了我一个祝福，选哪个好呢\"\n"
-            "- key_points 列出解说要点，主播会用自己的风格表达\n"
-            "- mood 可以选 excited/confident/nervous/happy/neutral\n"
-            "- reference_danmaku 可以引用观众弹幕互动，如观众说\"选观者\"时可以回应\n"
-            "- 每层至少解说 1-2 次"
-        )
+READONLY_MCP_TOOLS = {
+    "get_game_state", "get_screen_state", "get_available_commands",
+    "get_card_info", "get_relic_info", "get_potion_info",
+}
+
+
+def _commentary_guide(
+    seconds_since: float,
+    steps_since: int,
+    commentary_interval: float,
+    min_step_interval: float,
+) -> str:
+    suggested_steps = max(1, int(commentary_interval / min_step_interval))
+    if seconds_since >= 86400:
+        time_hint = "这是本轮游戏第一次解说"
     else:
-        return "- 积极调用 request_host_commentary 让主播解说，像真正的游戏主播一样\n- 每回合都可以说几句，点评局面、吐槽敌人、分享策略\n- 拿到新卡、击杀精英、遭遇事件时都要解说\n- 不要错过任何展示主播魅力的机会"
+        time_hint = f"距上次请求解说已过 {seconds_since:.0f} 秒（{steps_since} 个游戏动作前）"
+
+    return (
+        f"- {time_hint}\n"
+        f"- 建议大约每 {suggested_steps} 个游戏动作（约 {commentary_interval:.0f} 秒）解说一次，但只在有值得解说的事情时才调用，不要无意义灌水\n"
+        "- ★ 里程碑事件一定要解说：拿新卡/遗物时、BOSS战、通关、危急时刻\n"
+        "- 战斗中的小操作（出一张牌）不需要解说，但打出漂亮连招或局面转折时需要\n"
+        "- key_points 列出解说要点，主播会用自己的风格表达\n"
+        "- mood 可以选 excited/confident/nervous/happy/neutral\n"
+        "- 如果画面没变（如仍在同一奖励页），不要重复相同解说内容"
+    )
 
 
 def _memory_prompt(eagerness: int) -> str:
     base = "调用 request_memory_update 把重要信息写入记忆，mode=rewrite 完全重写，mode=search_replace 搜索替换。\n"
     base += "三层记忆在下次决策时可见:\n"
-    base += "- core=游戏机制规律发现 → 如\"AOE牌清场效率高\"\n"
-    base += "- important=当前牌组/遗物评估 → 如\"牌组:2旋风斩+双发;遗物:燃烧之血\"\n"
-    base += "- recent=近期战术路线 → 如\"选择了偏攻击路线\"\n"
+    base += "- core=游戏机制规律发现\n"
+    base += "- important=当前牌组/遗物评估（最重要，每次牌组变化都要更新）\n"
+    base += "- recent=近期战术路线\n"
 
     if eagerness <= 1:
         base += "\n只在发现重大机制规律时 rewrite core，极少调用。"
     elif eagerness <= 2:
         base += "\n拿到新卡/遗物后 rewrite important，发现机制规律时 rewrite core。"
     elif eagerness <= 3:
-        base += "- 拿到新卡/遗物后 rewrite important，写简洁评估如\"牌组:5打击4防御1痛击;遗物:燃烧之血+新遗物\"\n"
-        base += "- 牌组小幅变化用 search_replace 修正 important，如 search=\"5打击\" content=\"4打击+1完美打击\"\n"
-        base += "- 战术路线变化 rewrite recent，如\"拿到旋风斩后转向AOE清场路线\"\n"
-        base += "- 发现机制规律 rewrite core，如\"痛击对残血敌人溢出伤害高\"\n"
+        base += "\n【何时必须调用】\n"
+        base += "- ★ 选牌/拿新卡后：在同一轮决策中同时调用 request_memory_update rewrite important\n"
+        base += "  例: 拿到剑柄打击 → rewrite important => \"牌组:5打击4防御1痛击+剑柄打击\"\n"
+        base += "- ★ 拿到新遗物后：rewrite important，追加遗物信息\n"
+        base += "- ★ 发现卡牌间联动协同（如\"双发+旋风斩=AOE清场\"）：rewrite recent 记录战术构思\n"
+        base += "- 牌组小幅变化：search_replace 修正 important\n"
+        base += "  例: search=\"5打击\" replace=\"4打击+1完美打击\"\n"
+        base += "- 发现机制规律：rewrite core，但要确实验证过\n"
         base += "- 新游戏开始记忆自动清空，不用手动处理"
     elif eagerness <= 4:
         base += "\n拿到新卡/遗物立即 rewrite important，每层结束更新 recent，有发现就记。"
@@ -82,15 +92,28 @@ def build_game_system_prompt(
     game_history: str = "",
     host_history: str = "",
     game_state: str = "",
-    commentary_eagerness: int = 3,
+    seconds_since_commentary: float = 0,
+    steps_since_commentary: int = 0,
+    commentary_interval: float = 30.0,
+    min_step_interval: float = 15.0,
     memory_eagerness: int = 3,
 ) -> str:
-    commentary_rule = _commentary_prompt(commentary_eagerness)
+    commentary_guide = _commentary_guide(
+        seconds_since=seconds_since_commentary,
+        steps_since=steps_since_commentary,
+        commentary_interval=commentary_interval,
+        min_step_interval=min_step_interval,
+    )
     memory_section = _memory_prompt(memory_eagerness)
 
-    return f"""你是杀戮尖塔游戏策略AI，控制主播玩游戏并与观众互动。
+    return f"""你是杀戮尖塔游戏AI，控制主播玩游戏并与观众互动。
 
-【战斗核心原则】★★★ 最重要 ★★★
+【你的双重角色】
+你是"游戏操作者"也是"主播的幕后智囊"。
+- 游戏操作：用 MCP 工具推进游戏
+- 主播互动：用 request_host_commentary 让主播解说，用 request_memory_update 记录情报
+
+【战斗核心原则】
 - 敌人意图为 ATTACK 时，**必须先出防御牌叠格挡**，格挡量 >= 敌人预计伤害才能结束回合
 - 只有在敌人无攻击意图（正在BUFF/DEBUFF/准备技能）时才全力输出
 - 3费回合：优先出1-2张防御牌保命，剩余费用打输出，不要把所有费都用来攻击
@@ -115,9 +138,8 @@ def build_game_system_prompt(
 【游戏记忆系统】
 {memory_section}
 
-【决策规则】
-- 优先使用 execute_actions 批量出牌 + end_turn
-{commentary_rule}
+【解说与互动指导】★ 每次决策都应考虑 ★
+{commentary_guide}
 
 【操作历史】
 {game_history or '（暂无操作）'}
@@ -128,10 +150,36 @@ def build_game_system_prompt(
 【当前游戏状态】
 {game_state}
 
-请用 JSON 格式返回你的决策，不要加解释文字:
-例子:
-  战斗中: {{"actions":[{{"action":"execute_actions","actions":[{{"action":"play_card","card_name":"打击","target_index":1}},{{"action":"end_turn"}}]}}]}}
-  选择时: {{"actions":[{{"action":"choose","choice_index":1}},{{"action":"proceed"}}]}}"""
+【返回格式】
+每个 action 必须有 function.name 和 function.arguments。可以同时包含游戏操作和非游戏操作。
+
+=== 可用操作类型 ===
+1. 游戏操作：使用下方【可用MCP工具】列出的工具名
+2. 主播互动：request_host_commentary（让主播解说），request_memory_update（更新记忆）
+
+=== JSON 返回示例 ===
+
+选择角色时：
+{{"actions":[
+  {{"function":{{"name":"request_host_commentary","arguments":{{"key_points":["开始新游戏","选了铁甲战士"],"mood":"excited"}}}}}},
+  {{"function":{{"name":"request_memory_update","arguments":{{"memory_type":"important","mode":"rewrite","content":"初始牌组：5打击+4防御+1痛击，遗物：燃烧之血"}}}}}},
+  {{"function":{{"name":"choose","arguments":{{"choice_index":1}}}}}}
+]}}
+
+战斗中：
+{{"actions":[
+  {{"function":{{"name":"request_host_commentary","arguments":{{"key_points":["敌人要攻击了","我先叠甲保命"],"mood":"nervous"}}}}}},
+  {{"function":{{"name":"execute_actions","arguments":{{"actions":[{{"action":"play_card","card_name":"防御","target_index":0}},{{"action":"play_card","card_name":"打击","target_index":1}},{{"action":"end_turn"}}]}}}}}}
+]}}
+
+拿新卡时：
+{{"actions":[
+  {{"function":{{"name":"request_host_commentary","arguments":{{"key_points":["拿到了旋风斩","配合双发会很厉害"],"mood":"happy"}}}}}},
+  {{"function":{{"name":"request_memory_update","arguments":{{"memory_type":"important","mode":"search_replace","search":"牌组:","replace":"牌组:2旋风斩+1双发"}}}}}},
+  {{"function":{{"name":"choose","arguments":{{"choice_index":0}}}}}}
+]}}
+
+请用上面的格式返回 JSON，不要加解释。"""
 
 REQUEST_HOST_COMMENTARY_TOOL = {
     "type": "function",
@@ -149,10 +197,6 @@ REQUEST_HOST_COMMENTARY_TOOL = {
                 "mood": {
                     "type": "string",
                     "description": "建议情绪: excited/confident/nervous/happy/sad/angry/neutral",
-                },
-                "reference_danmaku": {
-                    "type": "string",
-                    "description": "可参考的弹幕内容，用于回应观众",
                 },
             },
             "required": ["key_points"],
@@ -214,17 +258,18 @@ class GameGraph:
         self,
         adapter: BaseGameAdapter,
         shared_context: SharedContext | None = None,
-        poll_interval: float = 1.0,
-        min_commentary_interval: float = 15.0,
+        poll_interval: float | None = None,
+        min_commentary_interval: float | None = None,
     ):
         self._adapter = adapter
         self._shared_context = shared_context or get_shared_context()
-        self._poll_interval = poll_interval
-        self._min_commentary_interval = min_commentary_interval
+        self._poll_interval = poll_interval if poll_interval is not None else config.game_poll_interval
+        self._min_commentary_interval = min_commentary_interval if min_commentary_interval is not None else config.game_min_commentary_interval
         self._running = False
         self._task: asyncio.Task | None = None
         self._last_decision_time: float = 0
         self._last_commentary_time: float = 0
+        self._pending_game_actions: list[tuple[str, dict]] = []
 
     @property
     def is_running(self) -> bool:
@@ -272,16 +317,22 @@ class GameGraph:
             action = UnifiedAction(action_type="proceed", params={})
             await self._adapter.execute_action(action)
             await asyncio.sleep(1)
-            action = UnifiedAction(action_type="start_game", params={"character": "IRONCLAD"})
+            action = UnifiedAction(action_type="start_game", params={"character": config.game_default_character})
             await self._adapter.execute_action(action)
             return state
 
         if not screen:
             return state
 
-        await self._build_prompt(state)
-        await self._llm_decide(state)
-        await self._execute_parallel(state)
+        if self._pending_game_actions:
+            name, params = self._pending_game_actions.pop(0)
+            logger.info(f"执行缓冲动作: {name}({params})")
+            await self._handle_game_action(name, params)
+        else:
+            await self._build_prompt(state)
+            await self._llm_decide(state)
+            await self._execute_parallel(state)
+
         await self._update_history(state)
 
         return state
@@ -307,7 +358,7 @@ class GameGraph:
                     action = UnifiedAction(action_type="proceed", params={})
                     await self._adapter.execute_action(action)
                     await asyncio.sleep(1)
-                    action = UnifiedAction(action_type="start_game", params={"character": "IRONCLAD"})
+                    action = UnifiedAction(action_type="start_game", params={"character": config.game_default_character})
                     await self._adapter.execute_action(action)
                     await asyncio.sleep(3)
                     continue
@@ -316,13 +367,23 @@ class GameGraph:
                     await asyncio.sleep(self._poll_interval)
                     continue
 
-                await self._build_prompt(state)
-                await self._llm_decide(state)
-                await self._execute_parallel(state)
+                if self._pending_game_actions:
+                    name, params = self._pending_game_actions.pop(0)
+                    logger.info(f"执行缓冲动作: {name}({params})")
+                    await self._handle_game_action(name, params)
+                    had_game_action = True
+                else:
+                    await self._build_prompt(state)
+                    await self._llm_decide(state)
+                    had_game_action = await self._execute_parallel(state)
+
                 await self._update_history(state)
 
                 elapsed = time.time() - t_start
-                min_wait = config.game_min_step_interval
+                if had_game_action:
+                    min_wait = config.game_min_step_interval
+                else:
+                    min_wait = self._poll_interval
                 wait = max(min_wait - elapsed, self._poll_interval)
                 await asyncio.sleep(wait)
 
@@ -358,61 +419,9 @@ class GameGraph:
         except Exception as e:
             logger.error(f"数据收集失败: {e}")
 
-    @staticmethod
-    def _format_game_state(raw: dict, fallback: str) -> str:
-        lines = []
-        screen = raw.get("screen_type", "?")
-        floor = raw.get("floor", "?")
-        hp = raw.get("current_hp", "?")
-        max_hp = raw.get("max_hp", "?")
-
-        lines.append(f"画面: {screen} | 楼层: {floor}")
-        lines.append(f"HP: {hp}/{max_hp}")
-
-        combat = raw.get("combat_state", {})
-        player_combat = combat.get("player", {})
-        energy = player_combat.get("current_energy", raw.get("current_energy", raw.get("energy")))
-        if energy is not None:
-            lines.append(f"费用: {energy}")
-
-        monsters = combat.get("monsters", raw.get("monsters", []))
-        if monsters:
-            lines.append("敌人:")
-            for i, m in enumerate(monsters, 1):
-                if m.get("is_gone"):
-                    continue
-                intent = m.get("intent", "?")
-                move = m.get("move", {})
-                damage = move.get("damage") if move else None
-                hits = move.get("hits", "") if move else ""
-                intent_detail = intent
-                if damage:
-                    intent_detail += f" {damage}"
-                    if hits and hits > 1:
-                        intent_detail += f"x{hits}"
-                block = m.get("block", 0)
-                block_str = f" [格挡{block}]" if block else ""
-                lines.append(f"  [{i}] {m.get('name')} HP:{m.get('current_hp')}/{m.get('max_hp')} 意图:{intent_detail}{block_str}")
-
-        hand = combat.get("hand", raw.get("hand", []))
-        if hand:
-            lines.append("手牌:")
-            for i, c in enumerate(hand, 1):
-                playable = "可出" if c.get("is_playable") else "不可出"
-                target = " 需目标" if c.get("has_target") else ""
-                lines.append(f"  {i}. {c.get('name')} 费{c.get('cost')} {playable}{target}")
-
-        choices = raw.get("choice_list", [])
-        if choices:
-            lines.append("选项:")
-            for i, ch in enumerate(choices, 1):
-                lines.append(f"  {i}. {ch}")
-
-        return "\n".join(lines)
-
     async def _build_prompt(self, state: GameLoopState):
         raw = state.game_state.raw_state if state.game_state else {}
-        game_state_text = self._format_game_state(raw, state.game_state.to_prompt_text() if state.game_state else "")
+        game_state_text = self._adapter.format_state_for_prompt(raw, state.game_state.to_prompt_text() if state.game_state else "")
 
         state.tools = [REQUEST_HOST_COMMENTARY_TOOL, REQUEST_MEMORY_UPDATE_TOOL]
         try:
@@ -440,6 +449,11 @@ class GameGraph:
             tool_line = f"{name}: {', '.join(param_parts)}"
             mcp_tool_lines.append(tool_line)
 
+        last_comm_time, last_comm_step = await self._shared_context.get_commentary_info()
+        current_step = await self._shared_context.get_game_step_id()
+        seconds_since_commentary = time.time() - last_comm_time if last_comm_time else float("inf")
+        steps_since_commentary = current_step - last_comm_step if last_comm_time else 0
+
         system_content = build_game_system_prompt(
             core_memory=state.core_memory or "",
             important_memory=state.important_memory or "",
@@ -447,7 +461,10 @@ class GameGraph:
             game_history=state.game_history_text or "",
             host_history=state.host_history_text or "",
             game_state=game_state_text,
-            commentary_eagerness=config.game_commentary_eagerness,
+            seconds_since_commentary=seconds_since_commentary,
+            steps_since_commentary=steps_since_commentary,
+            commentary_interval=config.game_commentary_interval,
+            min_step_interval=config.game_min_step_interval,
             memory_eagerness=config.game_memory_eagerness,
         )
 
@@ -507,6 +524,15 @@ class GameGraph:
         normalized = self._normalize_tool_calls(parsed)
         if normalized:
             state.tool_calls = normalized
+            tool_names = [t.get("name", "?") for t in normalized]
+            logger.info(f"LLM 决策: {tool_names}")
+            for tc in normalized:
+                name = tc.get("name", "?")
+                params = tc.get("params", {})
+                if params:
+                    logger.info(f"  └─ {name}: {params}")
+                else:
+                    logger.info(f"  └─ {name}")
             return
 
         logger.debug(f"未检测到 tool_calls，原始响应: {content[:100]}")
@@ -545,24 +571,41 @@ class GameGraph:
 
         return result if result else None
 
-    async def _execute_parallel(self, state: GameLoopState):
+    async def _execute_parallel(self, state: GameLoopState) -> bool:
         if not state.tool_calls:
-            return
+            return False
 
-        tasks = []
+        non_game_tasks = []
+        game_actions = []
+
         for tc in state.tool_calls:
             name = tc.get("name", tc.get("function", {}).get("name", ""))
             params = tc.get("params", tc.get("arguments", tc.get("function", {}).get("arguments", {})))
 
-            if name == "request_host_commentary":
-                tasks.append(self._handle_commentary_request(params))
-            elif name == "request_memory_update":
-                tasks.append(self._handle_memory_update_request(params))
+            if name in NON_GAME_TOOLS:
+                if name == "request_host_commentary":
+                    non_game_tasks.append(self._handle_commentary_request(params))
+                elif name == "request_memory_update":
+                    non_game_tasks.append(self._handle_memory_update_request(params))
+            elif name in READONLY_MCP_TOOLS:
+                non_game_tasks.append(self._handle_mcp_readonly(name, params))
             elif name:
-                tasks.append(self._handle_game_action(name, params))
+                game_actions.append((name, params))
 
-        if tasks:
-            await asyncio.gather(*tasks, return_exceptions=True)
+        if non_game_tasks:
+            await asyncio.gather(*non_game_tasks, return_exceptions=True)
+
+        if game_actions:
+            name, params = game_actions[0]
+            await self._handle_game_action(name, params)
+            remaining = game_actions[1:]
+            if remaining:
+                self._pending_game_actions = remaining
+                remaining_names = [a[0] for a in remaining]
+                logger.info(f"剩余动作缓冲: {remaining_names}")
+            return True
+
+        return False
 
     async def _handle_commentary_request(self, params: dict):
         now = time.time()
@@ -571,6 +614,7 @@ class GameGraph:
             return False
 
         cancel_key = f"commentary_{self._adapter.game_id}_{int(now)}"
+        game_step_id = await self._shared_context.get_game_step_id()
         queue = get_message_queue()
         msg = Message(
             priority=PRIORITY_HIGH,
@@ -580,22 +624,30 @@ class GameGraph:
             data={
                 "key_points": params.get("key_points", []),
                 "mood": params.get("mood", "neutral"),
-                "reference_danmaku": params.get("reference_danmaku", ""),
+                "game_step_id": game_step_id,
             },
             cancel_key=cancel_key,
-            expire_at=time.time() + 10,
+            expire_at=time.time() + 15,
             allow_skip=False,
         )
         success = await queue.put(msg)
         if success:
             self._last_commentary_time = now
-            logger.info(f"解说请求入队: {params.get('key_points', [])}")
+            await self._shared_context.record_commentary_request()
+            key_points = params.get("key_points", [])
+            mood = params.get("mood", "neutral")
+            logger.info(f"解说请求入队: {key_points} (step={game_step_id})")
+            await self._shared_context.add_game_entry(
+                action="request_host_commentary",
+                params={"key_points": key_points, "mood": mood},
+                result="enqueued",
+            )
         return success
 
     async def _handle_memory_update_request(self, params: dict):
         memory_type = params.get("memory_type", "")
         mode = params.get("mode", "rewrite")
-        content = params.get("content", "")
+        content = params.get("content", "") or params.get("replace", "")
         if not memory_type or not content:
             logger.warning("记忆更新参数不完整")
             return False
@@ -603,6 +655,11 @@ class GameGraph:
         if mode == "rewrite":
             await self._shared_context.rewrite_memory(memory_type=memory_type, content=content)
             logger.info(f"LLM 重写 {memory_type} 记忆: {content[:50]}...")
+            await self._shared_context.add_game_entry(
+                action="request_memory_update",
+                params={"memory_type": memory_type, "mode": "rewrite", "content": content[:100]},
+                result="rewritten",
+            )
         elif mode == "search_replace":
             search = params.get("search", "")
             if search:
@@ -610,10 +667,22 @@ class GameGraph:
                     memory_type=memory_type, mode="fuzzy", search=search, replace=content
                 )
                 logger.info(f"LLM 搜索替换 {memory_type}: '{search[:30]}' -> '{content[:30]}'")
+                await self._shared_context.add_game_entry(
+                    action="request_memory_update",
+                    params={"memory_type": memory_type, "mode": "search_replace", "search": search[:50], "replace": content[:50]},
+                    result="replaced",
+                )
             else:
                 logger.warning("search_replace 模式缺少 search 参数")
                 return False
         return True
+
+    async def _handle_mcp_readonly(self, name: str, params: dict):
+        success, error_msg = await self._adapter.execute_action(
+            UnifiedAction(action_type=name, params=params if isinstance(params, dict) else {})
+        )
+        logger.debug(f"MCP只读查询: {name} -> {'ok' if success else error_msg}")
+        return success
 
     async def _handle_game_action(self, name: str, params: dict):
         action = UnifiedAction(
@@ -631,6 +700,8 @@ class GameGraph:
             params=params if isinstance(params, dict) else {},
             result=result,
         )
+        if success:
+            await self._shared_context.advance_game_step()
         logger.info(f"游戏动作执行: {name} -> {result}")
         return success
 

@@ -237,40 +237,49 @@ B站弹幕协议使用 JSON 格式，但字段名较长，客户端将其转换�
 
 ### 步骤 6: AI 对话处理
 
+> **架构变更**: AI 对话处理已从 AIHostBrain 直接调用 LLM 改为通过 PriorityMessageQueue 中转，由 HostGraph 统一消费。这使得弹幕回复和游戏解说共享同一个主播 LLM 通道，避免话术冲突。
+
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                  AI 对话处理流程                                │
+│                  AI 对话处理流程（消息队列路径）                 │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                 │
 │  普通弹幕（非管理员指令、非点歌请求）                            │
 │         │                                                       │
 │         ▼                                                       │
 │  ┌──────────────────────────────────────────────────────────┐ │
-│  │ 1. brain.push_danmaku()                                  │ │
-│  │    - 弹幕加入缓冲区                                       │ │
+│  │ 1. AIHostBrain.push_danmaku()                            │ │
+│  │    - 弹幕加入 _danmaku_buffer (最多20条)                 │ │
 │  │    - 过滤检查 (sleep 模式)                               │ │
-│  │    - 检查回复间隔                                         │ │
 │  └──────────────────────────────────────────────────────────┘ │
-│         │                                                       │
 │         │ accepted                                             │
 │         ▼                                                       │
 │  ┌──────────────────────────────────────────────────────────┐ │
-│  │ 2. brain.try_reply()                                     │ │
-│  │    - 获取用户记忆上下文                                  │ │
-│  │    - 构建 prompt                                          │ │
-│  │    - 调用 LLM 生成回复                                   │ │
-│  │    - 调用 TTS 合成语音                                   │ │
+│  │ 2. AIHostBrain._enqueue_danmaku()                        │ │
+│  │    - 弹幕封装为 Message(priority=NORMAL, msg_type="danmaku")│
+│  │    - 推入 PriorityMessageQueue                            │ │
+│  │    - RateLimiter 控制频率 (3秒间隔)                       │ │
 │  └──────────────────────────────────────────────────────────┘ │
 │         │                                                       │
-│         │ 广播 AI 回复                                         │
 │         ▼                                                       │
 │  ┌──────────────────────────────────────────────────────────┐ │
-│  │ 3. 广播回复到前端                                        │ │
-│  │    - start: 开始回复                                     │ │
-│  │    - text: 文字内容                                      │ │
-│  │    - audio: 音频数据                                     │ │
-│  │    - end: 结束回复                                       │ │
+│  │ 3. HostGraph 消费消息                                     │ │
+│  │    - 阻塞等待 queue.get(timeout=5s)                      │ │
+│  │    - 按 msg_type 分发:                                    │ │
+│  │      - danmaku → _handle_danmaku()                       │ │
+│  │      - commentary_request → _handle_commentary()         │ │
+│  │      - gift_thanks → _handle_gift_thanks()               │ │
+│  │    - 主播 LLM 生成话术 (统一风格)                         │ │
+│  │    - TTS 合成播放                                         │ │
+│  │    - 写入 SharedContext (让 GameGraph 感知)               │ │
 │  └──────────────────────────────────────────────────────────┘ │
+│                                                                 │
+│  消息优先级:                                                    │
+│  ┌──────────────────────────────────────────────────────┐      │
+│  │ INTERRUPT(0) > HIGH(1) > NORMAL(2) > LOW(3) > DISPOSABLE(4) │
+│  │                                                      │      │
+│  │ 游戏解说: HIGH    弹幕回复: NORMAL    礼物感谢: LOW   │      │
+│  └──────────────────────────────────────────────────────┘      │
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -283,7 +292,10 @@ B站弹幕协议使用 JSON 格式，但字段名较长，客户端将其转换�
 | WebSocket路由 | backend/apps/live/bilibili/router.py | /ws/{room_id} |
 | 弹幕处理 | backend/apps/live/danmaku_handler.py | process_danmaku() |
 | 点歌服务 | backend/apps/live/music/service.py | DanmakuMusicService |
-| AI大脑 | backend/apps/ai/host_brain.py | AIHostBrain |
+| AI大脑 | backend/apps/ai/host_brain.py | AIHostBrain (弹幕缓冲+入队) |
+| 主播Graph | backend/apps/ai/host_graph.py | HostGraph (消息消费+话术生成) |
+| 消息队列 | backend/apps/ai/messaging/queue.py | PriorityMessageQueue |
+| 共享上下文 | backend/apps/ai/shared_context.py | SharedContext |
 
 ## 相关文档
 

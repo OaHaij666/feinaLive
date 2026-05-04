@@ -1,6 +1,5 @@
 """弹幕处理逻辑 - 被真实弹幕和测试弹幕共用"""
 
-import asyncio
 import logging
 from dataclasses import dataclass
 from typing import Awaitable, Callable, Optional
@@ -105,9 +104,6 @@ async def process_danmaku(
         uid=danmaku.uid
     )
 
-    if accepted:
-        asyncio.create_task(_process_ai_reply(room_ids, broadcast_fn))
-
     return DanmakuProcessResult(
         success=True,
         intercepted=False,
@@ -128,13 +124,3 @@ async def _broadcast_to_rooms(
                 await manager.send_message(room_id, message)
             except Exception as e:
                 logger.debug(f"WebSocket发送失败(room={room_id}): {e}")
-
-
-async def _process_ai_reply(
-    room_ids: list[str],
-    broadcast_fn: Optional[Callable[[dict], Awaitable[None]]] = None,
-):
-    brain = get_host_brain(config.default_room_id)
-    enqueued = await brain.try_reply()
-    if enqueued:
-        logger.debug("弹幕已入队，等待主播 LLM 消费回复")

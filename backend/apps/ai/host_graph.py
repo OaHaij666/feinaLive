@@ -21,6 +21,7 @@ import time
 from typing import Callable
 
 from apps.ai.client import ChatMessage, ChatRequest, get_ai_client
+from apps.ai.host_brain import get_host_brain
 from apps.ai.messaging.queue import Message, get_message_queue
 from apps.ai.prompt import get_host_system_prompt
 from apps.ai.shared_context import get_shared_context
@@ -39,9 +40,6 @@ COMMENTARY_SYSTEM_PROMPT = """{host_personality}
 
 【你刚才的互动】
 {host_history}
-
-【可参考弹幕】
-{reference_danmaku}
 
 请根据以上要点生成一段风格化解说:
 - 用第一人称
@@ -99,11 +97,15 @@ class HostGraph:
             return
 
         self._running = True
+        brain = get_host_brain(config.default_room_id)
+        await brain.start_polling()
         self._task = asyncio.create_task(self._host_loop())
         logger.info("主播 Graph 启动")
 
     async def stop(self):
         self._running = False
+        brain = get_host_brain(config.default_room_id)
+        await brain.stop_polling()
         if self._task and not self._task.done():
             self._task.cancel()
             try:
@@ -117,6 +119,7 @@ class HostGraph:
 
         while self._running:
             try:
+                queue.apply_priority_override()
                 msg = await asyncio.wait_for(queue.get(), timeout=5.0)
 
                 if msg.msg_type == "commentary_request":
@@ -140,7 +143,17 @@ class HostGraph:
         data = msg.data
         key_points = data.get("key_points", [])
         mood = data.get("mood", "neutral")
-        reference_danmaku = data.get("reference_danmaku", "")
+        game_step_id = data.get("game_step_id", 0)
+
+        current_step = await self._shared_context.get_game_step_id()
+        max_staleness = max(1, int(config.game_commentary_interval / config.game_min_step_interval) + 2)
+        steps_behind = current_step - game_step_id
+        if game_step_id and steps_behind > max_staleness:
+            logger.info(
+                f"解说新鲜度检查失败，丢弃: step={game_step_id} (当前={current_step}, "
+                f"落后={steps_behind}, 阈值={max_staleness})"
+            )
+            return
 
         host_personality = get_host_system_prompt()
         host_history = await self._shared_context.get_host_history_text(limit=10)
@@ -150,7 +163,6 @@ class HostGraph:
             key_points="\n".join(f"- {p}" for p in key_points),
             mood=mood,
             host_history=host_history or "（暂无）",
-            reference_danmaku=reference_danmaku or "无",
         )
 
         spoken = await self._llm_generate(system_content, "请生成解说。", config.host_max_tokens)
@@ -161,7 +173,7 @@ class HostGraph:
         await self._speak(spoken)
 
         await self._shared_context.add_host_entry(
-            danmaku=reference_danmaku or f"[游戏解说-{mood}]",
+            danmaku=f"[游戏解说-{mood}]",
             reply=spoken,
         )
 

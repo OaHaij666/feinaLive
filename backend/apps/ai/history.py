@@ -4,9 +4,11 @@ import logging
 import time
 from dataclasses import dataclass, field
 
+from apps.config import config
+
 logger = logging.getLogger(__name__)
 
-MAX_HISTORY_PER_SESSION = 16  # 8轮对话 (用户弹幕+主播回复)
+MAX_HISTORY_PER_SESSION = config.ai_max_history_per_session
 
 
 @dataclass

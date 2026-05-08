@@ -284,7 +284,7 @@ class SentenceBuffer:
 
 
 class AIHostBrain:
-    POLL_INTERVAL_SECONDS = 10.0
+    POLL_INTERVAL_SECONDS = config.ai_poll_interval_seconds
 
     def __init__(self, room_id: int | str):
         self.room_id = str(room_id)

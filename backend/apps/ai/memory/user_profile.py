@@ -10,12 +10,13 @@ from dataclasses import dataclass, field
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from apps.config import config
 from apps.db import UserProfileDB, async_session
 
 logger = logging.getLogger(__name__)
 
-SUMMARY_INTERVAL = 10
-MAX_RECENT_MESSAGES = 16
+SUMMARY_INTERVAL = config.ai_summary_interval
+MAX_RECENT_MESSAGES = config.ai_max_recent_messages
 
 _user_profiles: dict[str, "UserProfile"] = {}
 _db_initialized: bool = False

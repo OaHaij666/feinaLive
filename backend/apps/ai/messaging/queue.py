@@ -29,9 +29,10 @@ from apps.config import config
 
 logger = logging.getLogger(__name__)
 
-USER_COOLDOWN_SECONDS = 3.0
 PRIORITY_NEVER_DROP = {PRIORITY_HIGHEST, PRIORITY_HIGH}
-DEFAULT_TTL_SECONDS = 30.0
+# Defaults from config, read at import time
+_USER_COOLDOWN_SECONDS = config.messaging_user_cooldown_seconds
+_DEFAULT_TTL_SECONDS = config.messaging_default_ttl_seconds
 
 
 @dataclass
@@ -56,7 +57,7 @@ class Message:
         if not self.created_at:
             self.created_at = time.time()
         if not self.expire_at:
-            self.expire_at = self.created_at + DEFAULT_TTL_SECONDS
+            self.expire_at = self.created_at + _DEFAULT_TTL_SECONDS
 
     @property
     def is_expired(self) -> bool:
@@ -77,8 +78,9 @@ class PriorityMessageQueue:
         self,
         rate_limiter: RateLimiter | None = None,
         max_size: int | None = None,
-        default_ttl: float = DEFAULT_TTL_SECONDS,
+        default_ttl: float | None = None,
     ):
+        default_ttl = default_ttl or _DEFAULT_TTL_SECONDS
         self._queue: asyncio.PriorityQueue[Message] = asyncio.PriorityQueue()
         self._rate_limiter = rate_limiter or get_rate_limiter()
         self._max_size = max_size if max_size is not None else config.game_queue_max_size
@@ -110,7 +112,7 @@ class PriorityMessageQueue:
 
         if msg.user_id:
             last = self._user_last_msg.get(msg.user_id, 0)
-            if time.time() - last < USER_COOLDOWN_SECONDS:
+            if time.time() - last < _USER_COOLDOWN_SECONDS:
                 logger.debug(f"用户冷却: user={msg.user_id} 跳过")
                 self._total_dropped += 1
                 return False

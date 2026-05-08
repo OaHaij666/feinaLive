@@ -27,6 +27,8 @@ import logging
 import time
 from collections import deque
 
+from apps.config import config
+
 logger = logging.getLogger(__name__)
 
 PRIORITY_HIGHEST = 1
@@ -35,6 +37,7 @@ PRIORITY_NORMAL = 3
 PRIORITY_LOW = 4
 PRIORITY_DISPOSABLE = 5
 
+# 模块级常量保留作为 fallback，实际值从 config 读取
 DANMAKU_STARVATION_SECONDS = 30.0
 DANMAKU_FLOOD_THRESHOLD = 5
 DANMAKU_FLOOD_WINDOW_SECONDS = 20.0
@@ -52,13 +55,19 @@ GIFT_VALUE_LOW = 100
 class DynamicPriorityManager:
     def __init__(
         self,
-        danmaku_starvation_seconds: float = DANMAKU_STARVATION_SECONDS,
-        danmaku_flood_threshold: int = DANMAKU_FLOOD_THRESHOLD,
-        danmaku_flood_window: float = DANMAKU_FLOOD_WINDOW_SECONDS,
-        gift_starvation_seconds: float = GIFT_STARVATION_SECONDS,
-        gift_flood_threshold: int = GIFT_FLOOD_THRESHOLD,
-        gift_flood_window: float = GIFT_FLOOD_WINDOW_SECONDS,
+        danmaku_starvation_seconds: float | None = None,
+        danmaku_flood_threshold: int | None = None,
+        danmaku_flood_window: float | None = None,
+        gift_starvation_seconds: float | None = None,
+        gift_flood_threshold: int | None = None,
+        gift_flood_window: float | None = None,
     ):
+        danmaku_starvation_seconds = danmaku_starvation_seconds or config.messaging_danmaku_starvation_seconds
+        danmaku_flood_threshold = danmaku_flood_threshold or config.messaging_danmaku_flood_threshold
+        danmaku_flood_window = danmaku_flood_window or config.messaging_danmaku_flood_window
+        gift_starvation_seconds = gift_starvation_seconds or config.messaging_gift_starvation_seconds
+        gift_flood_threshold = gift_flood_threshold or config.messaging_gift_flood_threshold
+        gift_flood_window = gift_flood_window or config.messaging_gift_flood_window
         self._danmaku_starvation = danmaku_starvation_seconds
         self._danmaku_flood_threshold = danmaku_flood_threshold
         self._danmaku_flood_window = danmaku_flood_window
@@ -135,13 +144,13 @@ class DynamicPriorityManager:
         return value_priority
 
     def _get_gift_value_priority(self, total_coin: int) -> int:
-        if total_coin >= GIFT_VALUE_HIGHEST:
+        if total_coin >= config.messaging_gift_value_highest:
             return PRIORITY_HIGHEST
-        elif total_coin >= GIFT_VALUE_HIGH:
+        elif total_coin >= config.messaging_gift_value_high:
             return PRIORITY_HIGH
-        elif total_coin >= GIFT_VALUE_NORMAL:
+        elif total_coin >= config.messaging_gift_value_normal:
             return PRIORITY_NORMAL
-        elif total_coin >= GIFT_VALUE_LOW:
+        elif total_coin >= config.messaging_gift_value_low:
             return PRIORITY_LOW
         else:
             return PRIORITY_DISPOSABLE

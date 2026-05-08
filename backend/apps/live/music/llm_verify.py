@@ -9,9 +9,9 @@ from apps.config import config
 
 logger = logging.getLogger(__name__)
 
-MIN_DURATION_SECONDS = 60
-MAX_DURATION_SECONDS = 8 * 60
-MAX_COMMENTS = 3
+MIN_DURATION_SECONDS = config.music_verify_min_duration
+MAX_DURATION_SECONDS = config.music_verify_max_duration
+MAX_COMMENTS = config.music_verify_max_comments
 MAX_COMMENT_LEN = 50
 
 

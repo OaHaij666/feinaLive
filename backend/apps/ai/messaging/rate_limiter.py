@@ -4,6 +4,8 @@ import logging
 import time
 from dataclasses import dataclass
 
+from apps.config import config
+
 logger = logging.getLogger(__name__)
 
 
@@ -15,14 +17,18 @@ class RateLimitRule:
 
 
 class RateLimiter:
-    DEFAULT_RULES: dict[str, RateLimitRule] = {
-        "game:commentary_request": RateLimitRule(min_interval=4.0),
-        "danmaku:danmaku": RateLimitRule(min_interval=3.0),
-        "gift:gift_thanks": RateLimitRule(min_interval=10.0),
-    }
+    DEFAULT_RULES: dict[str, RateLimitRule] = {}  # populated in __init__
+
+    @staticmethod
+    def _get_default_rules() -> dict[str, RateLimitRule]:
+        return {
+            "game:commentary_request": RateLimitRule(min_interval=config.messaging_rate_limit_commentary),
+            "danmaku:danmaku": RateLimitRule(min_interval=config.messaging_rate_limit_danmaku),
+            "gift:gift_thanks": RateLimitRule(min_interval=config.messaging_rate_limit_gift),
+        }
 
     def __init__(self, rules: dict[str, RateLimitRule] | None = None):
-        self._rules = rules or dict(self.DEFAULT_RULES)
+        self._rules = rules or self._get_default_rules()
         self._last_call: dict[str, float] = {}
         self._burst_count: dict[str, list[float]] = {}
 

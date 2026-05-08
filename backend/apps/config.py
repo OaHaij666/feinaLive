@@ -131,6 +131,14 @@ class Config:
         return os.getenv("HOST_MODEL") or self._data.get("host", {}).get("model", "")
 
     @property
+    def host_api_url(self) -> str:
+        return os.getenv("HOST_API_URL") or self._data.get("host", {}).get("api_url", "") or self.llm_api_url
+
+    @property
+    def host_api_key(self) -> str | None:
+        return os.getenv("HOST_API_KEY") or self._data.get("host", {}).get("api_key") or self.llm_api_key
+
+    @property
     def host_temperature(self) -> float:
         return float(os.getenv("HOST_TEMPERATURE") or self._data.get("host", {}).get("temperature", 0.7))
 
@@ -173,6 +181,10 @@ class Config:
     @property
     def game_commentary_interval(self) -> float:
         return float(os.getenv("GAME_COMMENTARY_INTERVAL") or self._data.get("game", {}).get("commentary_interval", 30.0))
+
+    @property
+    def game_commentary_hold_timeout(self) -> float:
+        return float(os.getenv("GAME_COMMENTARY_HOLD_TIMEOUT", "") or self._data.get("game", {}).get("commentary_hold_timeout", 20.0))
 
     @property
     def game_memory_eagerness(self) -> int:
@@ -305,6 +317,100 @@ class Config:
     @property
     def game_game_history_maxlen(self) -> int:
         return int(self._data.get("game", {}).get("game_history_maxlen", 30))
+
+    # ---- 消息调度 (messaging) ----
+
+    @property
+    def messaging_danmaku_starvation_seconds(self) -> float:
+        return float(self._data.get("messaging", {}).get("danmaku_starvation_seconds", 30.0))
+
+    @property
+    def messaging_danmaku_flood_threshold(self) -> int:
+        return int(self._data.get("messaging", {}).get("danmaku_flood_threshold", 5))
+
+    @property
+    def messaging_danmaku_flood_window(self) -> float:
+        return float(self._data.get("messaging", {}).get("danmaku_flood_window", 20.0))
+
+    @property
+    def messaging_gift_starvation_seconds(self) -> float:
+        return float(self._data.get("messaging", {}).get("gift_starvation_seconds", 60.0))
+
+    @property
+    def messaging_gift_flood_threshold(self) -> int:
+        return int(self._data.get("messaging", {}).get("gift_flood_threshold", 3))
+
+    @property
+    def messaging_gift_flood_window(self) -> float:
+        return float(self._data.get("messaging", {}).get("gift_flood_window", 30.0))
+
+    @property
+    def messaging_gift_value_highest(self) -> int:
+        return int(self._data.get("messaging", {}).get("gift_value_highest", 10000))
+
+    @property
+    def messaging_gift_value_high(self) -> int:
+        return int(self._data.get("messaging", {}).get("gift_value_high", 5000))
+
+    @property
+    def messaging_gift_value_normal(self) -> int:
+        return int(self._data.get("messaging", {}).get("gift_value_normal", 1000))
+
+    @property
+    def messaging_gift_value_low(self) -> int:
+        return int(self._data.get("messaging", {}).get("gift_value_low", 100))
+
+    @property
+    def messaging_user_cooldown_seconds(self) -> float:
+        return float(self._data.get("messaging", {}).get("user_cooldown_seconds", 3.0))
+
+    @property
+    def messaging_default_ttl_seconds(self) -> float:
+        return float(self._data.get("messaging", {}).get("default_ttl_seconds", 30.0))
+
+    @property
+    def messaging_rate_limit_commentary(self) -> float:
+        return float(self._data.get("messaging", {}).get("rate_limit_commentary", 4.0))
+
+    @property
+    def messaging_rate_limit_danmaku(self) -> float:
+        return float(self._data.get("messaging", {}).get("rate_limit_danmaku", 3.0))
+
+    @property
+    def messaging_rate_limit_gift(self) -> float:
+        return float(self._data.get("messaging", {}).get("rate_limit_gift", 10.0))
+
+    # ---- AI 行为 (ai) ----
+
+    @property
+    def ai_max_history_per_session(self) -> int:
+        return int(self._data.get("ai", {}).get("max_history_per_session", 16))
+
+    @property
+    def ai_summary_interval(self) -> int:
+        return int(self._data.get("ai", {}).get("summary_interval", 10))
+
+    @property
+    def ai_max_recent_messages(self) -> int:
+        return int(self._data.get("ai", {}).get("max_recent_messages", 16))
+
+    @property
+    def ai_poll_interval_seconds(self) -> float:
+        return float(self._data.get("ai", {}).get("poll_interval_seconds", 10.0))
+
+    # ---- 音乐验证 (music_config) ----
+
+    @property
+    def music_verify_min_duration(self) -> int:
+        return int(self._data.get("music_config", {}).get("verify_min_duration", 60))
+
+    @property
+    def music_verify_max_duration(self) -> int:
+        return int(self._data.get("music_config", {}).get("verify_max_duration", 480))
+
+    @property
+    def music_verify_max_comments(self) -> int:
+        return int(self._data.get("music_config", {}).get("verify_max_comments", 3))
 
 
 config = Config()

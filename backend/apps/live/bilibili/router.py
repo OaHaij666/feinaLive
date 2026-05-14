@@ -42,6 +42,10 @@ async def verify_sessdata():
         async with httpx.AsyncClient() as client:
             resp = await client.get(
                 "https://api.bilibili.com/x/web-interface/nav",
+                headers={
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+                    "Referer": "https://www.bilibili.com",
+                },
                 cookies={"SESSDATA": sessdata},
                 timeout=10.0,
             )
@@ -61,7 +65,7 @@ async def update_sessdata(request: SessdataUpdateRequest):
     import yaml
     from pathlib import Path
     
-    config_file = Path(__file__).parent.parent.parent / "config.yaml"
+    config_file = Path(__file__).parent.parent.parent.parent / "config.yaml"
     
     try:
         with open(config_file, "r", encoding="utf-8") as f:

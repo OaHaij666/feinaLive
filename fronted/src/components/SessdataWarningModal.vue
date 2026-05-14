@@ -8,13 +8,22 @@
         </div>
         <div class="modal-body">
           <p class="error-message">{{ errorMessage }}</p>
-          <p class="hint">填写有效的 SESSDATA 后才能获取评论等功能</p>
+          <p class="hint">填写有效的 SESSDATA 和登录 UID 后才能正常获取弹幕昵称等信息</p>
           <div class="input-group">
             <label>SESSDATA:</label>
             <input
               v-model="sessdataInput"
               type="text"
               placeholder="粘贴 SESSDATA..."
+              @keyup.enter="handleUpdate"
+            />
+          </div>
+          <div class="input-group" style="margin-top: 12px">
+            <label>登录 UID <span class="optional">(可选)</span>:</label>
+            <input
+              v-model.number="uidInput"
+              type="number"
+              placeholder="B站账号 UID（留空则不登录）"
               @keyup.enter="handleUpdate"
             />
           </div>
@@ -38,14 +47,16 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   ignore: []
-  update: [sessdata: string]
+  update: [data: { sessdata: string; uid: number | null }]
 }>()
 
 const sessdataInput = ref('')
+const uidInput = ref<number | null>(null)
 
 watch(() => props.visible, (newVal) => {
   if (newVal) {
     sessdataInput.value = ''
+    uidInput.value = null
   }
 })
 
@@ -55,7 +66,10 @@ function handleIgnore() {
 
 function handleUpdate() {
   if (sessdataInput.value.trim()) {
-    emit('update', sessdataInput.value.trim())
+    emit('update', {
+      sessdata: sessdataInput.value.trim(),
+      uid: uidInput.value && uidInput.value > 0 ? uidInput.value : null,
+    })
   }
 }
 </script>
@@ -126,6 +140,11 @@ function handleUpdate() {
   font-size: 13px;
   color: #374151;
   font-weight: 500;
+}
+
+.optional {
+  color: #9ca3af;
+  font-weight: normal;
 }
 
 .input-group input {

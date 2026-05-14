@@ -38,9 +38,9 @@ default_playlist:
 # 通用 LLM 配置
 # 用途：RAG 检索、用户记忆总结、游戏记忆总结等通用任务
 llm:
-  api_url: "https://ark.cn-beijing.volces.com/api/v3"
+  api_url: "https://api.deepseek.com"
   api_key: "your_api_key"
-  model: "doubao-seed-2-0-mini-260215"
+  model: "deepseek-v4-flash"
   temperature: 0.1
   top_p: 0.9
   max_tokens: 200
@@ -52,7 +52,7 @@ llm:
 host:
   reply_interval: 5       # 弹幕回复间隔（秒）
   max_reply_length: 100   # 单条回复最大长度
-  model: "doubao-seed-character-251128"
+  model: "deepseek-v4-flash"
   temperature: 0.7
   top_p: 0.9
   max_tokens: 200

@@ -3,7 +3,7 @@ name = "feina-backend"
 version = "0.1.0"
 description = "feinaLive后端服务"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.10,<3.12"
 dependencies = [
     "fastapi>=0.115.0",
     "uvicorn[standard]>=0.34.0",
@@ -27,12 +27,14 @@ dependencies = [
     "Pillow",
     "pyopengl",
     "onnx",
-    "onnxruntime-gpu",
+    "onnxruntime-gpu>=1.21.0,<1.23.0",
     "tqdm",
     "torch",
     "OneEuroFilter",
     "sounddevice",
     "pyvirtualcam>=0.9.1",
+    "mediapipe==0.10.11",
+    "pyanime4k==3.1.0",
 ]
 
 [project.optional-dependencies]
@@ -43,10 +45,6 @@ dev = [
 ]
 tts-edge = [
     "edge-tts>=6.1.0",
-]
-easyvtuber = [
-    "mediapipe==0.10.11",
-    "pyanime4k==3.1.0",
 ]
 
 [tool.uv.sources]
@@ -77,7 +75,7 @@ dev-dependencies = [
 ]
 
 [tool.ruff]
-target-version = "py311"
+target-version = "py310"
 line-length = 100
 
 [tool.ruff.lint]

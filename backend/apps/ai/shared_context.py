@@ -90,6 +90,7 @@ class SharedContext:
         self._game_step_id: int = 0
         self._last_commentary_time: float = 0
         self._last_commentary_step: int = 0
+        self._commentary_event: asyncio.Event | None = None
         self._lock = asyncio.Lock()
 
     async def add_host_entry(self, danmaku: str, reply: str, user: str = ""):
@@ -112,12 +113,37 @@ class SharedContext:
 
     async def record_commentary_request(self):
         async with self._lock:
-            self._last_commentary_time = time.time()
             self._last_commentary_step = self._game_step_id
 
     async def get_commentary_info(self) -> tuple[float, int]:
         async with self._lock:
             return self._last_commentary_time, self._last_commentary_step
+
+    async def get_last_commentary_time(self) -> float:
+        async with self._lock:
+            return self._last_commentary_time
+
+    async def prepare_commentary_wait(self) -> asyncio.Event:
+        async with self._lock:
+            event = asyncio.Event()
+            self._commentary_event = event
+            return event
+
+    async def signal_commentary_consumed(self):
+        async with self._lock:
+            self._last_commentary_time = time.time()
+            self._last_commentary_step = self._game_step_id
+            if self._commentary_event:
+                self._commentary_event.set()
+                self._commentary_event = None
+
+    async def wait_commentary_consumed(self, timeout: float) -> bool:
+        event = await self.prepare_commentary_wait()
+        try:
+            await asyncio.wait_for(event.wait(), timeout=timeout)
+            return True
+        except (asyncio.TimeoutError, asyncio.CancelledError):
+            return False
 
     async def get_host_history(self, limit: int = 20) -> list[HostHistoryEntry]:
         async with self._lock:

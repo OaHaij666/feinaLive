@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/config", tags=["config"])
 
-CONFIG_FILE = Path(__file__).parent.parent.parent / "config.yaml"
+CONFIG_FILE = Path(__file__).parent.parent / "config.yaml"
 
 
 # ---- Pydantic 模型 ----
@@ -21,6 +21,8 @@ CONFIG_FILE = Path(__file__).parent.parent.parent / "config.yaml"
 class BilibiliConfig(BaseModel):
     room_id: int = 0
     sessdata: str = ""
+    uid: int = 0
+    use_test_room: bool = False
 
 
 class HostConfig(BaseModel):
@@ -69,6 +71,7 @@ class GameConfig(BaseModel):
     model: str = ""
     temperature: float = 0.4
     max_tokens: int = 500
+    disable_thinking: bool = True
     poll_interval: float = 1.0
     memory_threshold: int = 30
     min_step_interval: float = 3.0
@@ -211,6 +214,8 @@ async def get_full_config():
         bilibili=BilibiliConfig(
             room_id=config.bilibili_room_id,
             sessdata=_mask_sensitive(config.bilibili_sessdata or ""),
+            uid=config.bilibili_uid,
+            use_test_room=config.bilibili_use_test_room,
         ),
         host=HostConfig(
             room_id=config.default_room_id,
@@ -254,6 +259,7 @@ async def get_full_config():
             model=config.game_model,
             temperature=config.game_temperature,
             max_tokens=config.game_max_tokens,
+            disable_thinking=config.game_disable_thinking,
             poll_interval=config.game_poll_interval,
             memory_threshold=config.game_memory_threshold,
             min_step_interval=config.game_min_step_interval,
@@ -379,8 +385,14 @@ async def update_full_config(config_data: FullConfig):
         # bilibili
         if config_data.bilibili:
             flat["bilibili.room_id"] = config_data.bilibili.room_id
+            flat["bilibili.uid"] = config_data.bilibili.uid
             if not _should_skip_sensitive("bilibili.sessdata", config_data.bilibili.sessdata):
                 flat["bilibili.sessdata"] = config_data.bilibili.sessdata
+            flat["bilibili.use_test_room"] = config_data.bilibili.use_test_room
+
+            from apps.ai.admin_commands import get_admin_handler
+            admin = get_admin_handler()
+            admin.set_test_room(config_data.bilibili.use_test_room)
 
         # host
         h = config_data.host
@@ -433,6 +445,7 @@ async def update_full_config(config_data: FullConfig):
         flat["game.model"] = g.model
         flat["game.temperature"] = g.temperature
         flat["game.max_tokens"] = g.max_tokens
+        flat["game.disable_thinking"] = g.disable_thinking
         flat["game.poll_interval"] = g.poll_interval
         flat["game.memory_threshold"] = g.memory_threshold
         flat["game.min_step_interval"] = g.min_step_interval
@@ -616,14 +629,27 @@ async def update_easyvtuber_config(config_data: EasyVtuberConfig):
 
 @router.get("/easyvtuber/characters")
 async def list_characters():
-    images_dir = Path(__file__).parent.parent.parent / "EasyVtuber" / "data" / "images"
+    from apps.easyvtuber import EASYVTUBER_DIR
+
+    images_dir = EASYVTUBER_DIR / "data" / "images"
     characters = []
 
     if images_dir.exists():
-        for f in images_dir.glob("*.png"):
+        for f in sorted(images_dir.glob("*.png")):
             characters.append({
                 "name": f.stem,
-                "path": str(f.relative_to(images_dir.parent.parent)),
             })
 
     return {"characters": characters}
+
+
+@router.post("/easyvtuber/open-images")
+async def open_images_folder():
+    """打开数字人图片文件夹（仅 Windows）"""
+    from apps.easyvtuber import EASYVTUBER_DIR
+    import subprocess
+    images_dir = EASYVTUBER_DIR / "data" / "images"
+    if not images_dir.exists():
+        images_dir.mkdir(parents=True, exist_ok=True)
+    subprocess.Popen(["explorer", str(images_dir)])
+    return {"success": True, "path": str(images_dir)}

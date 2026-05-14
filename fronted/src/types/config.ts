@@ -3,6 +3,8 @@
 export interface BilibiliConfig {
   room_id: number
   sessdata: string
+  uid: number
+  use_test_room: boolean
 }
 
 export interface HostConfig {
@@ -51,6 +53,7 @@ export interface GameConfig {
   model: string
   temperature: number
   max_tokens: number
+  disable_thinking: boolean
   poll_interval: number
   memory_threshold: number
   min_step_interval: number

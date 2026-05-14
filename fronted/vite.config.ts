@@ -14,43 +14,42 @@ export default defineConfig({
     host: true,
     proxy: {
       '/api': {
-        target: 'ws://localhost:8000',
+        target: 'ws://localhost:9191',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api/, ''),
         ws: true,
       },
       '/music': {
-        target: 'http://localhost:8000',
+        target: 'http://localhost:9191',
         changeOrigin: true,
       },
       '/bilibili': {
-        target: 'ws://localhost:8000',
+        target: 'ws://localhost:9191',
         changeOrigin: true,
         ws: true,
       },
       '/ai': {
-        target: 'http://localhost:8000',
+        target: 'http://localhost:9191',
         changeOrigin: true,
       },
       '/config': {
-        target: 'http://localhost:8000',
+        target: 'http://localhost:9191',
         changeOrigin: true,
       },
       '/avatar': {
-        target: 'ws://localhost:8000',
+        target: 'ws://localhost:9191',
         ws: true,
       },
       '/stream': {
-        target: 'http://localhost:8000',
+        target: 'http://localhost:9191',
         changeOrigin: true,
       },
       '/hls': {
-        target: 'http://localhost:8080',
+        target: 'http://localhost:8088',
         changeOrigin: true,
-        ws: true,
       },
       '/test': {
-        target: 'http://localhost:8000',
+        target: 'http://localhost:9191',
         changeOrigin: true,
         ws: true,
       },

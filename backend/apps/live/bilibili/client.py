@@ -113,11 +113,12 @@ class BilibiliClient:
 
         sessdata = self._get_sessdata()
         if sessdata:
-            logger.info(f"Connecting to room {self.room_id} with SESSDATA...")
+            uid = config.bilibili_uid
+            logger.info(f"Connecting to room {self.room_id} with SESSDATA (uid={uid})...")
             cookie_jar = aiohttp.CookieJar()
             cookie_jar.update_cookies({"SESSDATA": sessdata})
             self._session = aiohttp.ClientSession(cookie_jar=cookie_jar)
-            self.client = BLiveClient(self.room_id, session=self._session)
+            self.client = BLiveClient(self.room_id, uid=uid, session=self._session)
         else:
             logger.warning(f"Connecting to room {self.room_id} WITHOUT SESSDATA - usernames will be masked and UIDs will be 0")
             self._session = aiohttp.ClientSession()

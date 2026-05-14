@@ -145,21 +145,37 @@ function handleSessdataIgnore() {
   showSessdataWarning.value = false
 }
 
-async function handleSessdataUpdate(newSessdata: string) {
+async function handleSessdataUpdate(data: { sessdata: string; uid: number | null }) {
   try {
-    const res = await fetch('/bilibili/sessdata/update', {
+    const sessRes = await fetch('/bilibili/sessdata/update', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sessdata: newSessdata }),
+      body: JSON.stringify({ sessdata: data.sessdata }),
     })
-    const data = await res.json()
-    if (data.success) {
-      showSessdataWarning.value = false
-      sessdataIgnored.value = false
-      await checkSessdata()
-    } else {
-      alert('更新失败: ' + (data.error || '未知错误'))
+    const sessResult = await sessRes.json()
+    if (!sessResult.success) {
+      alert('SESSDATA更新失败: ' + (sessResult.error || '未知错误'))
+      return
     }
+
+    if (data.uid !== null) {
+      const cfgRes = await fetch('/config')
+      const cfg = await cfgRes.json()
+      cfg.bilibili.uid = data.uid
+      const saveRes = await fetch('/config', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(cfg),
+      })
+      if (!saveRes.ok) {
+        alert('UID更新失败')
+        return
+      }
+    }
+
+    showSessdataWarning.value = false
+    sessdataIgnored.value = false
+    await checkSessdata()
   } catch (e) {
     alert('更新失败: ' + e)
   }
@@ -243,6 +259,7 @@ html, body {
   overflow: hidden;
   border: none;
   outline: none;
+  color-scheme: dark;
 }
 </style>
 

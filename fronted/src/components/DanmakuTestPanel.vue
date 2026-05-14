@@ -147,6 +147,7 @@ const adminState = ref({
   isHideAdmin: false,
   volume: 1.0,
   isPaused: false,
+  isTestRoomEnabled: false,
 })
 
 const volumeInput = ref(10)
@@ -185,19 +186,19 @@ function connectWebSocket() {
         addLog(`[弹幕] ${msg.data.user}: ${msg.data.content}`, 'danmaku')
       } else if (msg.type === 'start') {
         addLog('[AI] 开始生成回复...', 'system')
-        llmStore.handleExternalChunk(msg)
+        if (adminState.value.isTestRoomEnabled) llmStore.handleExternalChunk(msg)
       } else if (msg.type === 'text') {
         addLog(`[AI文本] ${msg.data.text}`, 'reply')
-        llmStore.handleExternalChunk(msg)
+        if (adminState.value.isTestRoomEnabled) llmStore.handleExternalChunk(msg)
       } else if (msg.type === 'audio') {
         addLog('[AI] 音频已生成', 'system')
-        llmStore.handleExternalChunk(msg)
+        if (adminState.value.isTestRoomEnabled) llmStore.handleExternalChunk(msg)
       } else if (msg.type === 'end') {
         addLog('[AI] 回复完成', 'system')
-        llmStore.handleExternalChunk(msg)
+        if (adminState.value.isTestRoomEnabled) llmStore.handleExternalChunk(msg)
       } else if (msg.type === 'error') {
         addLog(`[错误] ${msg.data?.text || '未知错误'}`, 'error')
-        llmStore.handleExternalChunk(msg)
+        if (adminState.value.isTestRoomEnabled) llmStore.handleExternalChunk(msg)
       } else if (msg.type === 'music_control') {
         const action = msg.data?.action
         if (action === 'volume') {
@@ -286,6 +287,7 @@ async function sendCommand(command: string) {
           isHideAdmin: result.state.is_hide_admin,
           volume: result.state.volume ?? 1.0,
           isPaused: result.state.is_paused ?? false,
+          isTestRoomEnabled: !!result.state.is_test_room_enabled,
         }
       }
       const { success, info, warning } = useNotification()
@@ -317,6 +319,7 @@ async function refreshStatus() {
       isHideAdmin: data.is_hide_admin,
       volume: data.volume ?? 1.0,
       isPaused: data.is_paused ?? false,
+      isTestRoomEnabled: !!data.is_test_room_enabled,
     }
     volumeInput.value = Math.round((data.volume ?? 1.0) * 10)
   } catch (error) {

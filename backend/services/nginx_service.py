@@ -14,9 +14,9 @@ NGINX_EXE = NGINX_DIR / "nginx.exe"
 NGINX_CONF = NGINX_DIR / "conf" / "nginx.conf"
 HLS_DIR = NGINX_DIR / "hls"
 
-RTMP_URL = "rtmp://localhost:1935/live/stream"
-HLS_URL = "http://localhost:8080/hls/stream.m3u8"
-STAT_URL = "http://localhost:8080/stat"
+HTTP_PORT = 8088
+HLS_URL = f"http://localhost:{HTTP_PORT}/hls/stream.m3u8"
+FRONTEND_URL = f"http://localhost:{HTTP_PORT}"
 
 
 class NginxService:
@@ -46,7 +46,7 @@ class NginxService:
                 stderr=subprocess.PIPE,
             )
             self._is_running = True
-            logger.info("Nginx RTMP service started")
+            logger.info("Nginx HTTP proxy started")
             return True
         except Exception as e:
             logger.error(f"Failed to start Nginx: {e}")
@@ -72,16 +72,15 @@ class NginxService:
         finally:
             self._is_running = False
             self._process = None
-            logger.info("Nginx RTMP service stopped")
+            logger.info("Nginx HTTP proxy stopped")
 
     def is_running(self) -> bool:
         return self._is_running
 
     def get_stream_urls(self) -> dict:
         return {
-            "rtmp_url": RTMP_URL,
             "hls_url": HLS_URL,
-            "stat_url": STAT_URL,
+            "frontend_url": FRONTEND_URL,
         }
 
 
@@ -98,7 +97,7 @@ def get_nginx_service() -> NginxService:
 async def start_nginx():
     service = get_nginx_service()
     if service.start():
-        logger.info(f"RTMP stream available at: {RTMP_URL}")
+        logger.info(f"HTTP proxy available at: {FRONTEND_URL}")
         logger.info(f"HLS stream available at: {HLS_URL}")
 
 

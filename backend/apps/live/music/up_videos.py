@@ -134,9 +134,9 @@ class UpVideoManager:
         if self._initialized:
             return
         await init_db()
-        await self._auto_refresh()
         self._initialized = True
-        logger.info("UP视频管理器初始化完成")
+        asyncio.create_task(self._auto_refresh())
+        logger.info("UP视频管理器初始化完成（视频拉取在后台运行）")
 
     async def _auto_refresh(self):
         for up in config.trusted_ups:

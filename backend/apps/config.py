@@ -39,6 +39,14 @@ class Config:
         return int(os.getenv("BILIBILI_ROOM_ID") or self._data.get("bilibili", {}).get("room_id", 0))
 
     @property
+    def bilibili_uid(self) -> int:
+        return int(self._data.get("bilibili", {}).get("uid", 0))
+
+    @property
+    def bilibili_use_test_room(self) -> bool:
+        return bool(self._data.get("bilibili", {}).get("use_test_room", False))
+
+    @property
     def trusted_ups(self) -> list[dict]:
         return self._data.get("trusted_ups", [])
 
@@ -169,6 +177,10 @@ class Config:
     @property
     def game_api_key(self) -> str | None:
         return os.getenv("GAME_API_KEY") or self._data.get("game", {}).get("api_key")
+
+    @property
+    def game_disable_thinking(self) -> bool:
+        return self._data.get("game", {}).get("disable_thinking", self.llm_disable_thinking)
 
     @property
     def game_min_step_interval(self) -> float:

@@ -50,7 +50,7 @@
                 <div class="form-group">
                   <label class="checkbox-label">
                     <input type="checkbox" v-model="cfg.host.disable_thinking" />
-                    禁用思考链
+                    禁用思考链 <span class="hint">(模型不支持时取消勾选)</span>
                   </label>
                 </div>
               </div>
@@ -85,6 +85,12 @@
                   <label>最大 Token 数</label>
                   <input type="number" v-model.number="cfg.llm.max_tokens" min="50" max="8192" />
                 </div>
+                <div class="form-group">
+                  <label class="checkbox-label">
+                    <input type="checkbox" v-model="cfg.llm.disable_thinking" />
+                    禁用思考链 <span class="hint">(模型不支持时取消勾选)</span>
+                  </label>
+                </div>
 
                 <div class="section-title">🎙 主播模型</div>
                 <p class="section-desc">AI 主播对话、弹幕回复、风格化解说 (HostGraph)</p>
@@ -98,7 +104,7 @@
                 </div>
                 <div class="form-group">
                   <label>模型名</label>
-                  <input type="text" v-model="cfg.host.model" placeholder="doubao-seed-character-251128" />
+                  <input type="text" v-model="cfg.host.model" placeholder="deepseek-v4-flash" />
                 </div>
                 <div class="form-row-2">
                   <div class="form-group">
@@ -116,13 +122,7 @@
                 </div>
 
                 <div class="section-title">🎮 游戏模型</div>
-                <p class="section-desc">游戏 AI 决策与操作 (GameGraph)</p>
-                <div class="form-group">
-                  <label class="checkbox-label">
-                    <input type="checkbox" v-model="cfg.game.enabled" />
-                    启用游戏 AI
-                  </label>
-                </div>
+                <p class="section-desc">游戏 AI 决策与操作 (GameGraph) <span class="hint">启停请在主界面使用 AI ON/OFF 按钮</span></p>
                 <div class="form-group">
                   <label>API URL</label>
                   <input type="text" v-model="cfg.game.api_url" placeholder="https://api.example.com/v1" />
@@ -144,6 +144,12 @@
                     <label>最大 Token 数</label>
                     <input type="number" v-model.number="cfg.game.max_tokens" min="50" max="16384" />
                   </div>
+                </div>
+                <div class="form-group">
+                  <label class="checkbox-label">
+                    <input type="checkbox" v-model="cfg.game.disable_thinking" />
+                    禁用思考链 <span class="hint">(模型不支持时取消勾选)</span>
+                  </label>
                 </div>
                 <div class="form-group">
                   <label>MCP 服务地址</label>
@@ -212,13 +218,16 @@
               <div v-if="activeTab === 'messaging'" class="tab-content">
                 <div class="section-title">弹幕优先级</div>
                 <table class="compact-table">
+                  <tbody>
                   <tr><td><label>饥饿时间窗口 <span class="hint">(秒)</span></label></td><td><input type="number" v-model.number="cfg.messaging.danmaku_starvation_seconds" min="5" max="300" /></td></tr>
                   <tr><td><label>洪流阈值 <span class="hint">(条)</span></label></td><td><input type="number" v-model.number="cfg.messaging.danmaku_flood_threshold" min="1" max="50" /></td></tr>
                   <tr><td><label>洪流窗口 <span class="hint">(秒)</span></label></td><td><input type="number" v-model.number="cfg.messaging.danmaku_flood_window" min="5" max="120" /></td></tr>
+                  </tbody>
                 </table>
 
                 <div class="section-title">礼物优先级</div>
                 <table class="compact-table">
+                  <tbody>
                   <tr><td><label>饥饿时间 <span class="hint">(秒)</span></label></td><td><input type="number" v-model.number="cfg.messaging.gift_starvation_seconds" min="10" max="600" /></td></tr>
                   <tr><td><label>洪流阈值 <span class="hint">(条)</span></label></td><td><input type="number" v-model.number="cfg.messaging.gift_flood_threshold" min="1" max="20" /></td></tr>
                   <tr><td><label>洪流窗口 <span class="hint">(秒)</span></label></td><td><input type="number" v-model.number="cfg.messaging.gift_flood_window" min="10" max="180" /></td></tr>
@@ -226,19 +235,24 @@
                   <tr><td><label>高档价值</label></td><td><input type="number" v-model.number="cfg.messaging.gift_value_high" min="100" /></td></tr>
                   <tr><td><label>普通档价值</label></td><td><input type="number" v-model.number="cfg.messaging.gift_value_normal" min="10" /></td></tr>
                   <tr><td><label>低档价值</label></td><td><input type="number" v-model.number="cfg.messaging.gift_value_low" min="1" /></td></tr>
+                  </tbody>
                 </table>
 
                 <div class="section-title">队列</div>
                 <table class="compact-table">
+                  <tbody>
                   <tr><td><label>用户冷却 <span class="hint">(秒)</span></label></td><td><input type="number" v-model.number="cfg.messaging.user_cooldown_seconds" min="0" max="60" step="0.1" /></td></tr>
                   <tr><td><label>消息 TTL <span class="hint">(秒)</span></label></td><td><input type="number" v-model.number="cfg.messaging.default_ttl_seconds" min="5" max="300" /></td></tr>
+                  </tbody>
                 </table>
 
                 <div class="section-title">频率限制 <span class="hint">(最小间隔秒)</span></div>
                 <table class="compact-table">
-                  <tr><td><label>解说请求</label></td><td><input type="number" v-model.number="cfg.messaging.rate_limit_commentary" min="1" max="60" /></td></tr>
-                  <tr><td><label>弹幕回复</label></td><td><input type="number" v-model.number="cfg.messaging.rate_limit_danmaku" min="1" max="30" /></td></tr>
-                  <tr><td><label>礼物感谢</label></td><td><input type="number" v-model.number="cfg.messaging.rate_limit_gift" min="1" max="60" /></td></tr>
+                  <tbody>
+                  <tr><td><label>解说请求</label></td><td><input type="number" v-model.number="cfg.messaging.rate_limit_commentary" min="0" max="60" /></td></tr>
+                  <tr><td><label>弹幕回复</label></td><td><input type="number" v-model.number="cfg.messaging.rate_limit_danmaku" min="0" max="30" /></td></tr>
+                  <tr><td><label>礼物感谢</label></td><td><input type="number" v-model.number="cfg.messaging.rate_limit_gift" min="0" max="60" /></td></tr>
+                  </tbody>
                 </table>
               </div>
 
@@ -249,9 +263,12 @@
                 </div>
                 <div class="form-group">
                   <label>角色</label>
-                  <select v-model="cfg.easyvtuber.character">
-                    <option v-for="char in characters" :key="char.name" :value="char.name">{{ char.name }}</option>
-                  </select>
+                  <div class="input-row">
+                    <select v-model="cfg.easyvtuber.character" class="flex-select">
+                      <option v-for="char in characters" :key="char.name" :value="char.name">{{ char.name }}</option>
+                    </select>
+                    <button class="small-btn" @click="openImagesFolder">打开图片文件夹</button>
+                  </div>
                 </div>
                 <div class="section-title">输入</div>
                 <div class="form-group">
@@ -302,31 +319,42 @@
                 </div>
                 <div class="section-title">时序控制 <span class="hint">(秒)</span></div>
                 <table class="compact-table">
+                  <tbody>
                   <tr><td><label>状态轮询间隔</label></td><td><input type="number" v-model.number="cfg.game.poll_interval" min="0.2" max="10" step="0.1" /></td></tr>
                   <tr><td><label>最小操作间隔</label></td><td><input type="number" v-model.number="cfg.game.min_step_interval" min="1" max="30" step="0.5" /></td></tr>
                   <tr><td><label>操作间隔抖动</label></td><td><input type="number" v-model.number="cfg.game.step_jitter" min="0" max="5" step="0.1" /></td></tr>
                   <tr><td><label>解说建议间隔</label></td><td><input type="number" v-model.number="cfg.game.commentary_interval" min="5" max="300" /></td></tr>
                   <tr><td><label>解说硬间隔</label></td><td><input type="number" v-model.number="cfg.game.min_commentary_interval" min="5" max="120" /></td></tr>
                   <tr><td><label>解说消费超时</label></td><td><input type="number" v-model.number="cfg.game.commentary_hold_timeout" min="5" max="60" /></td></tr>
+                  </tbody>
                 </table>
                 <div class="section-title">记忆</div>
                 <table class="compact-table">
+                  <tbody>
                   <tr><td><label>总结阈值 <span class="hint">(条)</span></label></td><td><input type="number" v-model.number="cfg.game.memory_threshold" min="5" max="200" /></td></tr>
                   <tr><td><label>积极度 <span class="hint">(1-5)</span></label></td><td><input type="number" v-model.number="cfg.game.memory_eagerness" min="1" max="5" /></td></tr>
                   <tr><td><label>队列最大长度</label></td><td><input type="number" v-model.number="cfg.game.queue_max_size" min="5" max="100" /></td></tr>
                   <tr><td><label>主播历史条数</label></td><td><input type="number" v-model.number="cfg.game.host_history_maxlen" min="10" max="200" /></td></tr>
                   <tr><td><label>游戏历史条数</label></td><td><input type="number" v-model.number="cfg.game.game_history_maxlen" min="10" max="200" /></td></tr>
+                  </tbody>
                 </table>
               </div>
 
               <!-- Tab: 直播 -->
               <div v-if="activeTab === 'live'" class="tab-content">
                 <div class="section-title">B站直播</div>
-                <div class="form-row-2">
-                  <div class="form-group"><label>直播间 ID</label><input type="number" v-model.number="cfg.bilibili.room_id" /></div>
-                  <div class="form-group"><label>SESSDATA <span v-if="cfg.bilibili.sessdata.includes(MASKED)" class="hint">(隐藏)</span></label>
-                    <input :type="cfg.bilibili.sessdata.includes(MASKED) ? 'password' : 'text'" v-model="cfg.bilibili.sessdata" /></div>
+                <div class="form-group">
+                  <label class="checkbox-label">
+                    <input type="checkbox" v-model="cfg.bilibili.use_test_room" />
+                    使用测试房间 <span class="hint">(勾选后使用内置测试房间代替真实B站直播间)</span>
+                  </label>
                 </div>
+                <div class="form-row-2">
+                  <div class="form-group" :class="{ dimmed: cfg.bilibili.use_test_room }"><label>直播间 ID</label><input type="number" v-model.number="cfg.bilibili.room_id" :disabled="cfg.bilibili.use_test_room" /></div>
+                  <div class="form-group"><label>登录 UID</label><input type="number" v-model.number="cfg.bilibili.uid" placeholder="留空则不登录" /></div>
+                </div>
+                <div class="form-group"><label>SESSDATA <span v-if="cfg.bilibili.sessdata.includes(MASKED)" class="hint">(隐藏)</span></label>
+                  <input :type="cfg.bilibili.sessdata.includes(MASKED) ? 'password' : 'text'" v-model="cfg.bilibili.sessdata" /></div>
                 <div class="section-title">管理员</div>
                 <div class="form-row-2">
                   <div class="form-group"><label>UID</label><input type="number" v-model.number="cfg.admin.uid" /></div>
@@ -353,6 +381,7 @@
                   <div class="status-item"><span class="s-label">管理员弹幕</span><span :class="['s-value', adminState.isHideAdmin ? 'warning' : '']">{{ adminState.isHideAdmin ? '隐藏' : '显示' }}</span></div>
                   <div class="status-item"><span class="s-label">音乐音量</span><span class="s-value">{{ Math.round(adminState.volume * 10) }}/10</span></div>
                   <div class="status-item"><span class="s-label">播放状态</span><span :class="['s-value', adminState.isPaused ? 'warning' : 'on']">{{ adminState.isPaused ? '暂停' : '播放中' }}</span></div>
+                  <div class="status-item"><span class="s-label">测试房间</span><span :class="['s-value', adminState.isTestRoomEnabled ? 'on' : 'off']">{{ adminState.isTestRoomEnabled ? '已启用' : '已禁用' }}</span></div>
                 </div>
                 <button @click="refreshStatus" class="small-btn">刷新</button>
 
@@ -378,12 +407,12 @@
                   <button class="cmd-btn green" :disabled="!bvidInput" @click="addMusic">添加</button>
                 </div>
 
-                <div class="section-title">测试弹幕</div>
+                <div class="section-title">测试弹幕 <span v-if="!adminState.isTestRoomEnabled" class="hint">(需先启用测试房间)</span></div>
                 <div class="command-line">
-                  <label>用户:</label><input v-model="danmakuUser" class="small-input" style="width:100px" />
-                  <label>UID:</label><input v-model.number="danmakuUid" type="number" class="small-input" style="width:80px" />
-                  <input v-model="danmakuContent" placeholder="内容" class="flex-input" @keyup.enter="sendDanmaku" />
-                  <button class="cmd-btn blue" :disabled="!danmakuContent" @click="sendDanmaku">发送</button>
+                  <label>用户:</label><input v-model="danmakuUser" class="small-input" style="width:100px" :disabled="!adminState.isTestRoomEnabled" />
+                  <label>UID:</label><input v-model.number="danmakuUid" type="number" class="small-input" style="width:80px" :disabled="!adminState.isTestRoomEnabled" />
+                  <input v-model="danmakuContent" placeholder="内容" class="flex-input" @keyup.enter="sendDanmaku" :disabled="!adminState.isTestRoomEnabled" />
+                  <button class="cmd-btn blue" :disabled="!danmakuContent || !adminState.isTestRoomEnabled" @click="sendDanmaku">发送</button>
                 </div>
 
                 <div class="section-title">实时日志</div>
@@ -447,7 +476,7 @@ const tabs = [
   { key: 'monitor', label: '直播状况' },
 ]
 const activeTab = ref('host')
-const characters = ref<{ name: string; path: string }[]>([])
+const characters = ref<{ name: string }[]>([])
 const saveStatus = ref('')
 const saveStatusText = ref('')
 
@@ -457,12 +486,12 @@ const cfg = reactive<FullConfig>({} as FullConfig)
 function initCfgShape() {
   // 初始化 Vue reactive 所需的结构（值会被后端覆盖）
   const s: Record<string, any> = {
-    bilibili: { room_id: 0, sessdata: '' },
+    bilibili: { room_id: 0, sessdata: '', uid: 0, use_test_room: false },
     host: { room_id: 0, reply_interval: 5, max_reply_length: 100, api_url: '', api_key: '', model: '', temperature: 0.7, top_p: 0.9, max_tokens: 200, disable_thinking: true },
     llm: { api_url: '', api_key: '', model: '', temperature: 0.1, top_p: 0.9, max_tokens: 200, auto_collect_min_views: 20000, disable_thinking: true },
     tts: { provider: 'volcano', voice: 'zh-CN-XiaoxiaoNeural', encoding: 'wav', speed_ratio: 1.0 },
     volcano: { appid: '', access_token: '', speaker_id: '' },
-    game: { enabled: false, adapter: 'slay_the_spire', mcp_url: 'http://127.0.0.1:8080', api_url: '', api_key: '', model: '', temperature: 0.4, max_tokens: 500, poll_interval: 1.0, memory_threshold: 30, min_step_interval: 3.0, step_jitter: 0.5, commentary_interval: 30.0, min_commentary_interval: 15.0, commentary_hold_timeout: 20.0, memory_eagerness: 3, default_character: 'IRONCLAD', queue_max_size: 20, host_history_maxlen: 50, game_history_maxlen: 30 },
+    game: { enabled: false, adapter: 'slay_the_spire', mcp_url: 'http://127.0.0.1:8080', api_url: '', api_key: '', model: '', temperature: 0.4, max_tokens: 500, disable_thinking: true, poll_interval: 1.0, memory_threshold: 30, min_step_interval: 3.0, step_jitter: 0.5, commentary_interval: 30.0, min_commentary_interval: 15.0, commentary_hold_timeout: 20.0, memory_eagerness: 3, default_character: 'IRONCLAD', queue_max_size: 20, host_history_maxlen: 50, game_history_maxlen: 30 },
     easyvtuber: { enabled: true, character: 'lambda_00', input: { type: 'debug', osf_address: '127.0.0.1:11573', mouse_range: '0,0,1920,1080' }, model: { version: 'v3', precision: 'half', separable: true, use_tensorrt: true, use_eyebrow: true }, performance: { frame_rate: 30, interpolation: 'x2', super_resolution: 'off', ram_cache: '2gb', vram_cache: '2gb' }, output: { websocket: { enabled: true, port: 8765, host: 'localhost' } } },
     ai: { max_history_per_session: 16, summary_interval: 10, max_recent_messages: 16, poll_interval_seconds: 10.0 },
     messaging: { danmaku_starvation_seconds: 30.0, danmaku_flood_threshold: 5, danmaku_flood_window: 20.0, gift_starvation_seconds: 60.0, gift_flood_threshold: 3, gift_flood_window: 30.0, gift_value_highest: 10000, gift_value_high: 5000, gift_value_normal: 1000, gift_value_low: 100, user_cooldown_seconds: 3.0, default_ttl_seconds: 30.0, rate_limit_commentary: 4.0, rate_limit_danmaku: 3.0, rate_limit_gift: 10.0 },
@@ -508,6 +537,12 @@ async function loadCharacters() {
   } catch { /* ignore */ }
 }
 
+async function openImagesFolder() {
+  try {
+    await fetch('/config/easyvtuber/open-images', { method: 'POST' })
+  } catch { /* ignore */ }
+}
+
 // ---- 保存配置到后端 ----
 async function saveConfig() {
   saveStatus.value = 'saving'
@@ -546,7 +581,7 @@ const danmakuUid = ref(123456)
 const danmakuContent = ref('')
 const volumeInput = ref(10)
 const bvidInput = ref('')
-const adminState = ref({ isSleeping: false, faceMode: 'wandering', isVoiceMode: false, isHideAdmin: false, volume: 1.0, isPaused: false })
+const adminState = ref({ isSleeping: false, faceMode: 'wandering', isVoiceMode: false, isHideAdmin: false, volume: 1.0, isPaused: false, isTestRoomEnabled: false })
 const logs = ref<LogItem[]>([])
 let ws: WebSocket | null = null
 
@@ -565,11 +600,11 @@ function connectWebSocket() {
     try {
       const msg = JSON.parse(event.data)
       if (msg.type === 'danmaku') addLog(`[弹幕] ${msg.data.user}: ${msg.data.content}`, 'danmaku')
-      else if (msg.type === 'start') { addLog('[AI] 开始生成回复...', 'system'); llmStore.handleExternalChunk(msg) }
-      else if (msg.type === 'text') { addLog(`[AI] ${msg.data.text}`, 'reply'); llmStore.handleExternalChunk(msg) }
-      else if (msg.type === 'audio') { addLog('[AI] 音频已生成', 'system'); llmStore.handleExternalChunk(msg) }
-      else if (msg.type === 'end') { addLog('[AI] 回复完成', 'system'); llmStore.handleExternalChunk(msg) }
-      else if (msg.type === 'error') { addLog(`[错误] ${msg.data?.text || ''}`, 'error'); llmStore.handleExternalChunk(msg) }
+      else if (msg.type === 'start') { addLog('[AI] 开始生成回复...', 'system'); if (adminState.value.isTestRoomEnabled) llmStore.handleExternalChunk(msg) }
+      else if (msg.type === 'text') { addLog(`[AI] ${msg.data.text}`, 'reply'); if (adminState.value.isTestRoomEnabled) llmStore.handleExternalChunk(msg) }
+      else if (msg.type === 'audio') { addLog('[AI] 音频已生成', 'system'); if (adminState.value.isTestRoomEnabled) llmStore.handleExternalChunk(msg) }
+      else if (msg.type === 'end') { addLog('[AI] 回复完成', 'system'); if (adminState.value.isTestRoomEnabled) llmStore.handleExternalChunk(msg) }
+      else if (msg.type === 'error') { addLog(`[错误] ${msg.data?.text || ''}`, 'error'); if (adminState.value.isTestRoomEnabled) llmStore.handleExternalChunk(msg) }
       else if (msg.type === 'music_control') {
         const a = msg.data?.action
         if (a === 'volume') { musicStore.setVolume(msg.data.volume); addLog(`[音乐] 音量 ${Math.round(msg.data.volume * 10)}/10`, 'system') }
@@ -602,7 +637,7 @@ async function sendCommand(command: string) {
     const res = await fetch('/test/admin/command', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ command }) })
     const result = await res.json()
     if (result.success) {
-      if (result.state) adminState.value = { isSleeping: result.state.is_sleeping, faceMode: result.state.face_mode, isVoiceMode: result.state.is_voice_mode, isHideAdmin: result.state.is_hide_admin, volume: result.state.volume ?? 1.0, isPaused: result.state.is_paused ?? false }
+      if (result.state) adminState.value = { isSleeping: result.state.is_sleeping, faceMode: result.state.face_mode, isVoiceMode: result.state.is_voice_mode, isHideAdmin: result.state.is_hide_admin, volume: result.state.volume ?? 1.0, isPaused: result.state.is_paused ?? false, isTestRoomEnabled: !!result.state.is_test_room_enabled }
       addLog(`[指令] ${command} -> ${result.message}`, 'system')
     } else addLog(`[错误] ${command} -> ${result.message}`, 'error')
   } catch { useNotification().error('发送指令失败') }
@@ -612,7 +647,7 @@ async function refreshStatus() {
   try {
     const res = await fetch('/test/admin/state')
     const data = await res.json()
-    adminState.value = { isSleeping: data.is_sleeping, faceMode: data.face_mode, isVoiceMode: data.is_voice_mode, isHideAdmin: data.is_hide_admin, volume: data.volume ?? 1.0, isPaused: data.is_paused ?? false }
+    adminState.value = { isSleeping: data.is_sleeping, faceMode: data.face_mode, isVoiceMode: data.is_voice_mode, isHideAdmin: data.is_hide_admin, volume: data.volume ?? 1.0, isPaused: data.is_paused ?? false, isTestRoomEnabled: !!data.is_test_room_enabled }
     volumeInput.value = Math.round((data.volume ?? 1.0) * 10)
   } catch { /* */ }
 }
@@ -666,6 +701,8 @@ onUnmounted(() => {
   flex-direction: column;
   box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
   border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #cbd5e1;
+  color-scheme: dark;
 }
 
 .settings-header {
@@ -739,9 +776,9 @@ onUnmounted(() => {
 .tab-content { display: flex; flex-direction: column; gap: 14px; }
 
 .section-title {
-  color: #60a5fa;
+  color: #93c5fd;
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.05em;
   padding-top: 6px;
@@ -749,13 +786,13 @@ onUnmounted(() => {
 }
 .section-title:first-child { padding-top: 0; margin-top: 0; }
 
-.section-desc { color: #64748b; font-size: 12px; margin: -8px 0 2px 0; }
+.section-desc { color: #94a3b8; font-size: 12px; margin: -8px 0 2px 0; }
 
 .form-group { display: flex; flex-direction: column; gap: 5px; }
 
 .form-group label { color: #cbd5e1; font-size: 12.5px; display: flex; align-items: center; gap: 6px; }
 .checkbox-label { flex-direction: row !important; cursor: pointer; }
-.hint { color: #64748b; font-size: 11px; font-weight: 400; }
+.hint { color: #94a3b8; font-size: 11px; font-weight: 400; }
 .range-value { color: #60a5fa; font-size: 12px; font-weight: 600; }
 
 .form-row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
@@ -770,9 +807,28 @@ onUnmounted(() => {
   padding: 7px 10px;
   color: #f1f5f9;
   font-size: 12.5px;
+  color-scheme: dark;
+}
+
+.input-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.flex-select {
+  flex: 1;
+  min-width: 0;
 }
 
 .form-group input:focus, .form-group select:focus { outline: none; border-color: #3b82f6; }
+
+/* 下拉选项深色背景 */
+.form-group select option,
+select option {
+  background: #1e293b;
+  color: #e2e8f0;
+}
 .form-group input[type="range"] { width: 100%; accent-color: #3b82f6; }
 .form-group input[type="checkbox"] { accent-color: #3b82f6; width: 15px; height: 15px; }
 
@@ -797,8 +853,8 @@ onUnmounted(() => {
 .compact-table td:first-child { width: 50%; }
 .compact-table input {
   width: 100%; box-sizing: border-box;
-  background: rgba(255,255,255,0.05);
-  border: 1px solid rgba(255,255,255,0.1);
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.12);
   border-radius: 6px;
   padding: 5px 8px;
   color: #f1f5f9;
@@ -825,6 +881,7 @@ onUnmounted(() => {
 .cmd-btn.gray { background: #64748b; }
 .cmd-btn.purple { background: #8b5cf6; }
 .cmd-btn.red { background: #ef4444; }
+.cmd-btn.cyan { background: #06b6d4; }
 
 .command-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .command-line label { color: #94a3b8; font-size: 12px; white-space: nowrap; }

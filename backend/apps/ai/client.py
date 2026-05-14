@@ -223,6 +223,6 @@ def get_game_ai_client() -> AIClient:
             api_url=config.game_api_url,
             api_key=config.game_api_key or "",
             default_model=config.game_model,
-            disable_thinking=True,
+            disable_thinking=config.game_disable_thinking,
         )
     return _game_ai_client

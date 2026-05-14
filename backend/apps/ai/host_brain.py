@@ -555,8 +555,8 @@ class AIHostBrain:
             )
             tts_tasks.append(task)
 
-        for completed in asyncio.as_completed(tts_tasks):
-            result = await completed
+        for task in tts_tasks:
+            result = await task
             if result:
                 yield result
 

@@ -57,7 +57,16 @@ class EasyVtuberManager:
             )
 
             await self._runner.start()
-            self._task = asyncio.create_task(self._runner.run_loop())
+
+            async def _safe_run_loop():
+                try:
+                    await self._runner.run_loop()
+                except asyncio.CancelledError:
+                    pass
+                except Exception as e:
+                    logger.error(f"EasyVtuber 渲染循环异常: {e}", exc_info=True)
+
+            self._task = asyncio.create_task(_safe_run_loop())
             self._started = True
             logger.info("EasyVtuber 启动成功")
 

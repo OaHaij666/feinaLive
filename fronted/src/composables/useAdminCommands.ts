@@ -13,6 +13,8 @@ interface AdminCommandResult {
     face_mode: string
     is_voice_mode: boolean
     is_hide_admin: boolean
+    is_mcp_running: boolean
+    is_test_room_enabled: boolean
   }
 }
 
@@ -26,6 +28,8 @@ export function useAdminCommands() {
       faceMode: state.face_mode,
       isVoiceMode: state.is_voice_mode,
       isHideAdmin: state.is_hide_admin,
+      isMCPRunning: state.is_mcp_running,
+      isTestRoomEnabled: state.is_test_room_enabled,
     }
   }
 
@@ -38,6 +42,8 @@ export function useAdminCommands() {
         face_mode: state.face_mode || 'wandering',
         is_voice_mode: !!state.is_voice_mode,
         is_hide_admin: !!state.is_hide_admin,
+        is_mcp_running: !!state.is_mcp_running,
+        is_test_room_enabled: !!state.is_test_room_enabled,
       })
     } catch (error) {
       // 后端不可用时静默失败，避免打断前端流程
@@ -58,6 +64,62 @@ export function useAdminCommands() {
     }
   }
 
+  async function toggleMCP(): Promise<boolean> {
+    try {
+      const newState = !adminState.value.isMCPRunning
+      const cmd = newState ? '/mcp 1' : '/mcp 0'
+      const res = await fetch('/test/admin/command', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ command: cmd }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        const { success } = useNotification()
+        success(data.message, 3000)
+        await refreshAdminState()
+        return true
+      } else {
+        const { warning } = useNotification()
+        warning(data.message || '操作失败', 3000)
+        return false
+      }
+    } catch (e) {
+      const { error } = useNotification()
+      error('网络请求失败', 3000)
+      console.error('MCP toggle failed:', e)
+      return false
+    }
+  }
+
+  async function toggleTestRoom(): Promise<boolean> {
+    try {
+      const newState = !adminState.value.isTestRoomEnabled
+      const cmd = newState ? '/testroom 1' : '/testroom 0'
+      const res = await fetch('/test/admin/command', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ command: cmd }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        const { success } = useNotification()
+        success(data.message, 3000)
+        await refreshAdminState()
+        return true
+      } else {
+        const { warning } = useNotification()
+        warning(data.message || '操作失败', 3000)
+        return false
+      }
+    } catch (e) {
+      const { error } = useNotification()
+      error('网络请求失败', 3000)
+      console.error('TestRoom toggle failed:', e)
+      return false
+    }
+  }
+
   function shouldHideDanmaku(uid: number, username: string): boolean {
     if (adminState.value.isHideAdmin) {
       return uid === ADMIN_UID || username === ADMIN_USERNAME
@@ -73,6 +135,8 @@ export function useAdminCommands() {
     updateAdminState,
     shouldHideDanmaku,
     refreshAdminState,
+    toggleMCP,
+    toggleTestRoom,
   }
 }
 
@@ -81,6 +145,8 @@ const _adminState = ref({
   faceMode: 'wandering',
   isVoiceMode: false,
   isHideAdmin: false,
+  isMCPRunning: false,
+  isTestRoomEnabled: false,
 })
 
 let _syncStarted = false

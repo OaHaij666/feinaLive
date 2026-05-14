@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+from collections.abc import Coroutine
 from typing import Callable
 
 from apps.ai.game_graph import GameGraph
@@ -42,13 +43,15 @@ class GameManager:
             del self._game_graphs[game_id]
             logger.info(f"游戏注销: {game_id}")
 
-    async def start(self, on_reply: Callable[[str], asyncio.coroutine] | None = None):
+    async def start(self, on_reply: Callable[[str], Coroutine] | None = None):
         if self._running:
             logger.warning("GameManager 已在运行")
             return
 
-        self._host_graph = HostGraph(on_reply=on_reply)
+        if not self._game_graphs:
+            logger.warning("没有注册任何游戏适配器，请先调用 register_game")
 
+        self._host_graph = HostGraph(on_reply=on_reply)
         await self._host_graph.start()
 
         for game_id, graph in self._game_graphs.items():
@@ -74,8 +77,10 @@ class GameManager:
         get_message_queue().unmute()
 
     def get_game_status(self) -> dict:
+        registered = list(self._game_graphs.keys())
         return {
             "running": self._running,
+            "registered_games": registered,
             "games": {
                 game_id: {
                     "running": graph.is_running,

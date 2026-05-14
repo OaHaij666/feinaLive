@@ -24,6 +24,8 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 
+logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
+
 logger = logging.getLogger(__name__)
 
 
@@ -159,6 +161,7 @@ async def lifespan(app: FastAPI):
 
     if config.game_enabled:
         from apps.ai.game_manager import get_game_manager
+        from apps.ai.mcp.adapters.slay_the_spire import SlayTheSpireAdapter
         game_manager = get_game_manager()
 
         def on_sleep_mute(state_dict: dict):
@@ -167,9 +170,28 @@ async def lifespan(app: FastAPI):
             else:
                 game_manager.unmute()
 
+        async def on_mcp_change(enabled: bool):
+            if enabled:
+                if game_manager.is_running:
+                    logger.info("游戏AI已在运行，跳过")
+                    return
+                adapter = SlayTheSpireAdapter()
+                healthy = await adapter.health_check()
+                if not healthy:
+                    logger.warning(f"MCP 服务不可用: {config.game_mcp_url}，无法启动游戏AI")
+                    return
+                game_manager.register_game(adapter)
+                await game_manager.start()
+                logger.info("游戏AI已通过 /mcp 1 启动")
+            else:
+                if not game_manager.is_running:
+                    return
+                await game_manager.stop()
+                logger.info("游戏AI已通过 /mcp 0 停止")
+
         admin_handler.register_state_change_callback(on_sleep_mute)
-        await game_manager.start()
-        logger.info("游戏集成服务已启动")
+        admin_handler.register_mcp_change_callback(lambda e: asyncio.create_task(on_mcp_change(e)))
+        logger.info("游戏集成模块已就绪（可通过 /mcp 1 或 /game/start 启动）")
 
     yield
 
@@ -182,8 +204,9 @@ async def lifespan(app: FastAPI):
     if config.game_enabled:
         from apps.ai.game_manager import get_game_manager
         game_manager = get_game_manager()
-        await game_manager.stop()
-        logger.info("游戏集成服务已停止")
+        if game_manager.is_running:
+            await game_manager.stop()
+            logger.info("游戏集成服务已停止")
 
 
 app = FastAPI(
@@ -208,7 +231,6 @@ app.include_router(ai_router, tags=["AI"])
 app.include_router(game_router, tags=["Game"])
 app.include_router(easyvtuber_router, tags=["Avatar"])
 app.include_router(test_router, tags=["Test"])
-
 
 @app.exception_handler(AppException)
 async def app_exception_handler(request: Request, exc: AppException):
@@ -255,4 +277,4 @@ async def stream_status():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=9191, access_log=False)

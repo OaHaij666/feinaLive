@@ -5,23 +5,15 @@ _venv_root = os.path.join(os.path.dirname(__file__), '..', '.venv')
 _cudnn_bin = os.path.join(_venv_root, 'Lib', 'site-packages', 'nvidia', 'cudnn', 'bin')
 _torch_lib = os.path.join(_venv_root, 'Lib', 'site-packages', 'torch', 'lib')
 _cuda_bin = r'C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.1\bin'
-os.environ['PATH'] = _cudnn_bin + ';' + _torch_lib + ';' + _cuda_bin + ';' + os.environ.get('PATH', '')
+_project_root = os.path.normpath(os.path.join(os.path.dirname(__file__), '..', '..'))
+os.environ['PATH'] = _project_root + ';' + _cudnn_bin + ';' + _torch_lib + ';' + _cuda_bin + ';' + os.environ.get('PATH', '')
 try:
+    os.add_dll_directory(_project_root)
     os.add_dll_directory(_cudnn_bin)
     os.add_dll_directory(_torch_lib)
     os.add_dll_directory(_cuda_bin)
 except (AttributeError, OSError):
     pass
-
-try:
-    import pyvirtualcam
-except ImportError:
-    pyvirtualcam = None
-
-try:
-    from SpoutGL import SpoutSender as SpoutGL_Sender
-except ImportError:
-    SpoutGL_Sender = None
 
 import asyncio
 import logging
@@ -35,8 +27,20 @@ import numpy as np
 from PIL import Image
 
 EASYVTUBER_DIR = Path(__file__).parent
+PROJECT_ROOT = Path(_project_root)
 sys.path.insert(0, str(EASYVTUBER_DIR))
 sys.path.insert(0, str(EASYVTUBER_DIR / "src"))
+sys.path.insert(0, str(PROJECT_ROOT))
+
+try:
+    import pyvirtualcam
+except ImportError:
+    pyvirtualcam = None
+
+try:
+    from PySpout import SpoutSender as SpoutGL_Sender
+except ImportError:
+    SpoutGL_Sender = None
 
 from src.args import args
 from src.utils.preprocess import resize_to_512_center, apply_color_curves
@@ -255,11 +259,10 @@ class EasyVtuberRunner:
                 args.output_spout2 = False
             else:
                 from OpenGL.GL import GL_RGBA
-                self._spout_sender = SpoutGL_Sender()
-                self._spout_sender.setSenderName("EasyVtuber")
                 self._spout_width = cam_width_scale * getattr(args, 'model_output_size', 512)
                 self._spout_height = getattr(args, 'model_output_size', 512)
                 self._spout_format = GL_RGBA
+                self._spout_sender = SpoutGL_Sender("EasyVtuber", self._spout_width, self._spout_height, self._spout_format)
                 logger.info(f"Spout2 输出已启动: EasyVtuber ({self._spout_width}x{self._spout_height})")
 
         logger.info("EasyVtuber 渲染循环启动")
@@ -282,14 +285,7 @@ class EasyVtuberRunner:
                     self._virtual_cam.send(frame)
 
                 if hasattr(self, '_spout_sender') and self._spout_sender:
-                    self._spout_sender.sendImage(
-                        frame.tobytes(),
-                        self._spout_width,
-                        self._spout_height,
-                        self._spout_format,
-                        False,
-                        0
-                    )
+                    self._spout_sender.send_image(frame, False)
 
                 if interval > 0:
                     last_time += interval

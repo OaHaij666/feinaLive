@@ -17,16 +17,17 @@
 
 import asyncio
 import logging
-import time
+from collections.abc import Coroutine
 from typing import Callable
 
 from apps.ai.client import ChatMessage, ChatRequest, get_ai_client
-from apps.ai.host_brain import get_host_brain
+from apps.ai.host_brain import SentenceBuffer, StreamReplyChunk, get_host_brain
 from apps.ai.messaging.queue import Message, get_message_queue
 from apps.ai.prompt import get_host_system_prompt
 from apps.ai.shared_context import get_shared_context
 from apps.ai.tts import get_tts_client
 from apps.config import config
+from apps.easyvtuber import get_easyvtuber_manager
 
 logger = logging.getLogger(__name__)
 
@@ -79,13 +80,12 @@ GIFT_THANKS_PROMPT = """{host_personality}
 class HostGraph:
     def __init__(
         self,
-        on_reply: Callable[[str], asyncio.coroutine] | None = None,
+        on_reply: Callable[[str], Coroutine] | None = None,
     ):
         self._shared_context = get_shared_context()
         self._running = False
         self._task: asyncio.Task | None = None
         self._on_reply = on_reply
-        self._last_tts_time: float = 0
 
     @property
     def is_running(self) -> bool:
@@ -143,17 +143,6 @@ class HostGraph:
         data = msg.data
         key_points = data.get("key_points", [])
         mood = data.get("mood", "neutral")
-        game_step_id = data.get("game_step_id", 0)
-
-        current_step = await self._shared_context.get_game_step_id()
-        max_staleness = max(1, int(config.game_commentary_interval / config.game_min_step_interval) + 2)
-        steps_behind = current_step - game_step_id
-        if game_step_id and steps_behind > max_staleness:
-            logger.info(
-                f"解说新鲜度检查失败，丢弃: step={game_step_id} (当前={current_step}, "
-                f"落后={steps_behind}, 阈值={max_staleness})"
-            )
-            return
 
         host_personality = get_host_system_prompt()
         host_history = await self._shared_context.get_host_history_text(limit=10)
@@ -165,12 +154,13 @@ class HostGraph:
             host_history=host_history or "（暂无）",
         )
 
-        spoken = await self._llm_generate(system_content, "请生成解说。", config.host_max_tokens)
+        spoken = await self._stream_reply(system_content, "请生成解说。")
         if not spoken:
             return
 
         logger.info(f"主播解说: {spoken}")
-        await self._speak(spoken)
+
+        await self._shared_context.signal_commentary_consumed()
 
         await self._shared_context.add_host_entry(
             danmaku=f"[游戏解说-{mood}]",
@@ -193,12 +183,11 @@ class HostGraph:
             host_history=host_history or "（暂无）",
         )
 
-        spoken = await self._llm_generate(system_content, "请回复弹幕。", config.host_max_tokens)
+        spoken = await self._stream_reply(system_content, "请回复弹幕。")
         if not spoken:
             return
 
         logger.info(f"主播回复弹幕 [{user}]: {spoken[:30]}...")
-        await self._speak(spoken)
 
         await self._shared_context.add_host_entry(
             danmaku=danmaku,
@@ -223,12 +212,11 @@ class HostGraph:
             gift_info=gift_info,
         )
 
-        spoken = await self._llm_generate(system_content, "请生成感谢语。", 80)
+        spoken = await self._stream_reply(system_content, "请生成感谢语。")
         if not spoken:
             return
 
         logger.info(f"礼物感谢: {spoken}")
-        await self._speak(spoken)
 
         await self._shared_context.add_host_entry(
             danmaku=f"[礼物] {gift_info}",
@@ -239,7 +227,12 @@ class HostGraph:
         if self._on_reply:
             await self._on_reply(spoken)
 
-    async def _llm_generate(self, system_content: str, user_content: str, max_tokens: int) -> str | None:
+    async def _stream_reply(self, system_content: str, user_content: str) -> str | None:
+        """流式 LLM → 分句 TTS → WebSocket 广播 → EasyVtuber 口型
+
+        复用与 HostBrain._stream_reply_impl 完全相同的流式管线，
+        唯一的区别是输出通过 WebSocket 广播而非 HTTP SSE yield。
+        """
         ai = get_ai_client()
         if not ai.available:
             logger.warning("AI 不可用，跳过话术生成")
@@ -249,41 +242,103 @@ class HostGraph:
             ChatMessage(role="system", content=system_content),
             ChatMessage(role="user", content=user_content),
         ]
-
         request = ChatRequest(
             messages=messages,
             model=config.host_model,
             temperature=config.host_temperature,
-            max_tokens=max_tokens,
+            top_p=config.host_top_p,
+            max_tokens=config.host_max_tokens,
+            disable_thinking=config.llm_disable_thinking,
+            stream=True,
         )
 
-        try:
-            response = await ai.chat(request)
-            if not response or not response.content:
-                logger.warning("主播 LLM 响应为空")
-                return None
-
-            text = response.content.strip()
-            if len(text) > config.host_max_reply_length:
-                text = text[:config.host_max_reply_length]
-            return text
-
-        except Exception as e:
-            logger.error(f"主播 LLM 话术生成失败: {e}")
-            return None
-
-    async def _speak(self, text: str):
-        elapsed = time.time() - self._last_tts_time
-        min_interval = 3.0
-        if elapsed < min_interval:
-            await asyncio.sleep(min_interval - elapsed)
+        sentence_buffer = SentenceBuffer()
+        full_response = ""
+        sentence_index = 0
+        char_offset = 0
+        tts_tasks: list[asyncio.Task] = []
 
         tts = get_tts_client()
-        try:
-            result = await tts.synthesize(text)
-            if result and result.audio_data:
-                logger.debug(f"TTS 合成成功: {len(result.audio_data)} bytes")
-        except Exception as e:
-            logger.error(f"TTS 合成失败: {e}")
 
-        self._last_tts_time = time.time()
+        async def process_sentence(sentence: str, idx: int, offset: int):
+            result = await tts.synthesize(sentence)
+            if result:
+                return StreamReplyChunk(
+                    type="audio",
+                    text=sentence,
+                    audio_data=result.audio_data,
+                    sentence_index=idx,
+                    char_offset=offset,
+                )
+            return None
+
+        await self._broadcast_chunk({"type": "start", "is_final": False})
+
+        try:
+            easyvtuber = get_easyvtuber_manager()
+            easyvtuber.set_speaking(True)
+        except Exception as e:
+            logger.warning(f"设置 speaking 状态失败: {e}")
+
+        try:
+            async for chunk in ai.chat_stream(request):
+                full_response += chunk
+
+                new_sentences = sentence_buffer.add(chunk)
+                for sentence in new_sentences:
+                    await self._broadcast_chunk({"type": "text", "text": sentence, "is_final": False})
+
+                    task = asyncio.create_task(
+                        process_sentence(sentence, sentence_index, char_offset)
+                    )
+                    tts_tasks.append(task)
+                    sentence_index += 1
+                    char_offset += len(sentence)
+
+            remaining = sentence_buffer.flush()
+            if remaining:
+                await self._broadcast_chunk({"type": "text", "text": remaining, "is_final": False})
+
+                task = asyncio.create_task(
+                    process_sentence(remaining, sentence_index, char_offset)
+                )
+                tts_tasks.append(task)
+
+            for task in tts_tasks:
+                result = await task
+                if result:
+                    await self._broadcast_chunk(result.to_dict())
+
+            if len(full_response) > config.host_max_reply_length:
+                full_response = full_response[:config.host_max_reply_length]
+
+            await self._broadcast_chunk({"type": "end", "text": full_response, "is_final": True})
+
+        finally:
+            try:
+                easyvtuber = get_easyvtuber_manager()
+                easyvtuber.set_speaking(False)
+            except Exception as e:
+                logger.warning(f"设置 speaking 状态失败: {e}")
+
+        return full_response
+
+    async def _broadcast_chunk(self, chunk: dict):
+        """广播到所有前端 WebSocket"""
+        from core.websocket import manager as ws_manager
+
+        target_rooms = set()
+        if config.bilibili_room_id > 0:
+            target_rooms.add(str(config.bilibili_room_id))
+        if config.default_room_id > 0:
+            target_rooms.add(str(config.default_room_id))
+
+        from apps.ai.admin_commands import get_admin_handler
+        if get_admin_handler().get_state().is_test_room_enabled:
+            target_rooms.add("test_room")
+
+        for room_id in target_rooms:
+            try:
+                await ws_manager.send_message(room_id, chunk)
+            except Exception:
+                pass

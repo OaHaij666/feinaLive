@@ -41,6 +41,21 @@ def _target_room_ids() -> list[str]:
 @router.post("/danmaku")
 async def send_test_danmaku(danmaku: TestDanmakuInput):
     """发送测试弹幕 - 与真实弹幕走同一路线"""
+    from apps.ai.admin_commands import get_admin_handler as get_admin
+
+    if not get_admin().get_state().is_test_room_enabled:
+        return {
+            "success": False,
+            "accepted": False,
+            "msg_id": "",
+            "user": danmaku.user,
+            "content": danmaku.content,
+            "uid": danmaku.uid,
+            "music_intercepted": False,
+            "timestamp": datetime.now().isoformat(),
+            "error": "测试房间未启用，请先启用测试房间",
+        }
+
     msg_id = f"test_{int(time.time() * 1000)}"
 
     logger.info(f"[测试弹幕] {danmaku.user} ({danmaku.uid}): {danmaku.content}")

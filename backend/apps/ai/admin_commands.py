@@ -10,6 +10,7 @@
 - /pause 1|0 - 暂停/恢复播放: 1=暂停, 0=恢复
 - /rm        - 移除当前歌曲并跳到下一首
 - /add_music BV号 - 发送BV号给LLM精炼后加入预备歌单
+- /mcp 1|0   - 启动/停止 GameGraph 游戏AI
 - /help       - 显示所有指令及当前状态
 """
 
@@ -38,6 +39,8 @@ class AdminState:
     is_hide_admin: bool = False
     volume: float = 1.0
     is_paused: bool = False
+    is_mcp_running: bool = False
+    is_test_room_enabled: bool = False
 
 
 @dataclass
@@ -49,17 +52,19 @@ class CommandResult:
 
 
 class AdminCommandHandler:
-    ADMIN_COMMANDS = ["sleep", "face", "voice", "hide", "sound", "next", "pause", "rm", "add_music", "help"]
+    ADMIN_COMMANDS = ["sleep", "face", "voice", "hide", "sound", "next", "pause", "rm", "add_music", "mcp", "help"]
     COMMAND_PATTERN = re.compile(r"^/(\w+)\s*(\S*)$")
 
     def __init__(self):
         self._state = AdminState()
+        self._state.is_test_room_enabled = config.bilibili_use_test_room
         self._face_mode_callbacks: list[Callable[[FaceMode], None]] = []
         self._state_change_callbacks: list[Callable[[dict], None]] = []
         self._volume_change_callbacks: list[Callable[[float], None]] = []
         self._pause_change_callbacks: list[Callable[[bool], None]] = []
         self._next_track_callbacks: list[Callable[[], None]] = []
         self._remove_track_callbacks: list[Callable[[], None]] = []
+        self._mcp_change_callbacks: list[Callable[[bool], None]] = []
 
     def register_face_mode_callback(self, callback: Callable[[FaceMode], None]):
         self._face_mode_callbacks.append(callback)
@@ -122,6 +127,16 @@ class AdminCommandHandler:
             except Exception as e:
                 logger.error(f"remove_track callback error: {e}")
 
+    def register_mcp_change_callback(self, callback: Callable[[bool], None]):
+        self._mcp_change_callbacks.append(callback)
+
+    def notify_mcp_change(self, enabled: bool):
+        for cb in self._mcp_change_callbacks:
+            try:
+                cb(enabled)
+            except Exception as e:
+                logger.error(f"mcp_change callback error: {e}")
+
     def is_admin(self, uid: int) -> bool:
         return uid == config.admin_uid
 
@@ -164,6 +179,8 @@ class AdminCommandHandler:
             return self._handle_rm()
         elif cmd == "add_music":
             return None
+        elif cmd == "mcp":
+            return self._handle_mcp(value)
         elif cmd == "help":
             return self._handle_help()
         else:
@@ -195,6 +212,8 @@ class AdminCommandHandler:
             return self._handle_rm()
         elif cmd == "add_music":
             return await self._handle_add_music(value)
+        elif cmd == "mcp":
+            return await self._handle_mcp_async(value)
         elif cmd == "help":
             return self._handle_help()
         else:
@@ -418,6 +437,41 @@ class AdminCommandHandler:
             command="/add_music"
         )
 
+    def _handle_mcp(self, value: Optional[str]) -> CommandResult:
+        if not config.game_enabled:
+            return CommandResult(
+                success=False,
+                message="游戏AI未启用，请在 config.yaml 中设置 game.enabled=true",
+                command="/mcp"
+            )
+        if value not in ["0", "1"]:
+            return CommandResult(
+                success=False,
+                message="用法: /mcp 1(启动游戏AI) 或 /mcp 0(停止游戏AI)",
+                command="/mcp"
+            )
+        enabled = value == "1"
+        self.notify_mcp_change(enabled)
+        self._state.is_mcp_running = enabled
+        self.notify_state_change()
+        msg = "游戏AI已启动" if enabled else "游戏AI已停止"
+        return CommandResult(
+            success=True,
+            message=msg,
+            command="/mcp",
+            new_state=self.get_state_dict()
+        )
+
+    async def _handle_mcp_async(self, value: Optional[str]) -> CommandResult:
+        return self._handle_mcp(value)
+
+    def set_test_room(self, enabled: bool):
+        """由配置系统调用，非管理员指令"""
+        self._state.is_test_room_enabled = enabled
+        self.notify_state_change()
+        msg = "测试房间已启用" if enabled else "测试房间已禁用"
+        logger.info(f"Config: test_room {enabled} -> {msg}")
+
     def _handle_help(self) -> CommandResult:
         state = self.get_state()
         help_text = """【管理员指令列表】
@@ -429,6 +483,8 @@ class AdminCommandHandler:
 /voice 0 - AI主播模式
 /hide 1 - 隐藏管理员弹幕
 /hide 0 - 显示管理员弹幕
+/mcp 1 - 启动游戏AI
+/mcp 0 - 停止游戏AI
 
 【当前状态】
 AI回复: {}
@@ -436,13 +492,15 @@ AI回复: {}
 弹幕模式: {}
 管理员弹幕: {}
 音乐音量: {}/10
-播放状态: {}""".format(
+播放状态: {}
+游戏AI: {}""".format(
             "已暂停" if state.is_sleeping else "正常",
             "鼠标追踪" if state.face_mode == FaceMode.MOUSE_TRACKING else "漫步",
             "接管模式" if state.is_voice_mode else "AI主播",
             "隐藏" if state.is_hide_admin else "显示",
             int(state.volume * 10),
-            "已暂停" if state.is_paused else "播放中"
+            "已暂停" if state.is_paused else "播放中",
+            "运行中" if state.is_mcp_running else "已停止",
         )
         return CommandResult(
             success=True,
@@ -462,6 +520,8 @@ AI回复: {}
             "is_hide_admin": self._state.is_hide_admin,
             "volume": self._state.volume,
             "is_paused": self._state.is_paused,
+            "is_mcp_running": self._state.is_mcp_running,
+            "is_test_room_enabled": self._state.is_test_room_enabled,
         }
 
     def should_filter_admin_danmaku(self, uid: int, username: str) -> bool:

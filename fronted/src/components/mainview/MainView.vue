@@ -18,6 +18,17 @@
             <span class="ratio-label">{{ videoRatio }}</span>
           </button>
         </div>
+        <div class="mcp-toggle-center">
+          <button
+            class="mcp-toggle-btn"
+            :class="{ active: adminState.isMCPRunning }"
+            @click="handleToggleMCP"
+            :disabled="mcpToggling"
+            :title="adminState.isMCPRunning ? '停止 GameGraph 游戏AI' : '启动 GameGraph 游戏AI'"
+          >
+            <span class="mcp-label">{{ mcpToggling ? '...' : (adminState.isMCPRunning ? 'AI ON' : 'AI OFF') }}</span>
+          </button>
+        </div>
       </div>
     </div>
   </div>
@@ -25,8 +36,11 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
+import { useAdminCommands } from '@/composables/useAdminCommands'
 
 const videoRatio = ref<'16:9' | '16:10' | '4:3'>('16:9')
+const { adminState, toggleMCP } = useAdminCommands()
+const mcpToggling = ref(false)
 
 function toggleRatio() {
   if (videoRatio.value === '16:9') {
@@ -35,6 +49,15 @@ function toggleRatio() {
     videoRatio.value = '4:3'
   } else {
     videoRatio.value = '16:9'
+  }
+}
+
+async function handleToggleMCP() {
+  mcpToggling.value = true
+  try {
+    await toggleMCP()
+  } finally {
+    mcpToggling.value = false
   }
 }
 </script>
@@ -208,6 +231,59 @@ function toggleRatio() {
 .ratio-label {
   font-family: 'Courier New', monospace;
   letter-spacing: 3px;
+}
+
+.mcp-toggle-center {
+  position: absolute;
+  bottom: 20px;
+  z-index: 100;
+  pointer-events: none;
+}
+
+.mcp-toggle-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 24px;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(8px);
+  border: 1.5px solid rgba(255, 255, 255, 0.25);
+  border-radius: 4px;
+  color: rgba(255, 255, 255, 0.6);
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  transition: all 0.2s ease;
+  pointer-events: auto;
+  letter-spacing: 1px;
+}
+
+.mcp-toggle-btn.active {
+  background: rgba(34, 197, 94, 0.5);
+  border-color: rgba(34, 197, 94, 0.6);
+  color: #fff;
+  box-shadow: 0 0 12px rgba(34, 197, 94, 0.3);
+}
+
+.mcp-toggle-btn:hover:not(:disabled) {
+  background: rgba(59, 130, 246, 0.6);
+  border-color: rgba(59, 130, 246, 0.5);
+  color: #fff;
+}
+
+.mcp-toggle-btn.active:hover:not(:disabled) {
+  background: rgba(239, 68, 68, 0.6);
+  border-color: rgba(239, 68, 68, 0.5);
+}
+
+.mcp-toggle-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.mcp-label {
+  font-family: 'Courier New', monospace;
+  letter-spacing: 2px;
 }
 
 @keyframes border-flow {

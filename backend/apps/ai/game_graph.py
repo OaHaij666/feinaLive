@@ -14,6 +14,7 @@
 import asyncio
 import json
 import logging
+import random
 import time
 from dataclasses import dataclass, field
 from typing import Optional
@@ -44,16 +45,17 @@ def _commentary_guide(
     if seconds_since >= 86400:
         time_hint = "这是本轮游戏第一次解说"
     else:
-        time_hint = f"距上次请求解说已过 {seconds_since:.0f} 秒（{steps_since} 个游戏动作前）"
+        time_hint = f"距上次解说已过 {seconds_since:.0f} 秒（{steps_since} 个游戏动作前）"
 
     return (
         f"- {time_hint}\n"
-        f"- 建议大约每 {suggested_steps} 个游戏动作（约 {commentary_interval:.0f} 秒）解说一次，但只在有值得解说的事情时才调用，不要无意义灌水\n"
+        f"- ⚠️ 请求解说间隔必须 ≥ {commentary_interval:.0f} 秒（约 {suggested_steps} 个动作）。"
+        f"距上次解说不足 {commentary_interval:.0f} 秒时，禁止调用 request_host_commentary\n"
         "- ★ 里程碑事件一定要解说：拿新卡/遗物时、BOSS战、通关、危急时刻\n"
-        "- 战斗中的小操作（出一张牌）不需要解说，但打出漂亮连招或局面转折时需要\n"
+        "- 战斗中的小操作（出一张牌）不需要解说\n"
+        "- 同一画面（如仍在同一奖励页/商店页）不要重复解说\n"
         "- key_points 列出解说要点，主播会用自己的风格表达\n"
         "- mood 可以选 excited/confident/nervous/happy/neutral\n"
-        "- 如果画面没变（如仍在同一奖励页），不要重复相同解说内容"
     )
 
 
@@ -268,7 +270,6 @@ class GameGraph:
         self._running = False
         self._task: asyncio.Task | None = None
         self._last_decision_time: float = 0
-        self._last_commentary_time: float = 0
         self._pending_game_actions: list[tuple[str, dict]] = []
 
     @property
@@ -382,9 +383,11 @@ class GameGraph:
                 elapsed = time.time() - t_start
                 if had_game_action:
                     min_wait = config.game_min_step_interval
+                    jitter = random.uniform(-config.game_step_jitter, config.game_step_jitter)
+                    min_wait = max(0.5, min_wait + jitter)
                 else:
                     min_wait = self._poll_interval
-                wait = max(min_wait - elapsed, self._poll_interval)
+                wait = max(min_wait - elapsed, 0)
                 await asyncio.sleep(wait)
 
             except asyncio.CancelledError:
@@ -577,16 +580,16 @@ class GameGraph:
 
         non_game_tasks = []
         game_actions = []
+        commentary_params = None
 
         for tc in state.tool_calls:
             name = tc.get("name", tc.get("function", {}).get("name", ""))
             params = tc.get("params", tc.get("arguments", tc.get("function", {}).get("arguments", {})))
 
-            if name in NON_GAME_TOOLS:
-                if name == "request_host_commentary":
-                    non_game_tasks.append(self._handle_commentary_request(params))
-                elif name == "request_memory_update":
-                    non_game_tasks.append(self._handle_memory_update_request(params))
+            if name == "request_host_commentary":
+                commentary_params = params
+            elif name == "request_memory_update":
+                non_game_tasks.append(self._handle_memory_update_request(params))
             elif name in READONLY_MCP_TOOLS:
                 non_game_tasks.append(self._handle_mcp_readonly(name, params))
             elif name:
@@ -595,24 +598,47 @@ class GameGraph:
         if non_game_tasks:
             await asyncio.gather(*non_game_tasks, return_exceptions=True)
 
+        commentary_enqueued = False
+        if commentary_params is not None:
+            commentary_enqueued = await self._handle_commentary_request(commentary_params)
+
+        if commentary_enqueued and game_actions:
+            logger.info(f"解说已入队，暂扣 {len(game_actions)} 个游戏动作等待消费...")
+            consumed = await self._shared_context.wait_commentary_consumed(
+                timeout=config.game_commentary_hold_timeout
+            )
+            if consumed:
+                logger.info("解说已消费，释放游戏动作")
+            else:
+                logger.info(f"解说等消费超时 (>{config.game_commentary_hold_timeout}s)，跳过解说执行游戏动作")
+
         if game_actions:
             name, params = game_actions[0]
             await self._handle_game_action(name, params)
             remaining = game_actions[1:]
             if remaining:
                 self._pending_game_actions = remaining
-                remaining_names = [a[0] for a in remaining]
-                logger.info(f"剩余动作缓冲: {remaining_names}")
+                logger.info(f"剩余动作缓冲: {[a[0] for a in remaining]}")
             return True
 
-        return False
+        return commentary_enqueued
 
-    async def _handle_commentary_request(self, params: dict):
+    async def _handle_commentary_request(self, params: dict) -> bool:
+        """解说请求入队。返回 True 表示已入队。
+
+        使用 SharedContext 的 _last_commentary_time（只有真正消费才更新）做间隔检查。
+        不再更新本地或 SharedContext 的时间戳——留给 HostGraph 消费后更新。
+        """
         now = time.time()
-        if now - self._last_commentary_time < self._min_commentary_interval:
-            logger.debug(f"解说请求间隔过短，跳过 (距上次 {now - self._last_commentary_time:.1f}s)")
+        last_consumed = await self._shared_context.get_last_commentary_time()
+        if now - last_consumed < self._min_commentary_interval:
+            logger.debug(
+                f"距上次成功解说仅 {now - last_consumed:.1f}s，"
+                f"小于硬间隔 {self._min_commentary_interval}s，跳过"
+            )
             return False
 
+        hold_timeout = config.game_commentary_hold_timeout
         cancel_key = f"commentary_{self._adapter.game_id}_{int(now)}"
         game_step_id = await self._shared_context.get_game_step_id()
         queue = get_message_queue()
@@ -627,12 +653,11 @@ class GameGraph:
                 "game_step_id": game_step_id,
             },
             cancel_key=cancel_key,
-            expire_at=time.time() + 15,
+            expire_at=now + hold_timeout + 5,
             allow_skip=False,
         )
         success = await queue.put(msg)
         if success:
-            self._last_commentary_time = now
             await self._shared_context.record_commentary_request()
             key_points = params.get("key_points", [])
             mood = params.get("mood", "neutral")

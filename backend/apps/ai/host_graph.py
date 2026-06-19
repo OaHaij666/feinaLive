@@ -22,6 +22,7 @@ from typing import Callable
 
 from apps.ai.client import ChatMessage, ChatRequest, get_ai_client
 from apps.ai.host_brain import SentenceBuffer, StreamReplyChunk, get_host_brain
+from apps.ai.memory.engine import get_memory_engine
 from apps.ai.messaging.queue import Message, get_message_queue
 from apps.ai.prompt import get_host_system_prompt
 from apps.ai.shared_context import get_shared_context
@@ -50,6 +51,8 @@ COMMENTARY_SYSTEM_PROMPT = """{host_personality}
 - 不要重复要点原文，用自己的风格重新表达"""
 
 DANMAKU_REPLY_PROMPT = """{host_personality}
+
+{viewer_memory}
 
 【观众说】
 {danmaku}
@@ -114,8 +117,12 @@ class HostGraph:
                 pass
         logger.info("主播 Graph 停止")
 
+    MAX_RETRY_COUNT = 2
+    RETRY_DELAY_SECONDS = 1.0
+
     async def _host_loop(self):
         queue = get_message_queue()
+        retry_count = 0
 
         while self._running:
             try:
@@ -131,16 +138,24 @@ class HostGraph:
                 else:
                     logger.warning(f"未知消息类型: {msg.msg_type}")
 
+                retry_count = 0
+
             except asyncio.TimeoutError:
                 continue
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                logger.error(f"主播循环异常: {e}", exc_info=True)
-                await asyncio.sleep(1)
+                retry_count += 1
+                if retry_count <= self.MAX_RETRY_COUNT:
+                    logger.warning(f"主播循环异常 (重试 {retry_count}/{self.MAX_RETRY_COUNT}): {e}")
+                    await asyncio.sleep(self.RETRY_DELAY_SECONDS * retry_count)
+                else:
+                    logger.error(f"主播循环连续失败 {retry_count} 次，跳过当前消息: {e}", exc_info=True)
+                    retry_count = 0
 
     async def _handle_commentary(self, msg: Message):
         data = msg.data
+        request_id = data.get("commentary_request_id", "")
         key_points = data.get("key_points", [])
         mood = data.get("mood", "neutral")
 
@@ -154,18 +169,42 @@ class HostGraph:
             host_history=host_history or "（暂无）",
         )
 
-        spoken = await self._stream_reply(system_content, "请生成解说。")
+        try:
+            spoken = await self._stream_reply(system_content, "请生成解说。")
+        except Exception as e:
+            logger.error(f"解说生成失败: {e}", exc_info=True)
+            spoken = None
+            if request_id:
+                await self._shared_context.signal_commentary_status(
+                    request_id,
+                    "llm_failed",
+                    error=str(e),
+                )
+            return
+
         if not spoken:
+            if request_id:
+                await self._shared_context.signal_commentary_status(
+                    request_id,
+                    "llm_failed",
+                    error="主播解说生成为空",
+                )
             return
 
         logger.info(f"主播解说: {spoken}")
-
-        await self._shared_context.signal_commentary_consumed()
 
         await self._shared_context.add_host_entry(
             danmaku=f"[游戏解说-{mood}]",
             reply=spoken,
         )
+        if request_id:
+            await self._shared_context.signal_commentary_status(
+                request_id,
+                "spoken",
+                spoken_text=spoken,
+            )
+        else:
+            await self._shared_context.signal_commentary_consumed()
 
         if self._on_reply:
             await self._on_reply(spoken)
@@ -173,12 +212,25 @@ class HostGraph:
     async def _handle_danmaku(self, msg: Message):
         danmaku = msg.content
         user = msg.data.get("user", "unknown")
+        uid = msg.data.get("uid")
+        memory_user_id = str(uid) if uid else user
 
         host_personality = get_host_system_prompt()
         host_history = await self._shared_context.get_host_history_text(limit=10)
 
+        # 注入观众记忆
+        viewer_memory = ""
+        try:
+            engine = get_memory_engine()
+            viewer_memory = await engine.inject_for_host(user_id=memory_user_id)
+            if viewer_memory:
+                viewer_memory = f"【关于这位观众】\n{viewer_memory}"
+        except Exception as e:
+            logger.debug(f"观众记忆注入失败: {e}")
+
         system_content = DANMAKU_REPLY_PROMPT.format(
             host_personality=host_personality,
+            viewer_memory=viewer_memory or "（暂无观众记忆）",
             danmaku=danmaku,
             host_history=host_history or "（暂无）",
         )
@@ -194,6 +246,21 @@ class HostGraph:
             reply=spoken,
             user=user,
         )
+
+        # 只记忆主播真正回复过的弹幕互动；未回复弹幕不进入长期用户记忆。
+        try:
+            engine = get_memory_engine()
+            asyncio.create_task(engine.extract_and_store(
+                source="interaction",
+                content=danmaku,
+                context={"user_id": memory_user_id, "username": user, "danmaku": danmaku, "reply": spoken},
+            ))
+            from apps.ai.memory import get_user_profile, trigger_summary_if_needed
+            profile = get_user_profile(memory_user_id, user)
+            profile.add_conversation(danmaku, spoken)
+            trigger_summary_if_needed(profile)
+        except Exception as e:
+            logger.debug(f"回复互动记忆调度失败: {e}")
 
         if self._on_reply:
             await self._on_reply(spoken)
@@ -340,5 +407,5 @@ class HostGraph:
         for room_id in target_rooms:
             try:
                 await ws_manager.send_message(room_id, chunk)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("WebSocket广播失败 room=%s chunk_type=%s: %s", room_id, chunk.get("type"), e)

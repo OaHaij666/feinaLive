@@ -1,5 +1,8 @@
 # 忽略的目录
 oss-referances/
+cankao/
+.claude/
+.cursor/
 
 # EasyVtuber 模型文件 (大文件不上传)
 backend/EasyVtuber/data/models/
@@ -19,6 +22,11 @@ backend/EasyVtuber/data/models/
 __pycache__/
 *.pyc
 *.pyo
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.venv/
+venv/
 
 # OS
 .DS_Store
@@ -27,6 +35,7 @@ Thumbs.db
 # Logs
 *.log
 npm-debug.log*
+*.pid
 
 # Dependencies
 node_modules/
@@ -34,6 +43,10 @@ node_modules/
 # Build outputs
 dist/
 build/
+coverage/
+playwright-report/
+test-results/
+fronted/test-results/
 
 # Environment
 .env
@@ -42,3 +55,12 @@ build/
 
 # Config with secrets
 backend/config.yaml
+
+# Runtime data
+backend/data/
+backend/*.db
+backend/*.db-wal
+backend/*.db-shm
+
+# Local archives / downloaded bundles
+*.zip

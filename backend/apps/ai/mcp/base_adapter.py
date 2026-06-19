@@ -91,8 +91,42 @@ class BaseGameAdapter(ABC):
     @abstractmethod
     async def get_tools_definition(self) -> list[dict]: ...
 
+    async def query_tool(self, name: str, params: dict | None = None) -> Any:
+        """执行无副作用查询工具并返回原始数据。"""
+        success, message = await self.execute_action(
+            UnifiedAction(action_type=name, params=params or {})
+        )
+        return {"success": success, "message": message}
+
     def format_state_for_prompt(self, raw: dict, fallback: str) -> str:
-        return fallback
+        """将原始游戏状态格式化为 prompt 文本。
+
+        默认实现尝试使用 UnifiedGameState.to_prompt_text()；
+        如果 raw 不是有效的状态字典，则返回 fallback。
+        """
+        if not raw:
+            return fallback
+        try:
+            state = UnifiedGameState(
+                game_id=raw.get("game_id", self.game_id),
+                game_type=raw.get("game_type", self.game_type),
+                player=raw.get("player", {}),
+                enemies=raw.get("enemies", []),
+                available_actions=raw.get("available_actions", []),
+                turn_info=raw.get("turn_info", {}),
+                screen_type=raw.get("screen_type", ""),
+                game_specific=raw.get("game_specific", {}),
+                raw_state=raw,
+            )
+            return state.to_prompt_text()
+        except Exception:
+            return fallback
 
     async def health_check(self) -> bool:
+        """默认健康检查：通过 MCP client 检查。
+
+        子类可覆盖此方法提供自定义健康检查逻辑。
+        """
+        if hasattr(self, "_mcp_client") and self._mcp_client:
+            return await self._mcp_client.health_check()
         return False

@@ -38,6 +38,7 @@ default_playlist:
 # 通用 LLM 配置
 # 用途：RAG 检索、用户记忆总结、游戏记忆总结等通用任务
 llm:
+  provider: "openai"  # LiteLLM provider；OpenAI-compatible 自建/中转接口通常填 openai
   api_url: "https://api.deepseek.com"
   api_key: "your_api_key"
   model: "deepseek-v4-flash"
@@ -46,6 +47,14 @@ llm:
   max_tokens: 200
   auto_collect_min_views: 20000  # 自动采集视频的最小播放量
   disable_thinking: true         # 禁用模型的思考过程输出
+
+# Embedding 配置（LiteLLM embeddings）
+embedding:
+  provider: "openai"
+  api_url: ""       # 留空则复用 llm.api_url
+  api_key: ""       # 留空则复用 llm.api_key
+  model: ""         # 例如 text-embedding-3-small / doubao-embedding 等
+  dimensions: null
 
 # 主播大脑 LLM 配置
 # 用途：AI 主播对话、弹幕回复、风格化解说

@@ -203,6 +203,9 @@ class PriorityMessageQueue:
         if danmaku_override is None and gift_override is None:
             return
 
+        if self._queue.empty():
+            return
+
         temp_list: list[Message] = []
         while True:
             try:
@@ -215,12 +218,10 @@ class PriorityMessageQueue:
         for msg in temp_list:
             if msg.source == "danmaku" and danmaku_override is not None:
                 if msg.priority != danmaku_override:
-                    logger.debug(f"弹幕优先级调整: {msg.priority} → {danmaku_override}")
                     msg.priority = danmaku_override
                     changed += 1
             elif msg.source == "gift" and gift_override is not None:
                 if msg.priority != gift_override:
-                    logger.debug(f"礼物优先级调整: {msg.priority} → {gift_override}")
                     msg.priority = gift_override
                     changed += 1
 
@@ -233,6 +234,25 @@ class PriorityMessageQueue:
     def cancel(self, cancel_key: str):
         self._cancelled_keys.add(cancel_key)
         logger.debug(f"消息取消登记: {cancel_key}")
+
+    async def cancel_by_type(self, msg_type: str):
+        """取消队列中指定类型的所有未消费消息"""
+        temp_list: list[Message] = []
+        cancelled = 0
+        while True:
+            try:
+                msg = self._queue.get_nowait()
+                if msg.msg_type == msg_type:
+                    cancelled += 1
+                    self._total_dropped += 1
+                else:
+                    temp_list.append(msg)
+            except asyncio.QueueEmpty:
+                break
+        for msg in temp_list:
+            self._queue.put_nowait(msg)
+        if cancelled > 0:
+            logger.info(f"已取消 {cancelled} 条 {msg_type} 类型消息")
 
     def mute(self):
         self._muted = True

@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from apps.ai.game_router import router as game_router
+from apps.ai.memory_router import router as memory_router
 from apps.ai.router import router as ai_router
 from apps.config import config
 from apps.config_router import router as config_router
@@ -34,6 +35,7 @@ async def lifespan(app: FastAPI):
     logger.info("Application starting up...")
     from apps.ai.admin_commands import get_admin_handler
     from apps.ai.memory import init_user_profiles, save_all_profiles
+    from apps.ai.memory.engine import init_memory_engine
     from apps.easyvtuber import get_easyvtuber_manager
     from apps.live.music.client import BilibiliMusicClient
     from apps.live.music.library import get_playlist_manager
@@ -47,6 +49,10 @@ async def lifespan(app: FastAPI):
     await up_manager.initialize()
 
     await init_user_profiles()
+
+    # 初始化记忆引擎 (长期记忆 + 知识图谱)
+    memory_engine = await init_memory_engine()
+    logger.info("MemoryEngine initialized")
 
     easyvtuber_manager = get_easyvtuber_manager()
     await easyvtuber_manager.start()
@@ -197,6 +203,15 @@ async def lifespan(app: FastAPI):
 
     logger.info("Application shutting down...")
     await save_all_profiles()
+
+    # 关闭记忆引擎
+    try:
+        from apps.ai.memory.engine import get_memory_engine
+        engine = get_memory_engine()
+        await engine.shutdown()
+    except Exception as e:
+        logger.warning(f"MemoryEngine shutdown error: {e}")
+
     await queue.stop_auto_play()
     await easyvtuber_manager.stop()
     await stop_nginx()
@@ -228,6 +243,7 @@ app.include_router(bilibili_router, prefix="/bilibili", tags=["Bilibili"])
 app.include_router(music_router, prefix="/music", tags=["Music"])
 app.include_router(config_router, tags=["Config"])
 app.include_router(ai_router, tags=["AI"])
+app.include_router(memory_router, tags=["AI Memory"])
 app.include_router(game_router, tags=["Game"])
 app.include_router(easyvtuber_router, tags=["Avatar"])
 app.include_router(test_router, tags=["Test"])
@@ -263,7 +279,21 @@ async def root():
 
 @app.get("/health")
 async def health():
-    return {"status": "healthy"}
+    from apps.ai.messaging.queue import get_message_queue
+    queue = get_message_queue()
+    queue_stats = queue.get_stats()
+
+    components = {"app": "healthy", "message_queue": "healthy"}
+    if queue_stats.get("muted"):
+        components["message_queue"] = "muted"
+
+    overall = "healthy" if all(v in ("healthy", "muted") for v in components.values()) else "degraded"
+
+    return {
+        "status": overall,
+        "components": components,
+        "message_queue": queue_stats,
+    }
 
 
 @app.get("/stream/status")

@@ -12,6 +12,7 @@ import re
 import time
 from collections import deque
 from dataclasses import dataclass, field
+from typing import Any
 
 from apps.config import config
 
@@ -76,6 +77,42 @@ class LongTermMemory:
         }
 
 
+@dataclass
+class CommentaryAck:
+    request_id: str
+    status: str = "queued"
+    game_step_id: int = 0
+    spoken_text: str = ""
+    error: str = ""
+    created_at: float = 0.0
+    updated_at: float = 0.0
+    event: asyncio.Event | None = field(default=None, repr=False)
+
+    def __post_init__(self):
+        now = time.time()
+        if not self.created_at:
+            self.created_at = now
+        if not self.updated_at:
+            self.updated_at = now
+        if self.event is None:
+            self.event = asyncio.Event()
+
+    @property
+    def is_terminal(self) -> bool:
+        return self.status in {"spoken", "llm_failed", "failed", "dropped", "timeout", "cancelled"}
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "request_id": self.request_id,
+            "status": self.status,
+            "game_step_id": self.game_step_id,
+            "spoken_text": self.spoken_text,
+            "error": self.error,
+            "created_at": self.created_at,
+            "updated_at": self.updated_at,
+        }
+
+
 class SharedContext:
     def __init__(
         self,
@@ -90,7 +127,7 @@ class SharedContext:
         self._game_step_id: int = 0
         self._last_commentary_time: float = 0
         self._last_commentary_step: int = 0
-        self._commentary_event: asyncio.Event | None = None
+        self._commentary_acks: dict[str, CommentaryAck] = {}
         self._lock = asyncio.Lock()
 
     async def add_host_entry(self, danmaku: str, reply: str, user: str = ""):
@@ -123,27 +160,73 @@ class SharedContext:
         async with self._lock:
             return self._last_commentary_time
 
-    async def prepare_commentary_wait(self) -> asyncio.Event:
+    async def register_commentary_request(
+        self,
+        request_id: str,
+        game_step_id: int | None = None,
+    ) -> CommentaryAck:
         async with self._lock:
-            event = asyncio.Event()
-            self._commentary_event = event
-            return event
+            step_id = self._game_step_id if game_step_id is None else game_step_id
+            ack = CommentaryAck(request_id=request_id, game_step_id=step_id)
+            self._commentary_acks[request_id] = ack
+            self._last_commentary_step = step_id
+            return ack
+
+    async def signal_commentary_status(
+        self,
+        request_id: str,
+        status: str,
+        spoken_text: str = "",
+        error: str = "",
+    ) -> CommentaryAck:
+        async with self._lock:
+            ack = self._commentary_acks.get(request_id)
+            if not ack:
+                ack = CommentaryAck(request_id=request_id, game_step_id=self._game_step_id)
+                self._commentary_acks[request_id] = ack
+            ack.status = status
+            ack.spoken_text = spoken_text
+            ack.error = error
+            ack.updated_at = time.time()
+            if status == "spoken":
+                self._last_commentary_time = ack.updated_at
+                self._last_commentary_step = ack.game_step_id
+            if ack.event:
+                ack.event.set()
+            return ack
+
+    async def wait_commentary_status(self, request_id: str, timeout: float) -> CommentaryAck:
+        async with self._lock:
+            ack = self._commentary_acks.get(request_id)
+            if not ack:
+                ack = CommentaryAck(request_id=request_id, game_step_id=self._game_step_id)
+                self._commentary_acks[request_id] = ack
+            if ack.is_terminal:
+                return ack
+            event = ack.event
+
+        try:
+            if event:
+                await asyncio.wait_for(event.wait(), timeout=timeout)
+        except asyncio.TimeoutError:
+            await self.signal_commentary_status(request_id, "timeout", error="等待主播消费超时")
+        except asyncio.CancelledError:
+            await self.signal_commentary_status(request_id, "cancelled", error="等待主播消费被取消")
+            raise
+
+        async with self._lock:
+            return self._commentary_acks[request_id]
 
     async def signal_commentary_consumed(self):
         async with self._lock:
             self._last_commentary_time = time.time()
             self._last_commentary_step = self._game_step_id
-            if self._commentary_event:
-                self._commentary_event.set()
-                self._commentary_event = None
 
     async def wait_commentary_consumed(self, timeout: float) -> bool:
-        event = await self.prepare_commentary_wait()
-        try:
-            await asyncio.wait_for(event.wait(), timeout=timeout)
-            return True
-        except (asyncio.TimeoutError, asyncio.CancelledError):
-            return False
+        request_id = f"legacy_{int(time.time() * 1000)}"
+        await self.register_commentary_request(request_id)
+        ack = await self.wait_commentary_status(request_id, timeout)
+        return ack.status == "spoken"
 
     async def get_host_history(self, limit: int = 20) -> list[HostHistoryEntry]:
         async with self._lock:

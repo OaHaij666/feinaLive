@@ -67,6 +67,10 @@ class Config:
         return os.getenv("LLM_API_URL") or self._data.get("llm", {}).get("api_url", "")
 
     @property
+    def llm_provider(self) -> str:
+        return os.getenv("LLM_PROVIDER") or self._data.get("llm", {}).get("provider", "openai")
+
+    @property
     def llm_api_key(self) -> str | None:
         return os.getenv("LLM_API_KEY") or self._data.get("llm", {}).get("api_key")
 
@@ -97,6 +101,27 @@ class Config:
     @property
     def llm_prompts(self) -> dict[str, str]:
         return self._data.get("llm", {}).get("prompts", {})
+
+    @property
+    def embedding_provider(self) -> str:
+        return os.getenv("EMBEDDING_PROVIDER") or self._data.get("embedding", {}).get("provider", "openai")
+
+    @property
+    def embedding_model(self) -> str:
+        return os.getenv("EMBEDDING_MODEL") or self._data.get("embedding", {}).get("model", "")
+
+    @property
+    def embedding_api_url(self) -> str:
+        return os.getenv("EMBEDDING_API_URL") or self._data.get("embedding", {}).get("api_url", "") or self.llm_api_url
+
+    @property
+    def embedding_api_key(self) -> str | None:
+        return os.getenv("EMBEDDING_API_KEY") or self._data.get("embedding", {}).get("api_key") or self.llm_api_key
+
+    @property
+    def embedding_dimensions(self) -> int | None:
+        value = os.getenv("EMBEDDING_DIMENSIONS") or self._data.get("embedding", {}).get("dimensions")
+        return int(value) if value else None
 
     @property
     def tts_voice(self) -> str:
@@ -423,6 +448,24 @@ class Config:
     @property
     def music_verify_max_comments(self) -> int:
         return int(self._data.get("music_config", {}).get("verify_max_comments", 3))
+
+    # ---- 记忆系统 (memory) ----
+
+    @property
+    def memory_db_path(self) -> str:
+        return os.getenv("MEMORY_DB_PATH") or self._data.get("memory", {}).get("db_path", "data/memory.db")
+
+    @property
+    def memory_maintenance_interval_hours(self) -> float:
+        return float(self._data.get("memory", {}).get("maintenance_interval_hours", 24.0))
+
+    @property
+    def memory_forget_delay_days(self) -> float:
+        return float(self._data.get("memory", {}).get("forget_delay_days", 7.0))
+
+    @property
+    def memory_purge_delay_days(self) -> float:
+        return float(self._data.get("memory", {}).get("purge_delay_days", 30.0))
 
 
 config = Config()

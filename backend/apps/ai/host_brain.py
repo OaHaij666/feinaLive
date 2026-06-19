@@ -1,4 +1,4 @@
-"""AI主播大脑 - 基于 LangGraph 的对话流程
+"""AI主播大脑 - 弹幕缓冲与轮询
 
 支持两种回复模式:
 1. 完整回复 - 等待LLM完成后一次性返回
@@ -16,9 +16,7 @@ import logging
 import re
 import time
 from dataclasses import dataclass
-from typing import AsyncIterator, Callable, Generator, Optional, TypedDict
-
-from langgraph.graph import END, StateGraph
+from typing import AsyncIterator, Callable, Optional
 
 from apps.ai.admin_commands import (
     CommandResult,
@@ -97,155 +95,6 @@ class StreamReplyChunk:
         return result
 
 
-class ChatState(TypedDict):
-    text: str
-    msg_id: str
-    user: str
-    session_id: str
-    rag_context: list[str]
-    user_memory_context: str
-    prompt: str
-    llm_stream: Optional[Generator]
-    response: str
-    audio_data: Optional[bytes]
-
-
-async def retrieve_rag(state: ChatState) -> ChatState:
-    retriever = RagRetrieverSimple()
-    state["rag_context"] = retriever.retrieve(state["text"], top_k=3)
-    return state
-
-
-async def retrieve_user_memory(state: ChatState) -> ChatState:
-    user = state["user"]
-    user_profile = get_user_profile(user)
-
-    state["user_memory_context"] = user_profile.get_memory_context()
-    logger.debug(f"用户 {user} 记忆上下文: {state['user_memory_context'][:100] if state['user_memory_context'] else '(无)'}...")
-    return state
-
-
-async def build_prompt(state: ChatState) -> ChatState:
-    history = get_session(state["session_id"])
-    history_entries = history.get_recent_dicts(10)
-    system_prompt = get_host_system_prompt()
-
-    if state.get("rag_context"):
-        rag_text = "\n".join(state["rag_context"])
-        system_prompt += f"\n\n【相关知识】\n{rag_text}"
-
-    if state.get("user_memory_context"):
-        system_prompt += f"\n\n{state['user_memory_context']}"
-
-    state["prompt"] = build_chat_prompt(
-        user_text=state["text"],
-        history_entries=history_entries,
-        system_prompt=system_prompt,
-    )
-    return state
-
-
-async def stream_llm(state: ChatState) -> ChatState:
-    ai = get_ai_client()
-    if not ai.available:
-        logger.warning("AI配置不完整")
-        state["llm_stream"] = None
-        return state
-
-    messages = [
-        ChatMessage(role=m["role"], content=m["content"])
-        for m in state["prompt"]
-    ]
-    request = ChatRequest(
-        messages=messages,
-        model=config.host_model,
-        temperature=config.host_temperature,
-        top_p=config.host_top_p,
-        max_tokens=config.host_max_tokens,
-        disable_thinking=config.llm_disable_thinking,
-        stream=True,
-    )
-
-    chunks = []
-    async for chunk in ai.chat_stream(request):
-        chunks.append(chunk)
-
-    state["llm_stream"] = chunks
-    state["response"] = "".join(chunks)
-    return state
-
-
-async def stream_tts(state: ChatState) -> ChatState:
-    if not state["response"]:
-        state["audio_data"] = None
-        return state
-
-    tts = get_tts_client()
-    result = await tts.synthesize(state["response"])
-    state["audio_data"] = result.audio_data if result else None
-    return state
-
-
-async def save_history(state: ChatState) -> ChatState:
-    history = get_session(state["session_id"])
-    history.add_user_message(
-        content=state["text"],
-        sender=state["user"],
-        msg_id=state["msg_id"],
-    )
-    if state["response"]:
-        history.add_assistant_message(state["response"])
-    return state
-
-
-async def update_user_memory(state: ChatState) -> ChatState:
-    user = state["user"]
-    content = state["text"]
-    response = state["response"]
-
-    if not response:
-        return state
-
-    user_profile = get_user_profile(user)
-    user_profile.add_conversation(content, response)
-
-    trigger_summary_if_needed(user_profile)
-
-    logger.debug(f"用户 {user} 记忆已更新 (互动次数: {user_profile.interaction_count})")
-    return state
-
-
-class RagRetrieverSimple:
-    def retrieve(self, query: str, top_k: int = 3) -> list[str]:
-        return []
-
-
-def create_chat_graph():
-    graph = StateGraph(ChatState)
-
-    graph.add_node("retrieve_rag", retrieve_rag)
-    graph.add_node("retrieve_user_memory", retrieve_user_memory)
-    graph.add_node("build_prompt", build_prompt)
-    graph.add_node("stream_llm", stream_llm)
-    graph.add_node("stream_tts", stream_tts)
-    graph.add_node("save_history", save_history)
-    graph.add_node("update_user_memory", update_user_memory)
-
-    graph.set_entry_point("retrieve_rag")
-    graph.add_edge("retrieve_rag", "retrieve_user_memory")
-    graph.add_edge("retrieve_user_memory", "build_prompt")
-    graph.add_edge("build_prompt", "stream_llm")
-    graph.add_edge("stream_llm", "stream_tts")
-    graph.add_edge("stream_tts", "save_history")
-    graph.add_edge("save_history", "update_user_memory")
-    graph.add_edge("update_user_memory", END)
-
-    return graph.compile()
-
-
-chat_graph = create_chat_graph()
-
-
 class SentenceBuffer:
     """句子缓冲区，用于流式输出时按句子切分"""
 
@@ -310,7 +159,7 @@ class AIHostBrain:
     def push_danmaku(self, msg_id: str, user: str, content: str, uid: int = 0) -> bool:
         if content.strip() == "/clear":
             from apps.ai.memory import clear_user_profile
-            clear_user_profile(user)
+            clear_user_profile(str(uid) if uid else user)
             logger.info(f"用户 {user} 清除了自己的记忆")
             return False
 
@@ -613,3 +462,9 @@ def get_host_brain(room_id: int | str) -> AIHostBrain:
     if key not in _brains:
         _brains[key] = AIHostBrain(room_id)
     return _brains[key]
+
+
+def reset_host_brains():
+    """清除所有已注册的 HostBrain 实例（用于测试或重启场景）"""
+    global _brains
+    _brains = {}

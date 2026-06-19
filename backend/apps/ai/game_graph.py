@@ -19,15 +19,19 @@ import time
 from dataclasses import dataclass, field
 from typing import Optional
 
+import httpx
+
 from apps.ai.client import ChatMessage, ChatRequest, get_game_ai_client
+from apps.ai.commentary import CommentaryCoordinator
 from apps.ai.mcp.base_adapter import BaseGameAdapter, UnifiedAction, UnifiedGameState
-from apps.ai.messaging.queue import PRIORITY_HIGH, Message, get_message_queue
+from apps.ai.memory.engine import get_memory_engine
+from apps.ai.memory.tools import get_memory_tools, handle_memory_tool_call
 from apps.ai.shared_context import SharedContext, get_shared_context
 from apps.config import config
 
 logger = logging.getLogger(__name__)
 
-NON_GAME_TOOLS = {"request_host_commentary", "request_memory_update"}
+NON_GAME_TOOLS = {"request_host_commentary", "request_memory_update", "memorize", "recall"}
 
 READONLY_MCP_TOOLS = {
     "get_game_state", "get_screen_state", "get_available_commands",
@@ -119,7 +123,8 @@ def build_game_system_prompt(
 - 敌人意图为 ATTACK 时，**必须先出防御牌叠格挡**，格挡量 >= 敌人预计伤害才能结束回合
 - 只有在敌人无攻击意图（正在BUFF/DEBUFF/准备技能）时才全力输出
 - 3费回合：优先出1-2张防御牌保命，剩余费用打输出，不要把所有费都用来攻击
-- execute_actions 可以一次执行多个动作（含 end_turn），先防御后攻击
+- 每次决策可以返回多个游戏操作，系统会按真人节奏逐个执行
+- 如果使用 execute_actions，系统也会拆成逐步动作执行，先防御后攻击
 
 【游戏基础知识】
 - 每回合获得3点费用，出牌消耗费用，费用用完自动结束，部分牌和技能可以补充费用
@@ -252,6 +257,9 @@ class GameLoopState:
     tool_calls: list[dict] = field(default_factory=list)
     executed_actions: list[dict] = field(default_factory=list)
     commentary_requests: list[dict] = field(default_factory=list)
+    memory_tool_calls: list[tuple[str, dict]] = field(default_factory=list)
+    readonly_tool_calls: list[tuple[str, dict]] = field(default_factory=list)
+    game_actions: list[tuple[str, dict]] = field(default_factory=list)
     _system_content: str = field(default="", init=False, repr=False)
 
 
@@ -271,6 +279,11 @@ class GameGraph:
         self._task: asyncio.Task | None = None
         self._last_decision_time: float = 0
         self._pending_game_actions: list[tuple[str, dict]] = []
+        self._commentary = CommentaryCoordinator(
+            shared_context=self._shared_context,
+            game_id=self._adapter.game_id,
+            min_interval=self._min_commentary_interval,
+        )
 
     @property
     def is_running(self) -> bool:
@@ -301,84 +314,49 @@ class GameGraph:
         logger.info(f"游戏 Graph 停止: {self._adapter.game_id}")
 
     async def run_once(self) -> GameLoopState:
+        state, _ = await self._run_state_machine_once()
+        return state
+
+    async def _run_state_machine_once(self) -> tuple[GameLoopState, bool]:
         state = GameLoopState()
 
-        await self._collect_data(state)
+        await self._node_collect_data(state)
         if not state.game_state:
             logger.warning("无法获取游戏状态")
-            return state
+            return state, False
 
-        if not self._adapter.is_my_turn(state.game_state):
-            logger.info("不是我的回合")
-            return state
+        if not self._node_guard_turn(state):
+            return state, False
+
+        handled_game_over = await self._node_handle_game_over(state)
+        if handled_game_over:
+            return state, True
 
         screen = state.game_state.raw_state.get("screen_type", "") if state.game_state else ""
-        if screen == "GAME_OVER":
-            logger.warning("游戏结束，尝试重启...")
-            action = UnifiedAction(action_type="proceed", params={})
-            await self._adapter.execute_action(action)
-            await asyncio.sleep(1)
-            action = UnifiedAction(action_type="start_game", params={"character": config.game_default_character})
-            await self._adapter.execute_action(action)
-            return state
-
         if not screen:
-            return state
+            return state, False
 
-        if self._pending_game_actions:
-            name, params = self._pending_game_actions.pop(0)
-            logger.info(f"执行缓冲动作: {name}({params})")
-            await self._handle_game_action(name, params)
-        else:
-            await self._build_prompt(state)
-            await self._llm_decide(state)
-            await self._execute_parallel(state)
+        handled_pending = await self._node_execute_pending_action(state)
+        if handled_pending:
+            await self._node_update_history(state)
+            return state, True
 
-        await self._update_history(state)
-
-        return state
+        await self._node_build_prompt(state)
+        await self._node_llm_decide(state)
+        self._node_route_tool_calls(state)
+        had_game_action = await self._node_execute_tools(state)
+        await self._node_update_history(state)
+        return state, had_game_action
 
     async def _game_loop(self):
         while self._running:
             try:
                 t_start = time.time()
-                state = GameLoopState()
+                state, had_game_action = await self._run_state_machine_once()
 
-                await self._collect_data(state)
-                if not state.game_state:
+                if not state.game_state or not self._adapter.is_my_turn(state.game_state):
                     await asyncio.sleep(self._poll_interval)
                     continue
-
-                if not self._adapter.is_my_turn(state.game_state):
-                    await asyncio.sleep(self._poll_interval)
-                    continue
-
-                screen = state.game_state.raw_state.get("screen_type", "") if state.game_state else ""
-                if screen == "GAME_OVER":
-                    logger.warning("游戏结束，尝试重启...")
-                    action = UnifiedAction(action_type="proceed", params={})
-                    await self._adapter.execute_action(action)
-                    await asyncio.sleep(1)
-                    action = UnifiedAction(action_type="start_game", params={"character": config.game_default_character})
-                    await self._adapter.execute_action(action)
-                    await asyncio.sleep(3)
-                    continue
-
-                if not screen:
-                    await asyncio.sleep(self._poll_interval)
-                    continue
-
-                if self._pending_game_actions:
-                    name, params = self._pending_game_actions.pop(0)
-                    logger.info(f"执行缓冲动作: {name}({params})")
-                    await self._handle_game_action(name, params)
-                    had_game_action = True
-                else:
-                    await self._build_prompt(state)
-                    await self._llm_decide(state)
-                    had_game_action = await self._execute_parallel(state)
-
-                await self._update_history(state)
 
                 elapsed = time.time() - t_start
                 if had_game_action:
@@ -392,9 +370,58 @@ class GameGraph:
 
             except asyncio.CancelledError:
                 break
+            except (httpx.TimeoutException, httpx.ConnectError, ConnectionError, OSError) as e:
+                logger.warning(f"游戏循环网络错误，将重试: {e}")
+                await asyncio.sleep(5)
             except Exception as e:
                 logger.error(f"游戏循环异常: {e}", exc_info=True)
                 await asyncio.sleep(5)
+
+    async def _node_collect_data(self, state: GameLoopState):
+        await self._collect_data(state)
+
+    def _node_guard_turn(self, state: GameLoopState) -> bool:
+        if not state.game_state:
+            return False
+        if not self._adapter.is_my_turn(state.game_state):
+            logger.info("不是我的回合")
+            return False
+        return True
+
+    async def _node_handle_game_over(self, state: GameLoopState) -> bool:
+        screen = state.game_state.raw_state.get("screen_type", "") if state.game_state else ""
+        if screen != "GAME_OVER":
+            return False
+        logger.warning("游戏结束，尝试重启...")
+        action = UnifiedAction(action_type="proceed", params={})
+        await self._adapter.execute_action(action)
+        await asyncio.sleep(1)
+        action = UnifiedAction(action_type="start_game", params={"character": config.game_default_character})
+        await self._adapter.execute_action(action)
+        return True
+
+    async def _node_execute_pending_action(self, state: GameLoopState) -> bool:
+        if not self._pending_game_actions:
+            return False
+        name, params = self._pending_game_actions.pop(0)
+        logger.info(f"执行缓冲动作: {name}({params})")
+        await self._handle_game_action(name, params)
+        return True
+
+    async def _node_build_prompt(self, state: GameLoopState):
+        await self._build_prompt(state)
+
+    async def _node_llm_decide(self, state: GameLoopState):
+        await self._llm_decide(state)
+
+    def _node_route_tool_calls(self, state: GameLoopState):
+        self._route_tool_calls(state)
+
+    async def _node_execute_tools(self, state: GameLoopState) -> bool:
+        return await self._execute_tools(state)
+
+    async def _node_update_history(self, state: GameLoopState):
+        await self._update_history(state)
 
     async def _collect_data(self, state: GameLoopState):
         try:
@@ -402,22 +429,32 @@ class GameGraph:
                 self._adapter.get_state(),
                 self._shared_context.get_host_history_text(limit=5),
                 self._shared_context.get_game_history_text(limit=12),
-                self._shared_context.get_memory(),
                 return_exceptions=True,
             )
 
             state.game_state = results[0] if not isinstance(results[0], Exception) else None
             state.host_history_text = results[1] if not isinstance(results[1], Exception) else ""
             state.game_history_text = results[2] if not isinstance(results[2], Exception) else ""
-            memory = results[3] if not isinstance(results[3], Exception) else None
-            if memory and hasattr(memory, "core"):
+
+            # 从 MemoryEngine 获取记忆 (单局 + 长期 + 知识图谱)
+            try:
+                engine = get_memory_engine()
+                memory_text = await engine.inject_for_game(game_id=self._adapter.game_id)
+                if memory_text:
+                    # 拆分到三层以兼容 prompt 模板
+                    state.core_memory = memory_text
+                    state.important_memory = ""
+                    state.recent_memory = ""
+                else:
+                    state.core_memory = ""
+                    state.important_memory = ""
+                    state.recent_memory = ""
+            except Exception as e:
+                logger.warning(f"MemoryEngine 注入失败，回退 SharedContext: {e}")
+                memory = await self._shared_context.get_memory()
                 state.core_memory = memory.core
                 state.important_memory = memory.important
                 state.recent_memory = memory.recent
-            else:
-                state.core_memory = ""
-                state.important_memory = ""
-                state.recent_memory = ""
 
         except Exception as e:
             logger.error(f"数据收集失败: {e}")
@@ -427,6 +464,7 @@ class GameGraph:
         game_state_text = self._adapter.format_state_for_prompt(raw, state.game_state.to_prompt_text() if state.game_state else "")
 
         state.tools = [REQUEST_HOST_COMMENTARY_TOOL, REQUEST_MEMORY_UPDATE_TOOL]
+        state.tools.extend(get_memory_tools())  # memorize / recall
         try:
             mcp_tools = await self._adapter.get_tools_definition()
             state.tools.extend(mcp_tools)
@@ -492,11 +530,21 @@ class GameGraph:
             model=config.game_model,
             temperature=config.game_temperature,
             max_tokens=config.game_max_tokens,
+            tools=state.tools or None,
         )
 
         try:
             response = await ai.chat(request)
-            if not response or not response.content:
+            if not response:
+                logger.warning("游戏 LLM 响应为空")
+                return
+
+            if response.tool_calls:
+                state.tool_calls = self._normalize_tool_calls(response.tool_calls) or []
+                self._log_tool_calls(state.tool_calls)
+                return
+
+            if not response.content:
                 logger.warning("游戏 LLM 响应为空")
                 return
 
@@ -527,18 +575,22 @@ class GameGraph:
         normalized = self._normalize_tool_calls(parsed)
         if normalized:
             state.tool_calls = normalized
-            tool_names = [t.get("name", "?") for t in normalized]
-            logger.info(f"LLM 决策: {tool_names}")
-            for tc in normalized:
-                name = tc.get("name", "?")
-                params = tc.get("params", {})
-                if params:
-                    logger.info(f"  └─ {name}: {params}")
-                else:
-                    logger.info(f"  └─ {name}")
+            self._log_tool_calls(normalized)
             return
 
         logger.debug(f"未检测到 tool_calls，原始响应: {content[:100]}")
+
+    @staticmethod
+    def _log_tool_calls(tool_calls: list[dict]):
+        tool_names = [t.get("name", "?") for t in tool_calls]
+        logger.info(f"LLM 决策: {tool_names}")
+        for tc in tool_calls:
+            name = tc.get("name", "?")
+            params = tc.get("params", {})
+            if params:
+                logger.info(f"  └─ {name}: {params}")
+            else:
+                logger.info(f"  └─ {name}")
 
     @staticmethod
     def _normalize_tool_calls(data) -> list[dict] | None:
@@ -574,100 +626,110 @@ class GameGraph:
 
         return result if result else None
 
-    async def _execute_parallel(self, state: GameLoopState) -> bool:
-        if not state.tool_calls:
-            return False
-
-        non_game_tasks = []
-        game_actions = []
-        commentary_params = None
+    def _route_tool_calls(self, state: GameLoopState):
+        state.commentary_requests.clear()
+        state.memory_tool_calls.clear()
+        state.readonly_tool_calls.clear()
+        state.game_actions.clear()
 
         for tc in state.tool_calls:
             name = tc.get("name", tc.get("function", {}).get("name", ""))
             params = tc.get("params", tc.get("arguments", tc.get("function", {}).get("arguments", {})))
+            if isinstance(params, str):
+                try:
+                    params = json.loads(params)
+                except json.JSONDecodeError:
+                    params = {}
 
             if name == "request_host_commentary":
-                commentary_params = params
-            elif name == "request_memory_update":
-                non_game_tasks.append(self._handle_memory_update_request(params))
+                state.commentary_requests.append(params if isinstance(params, dict) else {})
+            elif name in {"request_memory_update", "memorize", "recall"}:
+                state.memory_tool_calls.append((name, params if isinstance(params, dict) else {}))
             elif name in READONLY_MCP_TOOLS:
-                non_game_tasks.append(self._handle_mcp_readonly(name, params))
+                state.readonly_tool_calls.append((name, params if isinstance(params, dict) else {}))
             elif name:
-                game_actions.append((name, params))
+                state.game_actions.extend(self._expand_game_action(name, params if isinstance(params, dict) else {}))
 
-        if non_game_tasks:
-            await asyncio.gather(*non_game_tasks, return_exceptions=True)
+    @staticmethod
+    def _expand_game_action(name: str, params: dict) -> list[tuple[str, dict]]:
+        """把批量游戏动作拆成单步动作，让 GameGraph 的速率限制逐步生效。"""
+        if name != "execute_actions":
+            return [(name, params)]
 
-        commentary_enqueued = False
-        if commentary_params is not None:
-            commentary_enqueued = await self._handle_commentary_request(commentary_params)
+        actions = params.get("actions", [])
+        if not isinstance(actions, list) or not actions:
+            return [(name, params)]
 
-        if commentary_enqueued and game_actions:
-            logger.info(f"解说已入队，暂扣 {len(game_actions)} 个游戏动作等待消费...")
-            consumed = await self._shared_context.wait_commentary_consumed(
-                timeout=config.game_commentary_hold_timeout
-            )
-            if consumed:
-                logger.info("解说已消费，释放游戏动作")
-            else:
-                logger.info(f"解说等消费超时 (>{config.game_commentary_hold_timeout}s)，跳过解说执行游戏动作")
+        expanded: list[tuple[str, dict]] = []
+        for item in actions:
+            if not isinstance(item, dict):
+                continue
+            action_name = item.get("action") or item.get("name")
+            if not action_name:
+                continue
+            action_params = {k: v for k, v in item.items() if k not in {"action", "name"}}
+            expanded.append((str(action_name), action_params))
+        return expanded or [(name, params)]
 
-        if game_actions:
-            name, params = game_actions[0]
-            await self._handle_game_action(name, params)
-            remaining = game_actions[1:]
-            if remaining:
-                self._pending_game_actions = remaining
-                logger.info(f"剩余动作缓冲: {[a[0] for a in remaining]}")
-            return True
-
-        return commentary_enqueued
-
-    async def _handle_commentary_request(self, params: dict) -> bool:
-        """解说请求入队。返回 True 表示已入队。
-
-        使用 SharedContext 的 _last_commentary_time（只有真正消费才更新）做间隔检查。
-        不再更新本地或 SharedContext 的时间戳——留给 HostGraph 消费后更新。
-        """
-        now = time.time()
-        last_consumed = await self._shared_context.get_last_commentary_time()
-        if now - last_consumed < self._min_commentary_interval:
-            logger.debug(
-                f"距上次成功解说仅 {now - last_consumed:.1f}s，"
-                f"小于硬间隔 {self._min_commentary_interval}s，跳过"
-            )
+    async def _execute_tools(self, state: GameLoopState) -> bool:
+        if not state.tool_calls:
             return False
 
-        hold_timeout = config.game_commentary_hold_timeout
-        cancel_key = f"commentary_{self._adapter.game_id}_{int(now)}"
-        game_step_id = await self._shared_context.get_game_step_id()
-        queue = get_message_queue()
-        msg = Message(
-            priority=PRIORITY_HIGH,
-            source="game",
-            msg_type="commentary_request",
-            content=" | ".join(params.get("key_points", [])),
-            data={
-                "key_points": params.get("key_points", []),
-                "mood": params.get("mood", "neutral"),
-                "game_step_id": game_step_id,
-            },
-            cancel_key=cancel_key,
-            expire_at=now + hold_timeout + 5,
-            allow_skip=False,
-        )
-        success = await queue.put(msg)
-        if success:
-            await self._shared_context.record_commentary_request()
-            key_points = params.get("key_points", [])
-            mood = params.get("mood", "neutral")
-            logger.info(f"解说请求入队: {key_points} (step={game_step_id})")
-            await self._shared_context.add_game_entry(
-                action="request_host_commentary",
-                params={"key_points": key_points, "mood": mood},
-                result="enqueued",
+        await self._execute_memory_tools(state)
+        await self._execute_readonly_tools(state)
+
+        commentary_ack = None
+        if state.commentary_requests:
+            commentary_ack = await self._commentary.enqueue_and_wait(
+                state.commentary_requests,
+                timeout=config.game_commentary_hold_timeout,
             )
-        return success
+            if commentary_ack:
+                logger.info(
+                    "解说处理完成: id=%s status=%s",
+                    commentary_ack.request_id,
+                    commentary_ack.status,
+                )
+
+        if state.game_actions:
+            if commentary_ack and commentary_ack.status not in {"spoken", "llm_failed", "failed", "timeout", "dropped", "cancelled"}:
+                logger.debug("解说状态未终结，仍继续执行游戏动作: %s", commentary_ack.status)
+            await self._execute_game_actions(state.game_actions)
+            return True
+
+        return commentary_ack is not None
+
+    async def _execute_memory_tools(self, state: GameLoopState):
+        tasks = []
+        for name, params in state.memory_tool_calls:
+            if name == "request_memory_update":
+                tasks.append(self._handle_memory_update_request(params))
+            elif name in ("memorize", "recall"):
+                tasks.append(handle_memory_tool_call(name, params, game_id=self._adapter.game_id))
+        if tasks:
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            for result in results:
+                if isinstance(result, Exception):
+                    logger.warning("记忆工具执行失败: %s", result)
+
+    async def _execute_readonly_tools(self, state: GameLoopState):
+        if not state.readonly_tool_calls:
+            return
+        results = await asyncio.gather(
+            *(self._handle_mcp_readonly(name, params) for name, params in state.readonly_tool_calls),
+            return_exceptions=True,
+        )
+        for result in results:
+            if isinstance(result, Exception):
+                logger.warning("MCP只读工具执行失败: %s", result)
+
+    async def _execute_game_actions(self, game_actions: list[tuple[str, dict]]):
+        name, params = game_actions[0]
+        await self._handle_game_action(name, params)
+        remaining = game_actions[1:]
+        if remaining:
+            self._pending_game_actions = remaining
+            logger.info(f"剩余动作缓冲: {[a[0] for a in remaining]}")
 
     async def _handle_memory_update_request(self, params: dict):
         memory_type = params.get("memory_type", "")
@@ -677,37 +739,55 @@ class GameGraph:
             logger.warning("记忆更新参数不完整")
             return False
 
+        # 同步到 MemoryEngine 的 SessionMemory
+        engine = get_memory_engine()
+        session = engine.session
+
         if mode == "rewrite":
-            await self._shared_context.rewrite_memory(memory_type=memory_type, content=content)
+            if memory_type == "core":
+                session.update_core(content)
+            elif memory_type == "important":
+                session.update_important(content)
+            elif memory_type == "recent":
+                session.update_recent(content)
             logger.info(f"LLM 重写 {memory_type} 记忆: {content[:50]}...")
-            await self._shared_context.add_game_entry(
-                action="request_memory_update",
-                params={"memory_type": memory_type, "mode": "rewrite", "content": content[:100]},
-                result="rewritten",
-            )
         elif mode == "search_replace":
             search = params.get("search", "")
             if search:
-                await self._shared_context.search_replace_memory(
-                    memory_type=memory_type, mode="fuzzy", search=search, replace=content
-                )
+                session.search_replace(memory_type, search, content)
                 logger.info(f"LLM 搜索替换 {memory_type}: '{search[:30]}' -> '{content[:30]}'")
-                await self._shared_context.add_game_entry(
-                    action="request_memory_update",
-                    params={"memory_type": memory_type, "mode": "search_replace", "search": search[:50], "replace": content[:50]},
-                    result="replaced",
-                )
             else:
                 logger.warning("search_replace 模式缺少 search 参数")
                 return False
+
+        # 同时写入 SharedContext 保持兼容
+        await self._shared_context.rewrite_memory(memory_type=memory_type, content=content if mode == "rewrite" else session.core if memory_type == "core" else session.important if memory_type == "important" else session.recent)
+        await self._shared_context.add_game_entry(
+            action="request_memory_update",
+            params={"memory_type": memory_type, "mode": mode, "content": content[:100]},
+            result="updated",
+        )
         return True
 
     async def _handle_mcp_readonly(self, name: str, params: dict):
-        success, error_msg = await self._adapter.execute_action(
-            UnifiedAction(action_type=name, params=params if isinstance(params, dict) else {})
-        )
-        logger.debug(f"MCP只读查询: {name} -> {'ok' if success else error_msg}")
-        return success
+        try:
+            data = await self._adapter.query_tool(name, params if isinstance(params, dict) else {})
+            preview = str(data)[:300]
+            await self._shared_context.add_game_entry(
+                action=name,
+                params=params if isinstance(params, dict) else {},
+                result=f"query: {preview}",
+            )
+            logger.debug(f"MCP只读查询: {name} -> {preview}")
+            return data
+        except Exception as e:
+            logger.warning(f"MCP只读查询失败: {name} -> {e}")
+            await self._shared_context.add_game_entry(
+                action=name,
+                params=params if isinstance(params, dict) else {},
+                result=f"failed: {e}",
+            )
+            return None
 
     async def _handle_game_action(self, name: str, params: dict):
         action = UnifiedAction(
@@ -719,6 +799,18 @@ class GameGraph:
 
         if name == "start_game" and success:
             await self._shared_context.clear_all_memory()
+            # 清空 MemoryEngine 单局记忆
+            engine = get_memory_engine()
+            engine.start_new_game()
+        else:
+            engine = get_memory_engine()
+            engine.record_game_event(
+                event_type="game_action",
+                content=f"{name}({params}) -> {result}",
+                metadata={"action": name, "success": success},
+            )
+            if success:
+                await engine.summarize_session_if_needed()
 
         await self._shared_context.add_game_entry(
             action=name,

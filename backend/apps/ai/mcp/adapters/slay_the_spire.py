@@ -7,6 +7,7 @@ from typing import Any
 
 from apps.ai.mcp.base_adapter import BaseGameAdapter, UnifiedAction, UnifiedGameState
 from apps.ai.mcp.client import MCPClient
+from apps.ai.memory.engine import get_memory_engine
 from apps.config import config
 
 logger = logging.getLogger(__name__)
@@ -104,6 +105,13 @@ class SlayTheSpireAdapter(BaseGameAdapter):
                 success = result is not None
                 if not success:
                     error_msg = f"start_game failed: {result}"
+                else:
+                    # 确保知识图谱初始化
+                    try:
+                        engine = get_memory_engine()
+                        await engine.ensure_graph(self.game_id)
+                    except Exception as e:
+                        logger.debug(f"知识图谱初始化失败: {e}")
                 return success, error_msg
             elif atype == "execute_actions":
                 result = await self._mcp.call_tool("execute_actions", params)
@@ -128,8 +136,8 @@ class SlayTheSpireAdapter(BaseGameAdapter):
             elif atype == "select_cards":
                 result = await self._mcp.call_tool("select_cards", params)
             elif atype in ("get_screen_state", "get_game_state", "get_available_commands",
-                           "get_card_info", "get_relic_info"):
-                result = True
+                           "get_card_info", "get_relic_info", "get_potion_info"):
+                result = await self._mcp.call_tool(atype, params)
             elif atype == "abandon_run":
                 result = await self._mcp.call_tool("abandon_run", params)
             elif atype == "save_game":
@@ -199,6 +207,10 @@ class SlayTheSpireAdapter(BaseGameAdapter):
             }
             openai_tools.append(defn)
         return openai_tools
+
+    async def query_tool(self, name: str, params: dict | None = None) -> Any:
+        raw = await self._mcp.call_tool(name, params or {})
+        return self._unwrap_tool_result(raw)
 
     async def health_check(self) -> bool:
         try:
@@ -313,3 +325,64 @@ class SlayTheSpireAdapter(BaseGameAdapter):
                 lines.append(f"  {i}. {ch}")
 
         return "\n".join(lines)
+
+    async def ingest_game_state_to_graph(self, state: UnifiedGameState) -> int:
+        """从当前游戏状态提取知识图谱节点
+
+        提取: 手牌、遗物、敌人 → 图谱节点
+        """
+        try:
+            engine = get_memory_engine()
+            graph = await engine.ensure_graph(self.game_id)
+        except Exception as e:
+            logger.debug(f"知识图谱不可用: {e}")
+            return 0
+
+        items = []
+        raw = state.raw_state
+
+        # 手牌 → card 节点
+        combat = raw.get("combat_state", {})
+        for card in combat.get("hand", []):
+            name = card.get("name", "")
+            if name:
+                items.append({
+                    "type": "node",
+                    "node_type": "card",
+                    "name": name,
+                    "properties": {
+                        "cost": card.get("cost"),
+                        "type": card.get("type", ""),
+                        "rarity": card.get("rarity", ""),
+                    },
+                })
+
+        # 遗物 → relic 节点
+        for relic in raw.get("relics", []):
+            name = relic.get("name", "") if isinstance(relic, dict) else str(relic)
+            if name:
+                items.append({
+                    "type": "node",
+                    "node_type": "relic",
+                    "name": name,
+                    "properties": {},
+                })
+
+        # 敌人 → enemy 节点
+        for enemy in state.enemies:
+            name = enemy.get("name", "")
+            if name:
+                items.append({
+                    "type": "node",
+                    "node_type": "enemy",
+                    "name": name,
+                    "properties": {
+                        "hp": enemy.get("hp"),
+                        "max_hp": enemy.get("max_hp"),
+                        "intent": enemy.get("intent", ""),
+                    },
+                })
+
+        if items:
+            return await graph.ingest(items)
+        return 0

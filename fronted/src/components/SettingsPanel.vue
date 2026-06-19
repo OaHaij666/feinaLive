@@ -2,7 +2,7 @@
   <Teleport to="body">
     <Transition name="modal">
       <div v-if="visible" class="settings-overlay" @click.self="close">
-        <div class="settings-panel">
+        <div :class="['settings-panel', { 'settings-panel-wide': activeTab === 'memory' }]">
           <div class="settings-header">
             <h2>集中配置</h2>
             <button class="close-btn" @click="close">&times;</button>
@@ -35,7 +35,7 @@
               </button>
             </div>
 
-            <div class="settings-content">
+            <div :class="['settings-content', { 'settings-content-memory': activeTab === 'memory' }]">
               <!-- Tab: AI主播 -->
               <div v-if="activeTab === 'host'" class="tab-content">
                 <div class="section-title">主播回复参数</div>
@@ -423,9 +423,14 @@
                   </div>
                 </div>
               </div>
+
+              <!-- Tab: 记忆 -->
+              <div v-if="activeTab === 'memory'" class="tab-content memory-tab-content">
+                <MemoryDebugPanel />
+              </div>
             </div>
 
-            <div class="settings-footer">
+            <div v-if="activeTab !== 'memory'" class="settings-footer">
               <div class="footer-left">
                 <span v-if="saveStatus" :class="['save-status', saveStatus]">{{ saveStatusText }}</span>
               </div>
@@ -450,6 +455,7 @@ import { useLLMStore } from '@/stores/llm'
 import { useDanmakuStore } from '@/stores/danmaku'
 import { useMusicStore } from '@/stores/music'
 import { DanmakuType } from '@/types/danmaku'
+import MemoryDebugPanel from '@/components/memory/MemoryDebugPanel.vue'
 
 interface Props { visible: boolean }
 const props = defineProps<Props>()
@@ -474,6 +480,7 @@ const tabs = [
   { key: 'game_params', label: '游戏参数' },
   { key: 'live', label: '直播' },
   { key: 'monitor', label: '直播状况' },
+  { key: 'memory', label: '记忆' },
 ]
 const activeTab = ref('host')
 const characters = ref<{ name: string }[]>([])
@@ -705,6 +712,11 @@ onUnmounted(() => {
   color-scheme: dark;
 }
 
+.settings-panel-wide {
+  width: min(1500px, 94vw);
+  height: min(920px, 92vh);
+}
+
 .settings-header {
   display: flex;
   justify-content: space-between;
@@ -774,6 +786,14 @@ onUnmounted(() => {
 
 .settings-content { flex: 1; overflow-y: auto; padding: 18px 24px; }
 .tab-content { display: flex; flex-direction: column; gap: 14px; }
+.settings-content-memory {
+  padding: 16px;
+  overflow: hidden;
+}
+.memory-tab-content {
+  height: 100%;
+  min-height: 0;
+}
 
 .section-title {
   color: #93c5fd;

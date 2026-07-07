@@ -88,7 +88,13 @@ Copy-Item backend\config.example.yaml backend\config.yaml
 
 ### 4. EasyVtuber 模型
 
-EasyVtuber 模型文件不要提交到仓库。下载后放到：
+EasyVtuber 模型文件不要提交到仓库。模型下载地址：
+
+```
+https://drive.google.com/file/d/1pWKIpjWeqfpa3Rub185FVvxDr5H09pOi/view?usp=drive_link
+```
+
+下载后解压到：
 
 ```text
 backend/EasyVtuber/data/models/

@@ -130,3 +130,15 @@ class BaseGameAdapter(ABC):
         if hasattr(self, "_mcp_client") and self._mcp_client:
             return await self._mcp_client.health_check()
         return False
+
+    async def on_game_started(self, memory_writer) -> None:
+        """新游戏成功开始后的钩子。默认无操作。
+
+        子类可重写以执行游戏特定的开局副作用（例如杀戮尖塔在开局后
+        从 MCP 拉初始牌组/遗物写入 important 记忆）。
+
+        Args:
+            memory_writer: 可调用对象，接受一段文本，将其写入 important 记忆层。
+                           协议: `await memory_writer(text: str) -> None`
+        """
+        return None

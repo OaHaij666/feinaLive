@@ -91,13 +91,14 @@ class AIClient:
             "top_p": params["top_p"],
             "max_tokens": params["max_tokens"],
             "stream": stream,
+            "drop_params": True,  # 自动丢弃模型不支持的参数（如 deepseek 不支持 thinking）
             **request.extra,
         }
         if self._api_key:
             payload["api_key"] = self._api_key
         if self._api_url:
             payload["api_base"] = self._api_url
-        if self._provider:
+        if self._provider and "/" not in params["model"]:
             payload["custom_llm_provider"] = self._provider
         if "response_format" in params:
             payload["response_format"] = params["response_format"]

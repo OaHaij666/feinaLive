@@ -56,6 +56,16 @@ class GiftData:
         }
 
 
+class HeartbeatData:
+    def __init__(self, msg: web_models.HeartbeatMessage):
+        self.popularity = msg.popularity
+
+    def to_dict(self):
+        return {
+            "popularity": self.popularity,
+        }
+
+
 class CustomHandler(BaseHandler):
     def __init__(self, callback: Callable):
         self.callback = callback
@@ -65,7 +75,7 @@ class CustomHandler(BaseHandler):
         self.room_id = room_id
 
     def _on_heartbeat(self, client: BLiveClient, message: web_models.HeartbeatMessage):
-        pass
+        asyncio.create_task(self.callback("popularity", HeartbeatData(message)))
 
     def _on_danmaku(self, client: BLiveClient, message: web_models.DanmakuMessage):
         asyncio.create_task(self.callback("danmaku", DanmakuData(message)))

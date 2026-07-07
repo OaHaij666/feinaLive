@@ -120,7 +120,7 @@ class EasyVtuberOutputConfig(BaseModel):
 
 class EasyVtuberConfig(BaseModel):
     enabled: bool = True
-    character: str = "lambda_00"
+    character: str = "feina00"
     input: EasyVtuberInputConfig = EasyVtuberInputConfig()
     model: EasyVtuberModelConfig = EasyVtuberModelConfig()
     performance: EasyVtuberPerformanceConfig = EasyVtuberPerformanceConfig()

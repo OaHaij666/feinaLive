@@ -112,7 +112,7 @@ game:
 
 easyvtuber:
   enabled: true
-  character: "lambda_00"  # 角色名称
+  character: "feina00"  # 角色名称
   input:
     type: "hybrid"        # 输入类型: hybrid(混合) | osf(仅OSF) | mouse(仅鼠标)
     osf_address: "127.0.0.1:11573"  # OSF 服务地址

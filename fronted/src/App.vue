@@ -30,7 +30,7 @@
 
       <!-- 底部信息窗口区 -->
       <div class="bottom-panels">
-        <MissionPanel />
+        <LiveStatsPanel />
         <PlaceholderPanel />
       </div>
 
@@ -67,7 +67,7 @@ import BottomDecoration from './components/layout/BottomDecoration.vue'
 import MainView from './components/mainview/MainView.vue'
 import DanmakuPanel from './components/danmaku/DanmakuPanel.vue'
 import InfoBar from './components/infobar/InfoBar.vue'
-import MissionPanel from './components/panels/MissionPanel.vue'
+import LiveStatsPanel from './components/panels/LiveStatsPanel.vue'
 import PlaceholderPanel from './components/panels/PlaceholderPanel.vue'
 import NotificationToast from './components/NotificationToast.vue'
 import PlayUnlockModal from './components/PlayUnlockModal.vue'

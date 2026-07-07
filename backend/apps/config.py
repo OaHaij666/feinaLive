@@ -241,7 +241,7 @@ class Config:
 
     @property
     def easyvtuber_character(self) -> str:
-        return self._data.get("easyvtuber", {}).get("character", "lambda_00")
+        return self._data.get("easyvtuber", {}).get("character", "feina00")
 
     @property
     def easyvtuber_input_type(self) -> str:

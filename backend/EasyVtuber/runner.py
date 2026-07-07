@@ -54,7 +54,7 @@ logger = logging.getLogger(__name__)
 class EasyVtuberRunner:
     def __init__(
         self,
-        character: str = "lambda_00",
+        character: str = "feina00",
         input_type: str = "debug",
         frame_rate: int = 30,
     ):
@@ -70,9 +70,21 @@ class EasyVtuberRunner:
         self._virtual_cam = None
 
     def _load_character_image(self) -> np.ndarray:
-        img_path = EASYVTUBER_DIR / "data" / "images" / f"{self.character}.png"
+        img_dir = EASYVTUBER_DIR / "data" / "images"
+        img_path = img_dir / f"{self.character}.png"
+
         if not img_path.exists():
-            raise FileNotFoundError(f"角色图片不存在: {img_path}")
+            available = sorted(p for p in img_dir.glob("*.png") if p.is_file())
+            if available:
+                img_path = available[0]
+                logger.warning(
+                    f"角色图片不存在: {self.character}.png, 自动回退到目录第一个可用图片: {img_path.name}"
+                )
+            else:
+                logger.warning(
+                    f"角色图片不存在: {self.character}.png, 且目录 {img_dir} 中没有任何 .png 图片"
+                )
+                raise FileNotFoundError(f"角色图片不存在: {self.character}.png")
 
         img = Image.open(img_path)
         img = img.convert('RGBA')
@@ -303,7 +315,7 @@ _runner: EasyVtuberRunner | None = None
 
 
 def get_easyvtuber_runner(
-    character: str = "lambda_00",
+    character: str = "feina00",
     input_type: str = "debug",
     frame_rate: int = 30,
 ) -> EasyVtuberRunner:
@@ -321,7 +333,7 @@ async def main():
     import argparse as ap
 
     parser = ap.ArgumentParser()
-    parser.add_argument("--character", type=str, default="lambda_00")
+    parser.add_argument("--character", type=str, default="feina00")
     parser.add_argument("--input", type=str, default="debug", choices=["debug", "webcam", "mouse", "openseeface"])
     parser.add_argument("--frame-rate", type=int, default=30)
     cli_args = parser.parse_args()

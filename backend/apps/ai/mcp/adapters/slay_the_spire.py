@@ -29,8 +29,14 @@ class SlayTheSpireAdapter(BaseGameAdapter):
 
     @staticmethod
     def _fix_start_game_params(params: dict) -> dict:
+        def _normalize(val):
+            s = str(val)
+            upper = s.upper()
+            # 仅当大写后命中原生 4 角色时才统一大写；mod class 名（PascalCase）保持原样
+            return upper if upper in SlayTheSpireAdapter.CHARACTERS else s
+
         if "character" in params:
-            params["character"] = str(params["character"]).upper()
+            params["character"] = _normalize(params["character"])
             return params
         for alias in ("character_index", "role", "class", "char"):
             if alias in params:
@@ -40,7 +46,7 @@ class SlayTheSpireAdapter(BaseGameAdapter):
                     chars = SlayTheSpireAdapter.CHARACTERS
                     params["character"] = chars[idx] if 0 <= idx < len(chars) else chars[0]
                 else:
-                    params["character"] = str(val).upper()
+                    params["character"] = _normalize(val)
                 del params[alias]
                 return params
         if not params.get("character"):
@@ -91,6 +97,195 @@ class SlayTheSpireAdapter(BaseGameAdapter):
         except Exception as e:
             logger.error(f"获取游戏状态异常: {e}")
             return self._raw_to_unified({})
+
+    async def get_initial_state(self) -> dict | None:
+        """start_game 之后调：从 MCP 拉初始牌组/遗物/角色，含具体数值与效果描述。
+
+        返回结构:
+        {
+            "character": "Wishdell_Mod",     # MCP 原始 class 字段
+            "deck_cards": [
+                {"id": "Wishdell:Strike", "name": "打击", "count": 5,
+                 "cost": 1, "type": "ATTACK", "base_damage": 6, "base_block": None, "base_magic_number": None,
+                 "description": "...", "upgraded": {...} | None},
+                ...
+            ],
+            "relics": [
+                {"id": "Wishdell:Avenger", "name": "复仇者", "tier": "STARTER",
+                 "description": "...", "counter_type": "none"},
+                ...
+            ],
+        }
+        """
+        try:
+            state = await self.get_state()
+        except Exception as e:
+            logger.error(f"get_initial_state: get_state 失败: {e}")
+            return None
+
+        raw = state.raw_state or {}
+        character = raw.get("class", "") or ""
+
+        # 1. 牌组：合并相同 id 的牌，统计 count
+        from collections import Counter
+        raw_deck = raw.get("deck", []) or []
+        if not isinstance(raw_deck, list):
+            return None
+
+        card_id_counts: Counter = Counter()
+        for c in raw_deck:
+            if not isinstance(c, dict):
+                continue
+            cid = c.get("id")
+            if cid:
+                card_id_counts[cid] += 1
+
+        # 2. 批量查牌详情
+        deck_cards: list[dict] = []
+        if card_id_counts:
+            try:
+                card_info = await self._mcp.call_tool(
+                    "get_card_info", {"card_ids": list(card_id_counts.keys())}
+                )
+            except Exception as e:
+                logger.warning(f"get_card_info 失败: {e}")
+                card_info = None
+            card_info = self._unwrap_tool_result(card_info) if card_info else None
+            info_map: dict[str, dict] = {}
+            if isinstance(card_info, dict):
+                for item in card_info.get("cards", []) or []:
+                    if isinstance(item, dict) and "error" not in item and item.get("id"):
+                        info_map[item["id"]] = item
+
+            for cid, cnt in card_id_counts.items():
+                info = info_map.get(cid, {})
+                deck_cards.append({
+                    "id": cid,
+                    "name": info.get("name", cid),
+                    "count": cnt,
+                    "cost": info.get("cost"),
+                    "type": info.get("type", ""),
+                    "base_damage": info.get("base_damage"),
+                    "base_block": info.get("base_block"),
+                    "base_magic_number": info.get("base_magic_number"),
+                    "description": info.get("description", ""),
+                    "upgraded": info.get("upgraded"),
+                })
+
+        # 3. 遗物：批量查
+        raw_relics = raw.get("relics", []) or []
+        relics: list[dict] = []
+        relic_ids = [r.get("id") for r in raw_relics if isinstance(r, dict) and r.get("id")]
+        relic_info_map: dict[str, dict] = {}
+        if relic_ids:
+            try:
+                relic_info = await self._mcp.call_tool(
+                    "get_relic_info", {"relic_ids": relic_ids}
+                )
+            except Exception as e:
+                logger.warning(f"get_relic_info 失败: {e}")
+                relic_info = None
+            relic_info = self._unwrap_tool_result(relic_info) if relic_info else None
+            if isinstance(relic_info, dict):
+                for item in relic_info.get("relics", []) or []:
+                    if isinstance(item, dict) and "error" not in item and item.get("id"):
+                        relic_info_map[item["id"]] = item
+
+        for r in raw_relics:
+            if not isinstance(r, dict):
+                continue
+            rid = r.get("id", "")
+            info = relic_info_map.get(rid, {})
+            relics.append({
+                "id": rid,
+                "name": info.get("name", r.get("name", rid)),
+                "tier": info.get("tier", ""),
+                "description": info.get("description", ""),
+                "counter_type": info.get("counter_type", "none"),
+            })
+
+        return {
+            "character": character,
+            "deck_cards": deck_cards,
+            "relics": relics,
+        }
+
+    @staticmethod
+    def format_initial_state_for_memory(initial: dict) -> str:
+        """把 get_initial_state() 返回值格式化成可写入 important 记忆的文本。"""
+        lines: list[str] = []
+        char = initial.get("character", "") or "?"
+        lines.append(f"角色: {char}")
+
+        cards = initial.get("deck_cards", []) or []
+        total = sum(c.get("count", 0) for c in cards)
+        unique = len(cards)
+        lines.append(f"牌组 ({total}张, {unique}种):")
+
+        def _card_stats(c: dict) -> str:
+            parts: list[str] = []
+            if c.get("cost") is not None:
+                parts.append(f"{c['cost']}费")
+            if c.get("type"):
+                parts.append(c["type"])
+            if c.get("base_damage") is not None:
+                parts.append(f"伤害{c['base_damage']}")
+            if c.get("base_block") is not None:
+                parts.append(f"格挡{c['base_block']}")
+            if c.get("base_magic_number") is not None:
+                parts.append(f"效果值{c['base_magic_number']}")
+            return ", ".join(parts) if parts else "?"
+
+        for c in cards:
+            name = c.get("name", c.get("id", "?"))
+            cnt = c.get("count", 1)
+            stats = _card_stats(c)
+            desc = c.get("description", "") or ""
+            line = f"  {cnt}x {name} ({stats})"
+            if desc:
+                line += f" - {desc}"
+            lines.append(line)
+            upg = c.get("upgraded")
+            if isinstance(upg, dict) and upg.get("name"):
+                upg_stats = []
+                if upg.get("base_damage") is not None:
+                    upg_stats.append(f"伤害{upg['base_damage']}")
+                if upg.get("base_block") is not None:
+                    upg_stats.append(f"格挡{upg['base_block']}")
+                if upg.get("base_magic_number") is not None:
+                    upg_stats.append(f"效果值{upg['base_magic_number']}")
+                suffix = f" ({', '.join(upg_stats)})" if upg_stats else ""
+                lines.append(f"    ↳ 升级{upg['name']}{suffix}: {upg.get('description', '')}")
+
+        relics = initial.get("relics", []) or []
+        if relics:
+            lines.append(f"遗物 ({len(relics)}个):")
+            for r in relics:
+                tier = r.get("tier", "")
+                tier_str = f" [{tier}]" if tier else ""
+                desc = r.get("description", "") or ""
+                lines.append(f"  - {r.get('name', r.get('id', '?'))}{tier_str} - {desc}")
+
+        return "\n".join(lines)
+
+    async def on_game_started(self, memory_writer) -> None:
+        """开局成功后：从 MCP 拉初始牌组/遗物/角色，格式化成文本写入 important 记忆。
+
+        memory_writer 是 BaseGameAdapter 协议传入的可调用对象: await memory_writer(text: str)
+        """
+        try:
+            initial = await self.get_initial_state()
+            if not initial:
+                return
+            text = self.format_initial_state_for_memory(initial)
+            await memory_writer(text)
+            card_total = sum(c.get("count", 0) for c in initial.get("deck_cards", []))
+            logger.info(
+                f"杀戮尖塔开局副作用: 已写入初始状态到 important 记忆 "
+                f"({card_total}张牌, {len(initial.get('relics', []))}个遗物)"
+            )
+        except Exception as e:
+            logger.warning(f"杀戮尖塔开局副作用失败: {e}")
 
     async def execute_action(self, action: UnifiedAction) -> tuple[bool, str]:
         try:
@@ -293,8 +488,8 @@ class SlayTheSpireAdapter(BaseGameAdapter):
 
         monsters = combat.get("monsters", raw.get("monsters", []))
         if monsters:
-            lines.append("敌人:")
-            for i, m in enumerate(monsters, 1):
+            lines.append("敌人(索引从0开始):")
+            for i, m in enumerate(monsters):
                 if m.get("is_gone"):
                     continue
                 intent = m.get("intent", "?")

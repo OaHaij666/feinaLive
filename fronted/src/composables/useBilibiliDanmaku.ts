@@ -1,5 +1,6 @@
 import { ref, onUnmounted } from 'vue'
 import { useLLMStore } from '@/stores/llm'
+import { useLiveStatsStore } from '@/stores/livestats'
 import { useMusicStore } from '@/stores/music'
 import { useNotification } from '@/utils/notification'
 
@@ -19,6 +20,7 @@ export function useBilibiliDanmaku() {
   const isConnected = ref(false)
   const error = ref<string | null>(null)
   const llmStore = useLLMStore()
+  const liveStatsStore = useLiveStatsStore()
   const musicStore = useMusicStore()
   const notification = useNotification()
   let ws: WebSocket | null = null
@@ -79,6 +81,7 @@ export function useBilibiliDanmaku() {
           if (danmakuList.value.length > 50) {
             danmakuList.value = danmakuList.value.slice(-50)
           }
+          liveStatsStore.incrementDanmaku()
         } else if (msg.type === 'gift') {
           const data = msg.data
           const gift: DanmakuMessage = {
@@ -89,6 +92,10 @@ export function useBilibiliDanmaku() {
             type: 'gift',
           }
           danmakuList.value.push(gift)
+          liveStatsStore.addGift(Number(data.total_coin) || 0, data.gift_name || '未知礼物')
+        } else if (msg.type === 'popularity') {
+          const popularity = Number(msg.data?.popularity) || 0
+          liveStatsStore.setPopularity(popularity)
         } else if (msg.type === 'start' || msg.type === 'text' || msg.type === 'audio' || msg.type === 'end') {
           llmStore.handleExternalChunk(msg)
         } else if (msg.type === 'reply') {

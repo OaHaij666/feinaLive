@@ -120,9 +120,12 @@ def build_game_system_prompt(
 - 主播互动：用 request_host_commentary 让主播解说，用 request_memory_update 记录情报
 
 【战斗核心原则】
-- 敌人意图为 ATTACK 时，**必须先出防御牌叠格挡**，格挡量 >= 敌人预计伤害才能结束回合
+- ★ 斩杀优先：**如果能用攻击牌在本回合击杀敌人，优先击杀**——杀死敌人等于永久消除其伤害，比叠格挡更有效
+- 敌人意图为 ATTACK 时，格挡量 >= 敌人预计伤害才能结束回合；但如果能斩杀所有敌人则无需叠格挡
 - 只有在敌人无攻击意图（正在BUFF/DEBUFF/准备技能）时才全力输出
 - 3费回合：优先出1-2张防御牌保命，剩余费用打输出，不要把所有费都用来攻击
+- ★ 敌人编号从 0 开始：2 个敌人的有效 target_index 是 0 和 1（不是 1 和 2）
+- ★ 斩杀多个敌人时注意 index 漂移：击杀 [0] 后原来的 [1] 会变成新的 [0]。批量斩杀时从高 index 往低打（先打 [1] 再打 [0]），或者一次只杀一个等下次轮询刷新状态
 - 每次决策可以返回多个游戏操作，系统会按真人节奏逐个执行
 - 如果使用 execute_actions，系统也会拆成逐步动作执行，先防御后攻击
 
@@ -133,6 +136,8 @@ def build_game_system_prompt(
 - 攻击牌造成伤害 → 优先打血量最低的敌人
 - 防御牌获得格挡 → 敌人意图是ATTACK时优先出
 - 主菜单时 start_game 开始新游戏，参考主播互动中观众的意见选择角色
+- ★ 遇到【当前牌组/遗物】里没有效果描述、或者效果不清楚（如看不懂占位符 !D! / !B! / !M!）的牌，
+  必须在决策前调用 get_card_info / get_relic_info 获取完整效果后再决策，不要瞎猜，再把相关信息写入important memory
 
 {core_memory or '（暂无）'}
 
@@ -168,10 +173,13 @@ def build_game_system_prompt(
 
 选择角色时：
 {{"actions":[
-  {{"function":{{"name":"request_host_commentary","arguments":{{"key_points":["开始新游戏","选了铁甲战士"],"mood":"excited"}}}}}},
-  {{"function":{{"name":"request_memory_update","arguments":{{"memory_type":"important","mode":"rewrite","content":"初始牌组：5打击+4防御+1痛击，遗物：燃烧之血"}}}}}},
-  {{"function":{{"name":"choose","arguments":{{"choice_index":1}}}}}}
+  {{"function":{{"name":"request_host_commentary","arguments":{{"key_points":["开始新游戏","选了Wishdell_Mod"],"mood":"excited"}}}}}},
+  {{"function":{{"name":"start_game","arguments":{{"class":"Wishdell_Mod"}}}}}}
 ]}}
+
+注：start_game 成功后系统会**自动**从 MCP 拉取初始牌组/遗物（含具体数值与效果）并写入 important 记忆层，
+你**不要**再调用 request_memory_update 写"5打击+4防御+1痛击，遗物：燃烧之血"这类固定模板，
+初始信息由系统负责。
 
 战斗中：
 {{"actions":[
@@ -436,6 +444,13 @@ class GameGraph:
             state.host_history_text = results[1] if not isinstance(results[1], Exception) else ""
             state.game_history_text = results[2] if not isinstance(results[2], Exception) else ""
 
+            # 非阻塞节流同步：每 30s 最多一次将游戏状态写入知识图谱
+            if state.game_state and hasattr(self._adapter, "ingest_game_state_to_graph"):
+                now = time.time()
+                if now - getattr(self, "_last_graph_sync", 0) >= 30:
+                    self._last_graph_sync = now
+                    asyncio.ensure_future(self._safe_graph_sync(state.game_state))
+
             # 从 MemoryEngine 获取记忆 (单局 + 长期 + 知识图谱)
             try:
                 engine = get_memory_engine()
@@ -458,6 +473,13 @@ class GameGraph:
 
         except Exception as e:
             logger.error(f"数据收集失败: {e}")
+
+    async def _safe_graph_sync(self, game_state):
+        """包装图谱同步，确保异常不泄漏到事件循环"""
+        try:
+            await self._adapter.ingest_game_state_to_graph(game_state)
+        except Exception as e:
+            logger.debug(f"知识图谱同步跳过: {e}")
 
     async def _build_prompt(self, state: GameLoopState):
         raw = state.game_state.raw_state if state.game_state else {}
@@ -802,6 +824,18 @@ class GameGraph:
             # 清空 MemoryEngine 单局记忆
             engine = get_memory_engine()
             engine.start_new_game()
+
+            # 通用钩子：让 adapter 在开局后做游戏特定的副作用
+            # （例如杀戮尖塔会从 MCP 拉初始牌组/遗物写入 important 记忆）
+            try:
+                async def write_important(text: str) -> None:
+                    await self._shared_context.rewrite_memory("important", text)
+                    if hasattr(engine, "session") and hasattr(engine.session, "update_important"):
+                        engine.session.update_important(text)
+
+                await self._adapter.on_game_started(write_important)
+            except Exception as e:
+                logger.warning(f"adapter.on_game_started 失败: {e}")
         else:
             engine = get_memory_engine()
             engine.record_game_event(

@@ -31,6 +31,7 @@ from apps.ai.memory import (
 from apps.ai.messaging.dynamic_priority import get_priority_manager
 from apps.ai.messaging.queue import Message, get_message_queue
 from apps.ai.prompt import build_chat_prompt, get_host_system_prompt
+from apps.ai.shared_context import get_shared_context
 from apps.ai.tts import (
     TTSResult,
     get_tts_client,
@@ -137,6 +138,7 @@ class AIHostBrain:
 
     def __init__(self, room_id: int | str):
         self.room_id = str(room_id)
+        self._shared_context = get_shared_context()
         self._danmaku_buffer: list[DanmakuInput] = []
         self._last_reply_time: float = 0
         self._is_replying: bool = False

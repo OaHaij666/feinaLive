@@ -98,10 +98,11 @@ async def danmaku_websocket(websocket: WebSocket, room_id: str):
                 "type": msg_type,
                 "data": data.to_dict() if hasattr(data, "to_dict") else data,
             }
-            try:
-                await manager.send_message(room_id, message)
-            except Exception as e:
-                logger.error(f"Failed to send danmaku: {e}")
+            if msg_type != "danmaku":
+                try:
+                    await manager.send_message(room_id, message)
+                except Exception as e:
+                    logger.error(f"Failed to send {msg_type}: {e}")
 
             if msg_type == "danmaku" and hasattr(data, "content"):
                 await process_danmaku(

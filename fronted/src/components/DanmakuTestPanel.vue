@@ -117,9 +117,9 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue'
 import { useNotification } from '@/utils/notification'
-import { useLLMStore } from '@/stores/llm'
 import { useDanmakuStore } from '@/stores/danmaku'
 import { useMusicStore } from '@/stores/music'
+import { useLLMStore } from '@/stores/llm'
 import { DanmakuType } from '@/types/danmaku'
 
 defineProps<{
@@ -156,9 +156,9 @@ const bvidInput = ref('')
 const logs = ref<LogItem[]>([])
 let ws: WebSocket | null = null
 
-const llmStore = useLLMStore()
 const danmakuStore = useDanmakuStore()
 const musicStore = useMusicStore()
+const llmStore = useLLMStore()
 
 function addLog(content: string, type: LogItem['type'] = 'system') {
   const now = new Date()

@@ -3,6 +3,7 @@ import { useLLMStore } from '@/stores/llm'
 import { useLiveStatsStore } from '@/stores/livestats'
 import { useMusicStore } from '@/stores/music'
 import { useNotification } from '@/utils/notification'
+import { useAdminCommands } from '@/composables/useAdminCommands'
 
 export interface DanmakuMessage {
   id: string
@@ -23,6 +24,7 @@ export function useBilibiliDanmaku() {
   const liveStatsStore = useLiveStatsStore()
   const musicStore = useMusicStore()
   const notification = useNotification()
+  const { adminState } = useAdminCommands()
   let ws: WebSocket | null = null
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -97,7 +99,9 @@ export function useBilibiliDanmaku() {
           const popularity = Number(msg.data?.popularity) || 0
           liveStatsStore.setPopularity(popularity)
         } else if (msg.type === 'start' || msg.type === 'text' || msg.type === 'audio' || msg.type === 'end') {
-          llmStore.handleExternalChunk(msg)
+          if (!adminState.value.isTestRoomEnabled) {
+            llmStore.handleExternalChunk(msg)
+          }
         } else if (msg.type === 'reply') {
           llmStore.handleExternalChunk({
             type: 'start',

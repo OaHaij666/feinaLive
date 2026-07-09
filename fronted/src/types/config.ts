@@ -154,6 +154,14 @@ export interface AdminConfig {
   username: string
 }
 
+export interface EmbeddingConfig {
+  provider: string
+  model: string
+  api_url: string
+  api_key: string
+  dimensions: number | null
+}
+
 export interface FullConfig {
   bilibili: BilibiliConfig
   host: HostConfig
@@ -171,6 +179,7 @@ export interface FullConfig {
   default_playlist: Array<{ bvid: string; title: string; artist?: string }>
   announcement: string
   admin: AdminConfig
+  embedding: EmbeddingConfig
 }
 
 /** MASKED_PATTERN: 后端返回敏感字段时使用的掩码 */

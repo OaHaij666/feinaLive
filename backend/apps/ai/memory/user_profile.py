@@ -124,8 +124,6 @@ class UserProfile:
         if len(self.key_topics) > 10:
             self.key_topics = self.key_topics[-10:]
         self._dirty = True
-        # 非阻塞同步到知识图谱
-        self._schedule_graph_sync()
         asyncio.create_task(self._save_to_db())
 
     def update_long_term_memory(self, memory: str):
@@ -181,35 +179,6 @@ class UserProfile:
                 if match:
                     topics.append(match.group(1) if match.groups() else match.group(0))
         return topics
-
-    def _schedule_graph_sync(self):
-        """非阻塞：将用户画像同步到知识图谱（user_profiles game_id）"""
-        try:
-            loop = asyncio.get_running_loop()
-            loop.create_task(self._sync_to_graph())
-        except RuntimeError:
-            pass  # 没有运行中的事件循环，跳过
-
-    async def _sync_to_graph(self):
-        """将当前 UserProfile 写入知识图谱 user_profiles"""
-        try:
-            from apps.ai.memory.engine import get_memory_engine
-            engine = get_memory_engine()
-            graph = await engine.ensure_graph("user_profiles")
-            await graph.add_node(
-                node_type="user",
-                name=f"用户{self.username}",
-                properties={
-                    "user_id": self.user_id,
-                    "username": self.username,
-                    "danmaku_count": self.danmaku_count,
-                    "interaction_count": self.interaction_count,
-                    "key_topics": self.key_topics,
-                    "impression": self.impression,
-                },
-            )
-        except Exception as e:
-            logger.debug(f"同步用户 {self.username} 到知识图谱失败: {e}")
 
 
 async def load_all_profiles_from_db():

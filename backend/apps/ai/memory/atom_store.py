@@ -7,9 +7,11 @@
 from __future__ import annotations
 
 import json
+import math
+import struct
 import time
 from contextlib import asynccontextmanager
-from typing import Any
+from typing import Any, Protocol
 
 import aiosqlite
 
@@ -20,14 +22,39 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+class EmbedProvider(Protocol):
+    """embedding 客户端协议 — AtomStore 不依赖具体实现"""
+
+    async def embed_text(self, text: str) -> list[float]: ...
+    async def embed_batch(self, texts: list[str]) -> list[list[float]]: ...
+    @property
+    def available(self) -> bool: ...
+
+
 class AtomStore:
-    """SQLite + FTS5 长期记忆原子存储"""
+    """SQLite + FTS5 长期记忆原子存储，可选向量检索扩展"""
 
     _SQLITE_BATCH_SIZE = 500
 
     def __init__(self, db_path: str):
         self.db_path = db_path
         self._db: aiosqlite.Connection | None = None
+        self._embed_client: EmbedProvider | None = None
+        self._embed_on_write: bool = True
+        self._embed_cache: dict[int, list[float]] = {}
+        self._embed_cache_time: float = 0.0
+        self._embed_cache_ttl: float = 120.0  # 缓存有效期，秒
+
+    def set_embed_client(self, client: EmbedProvider | None) -> None:
+        self._embed_client = client
+        self._embed_cache.clear()
+
+    def set_embed_on_write(self, enabled: bool) -> None:
+        self._embed_on_write = enabled
+
+    @property
+    def has_embed(self) -> bool:
+        return self._embed_client is not None and self._embed_client.available
 
     async def _get_db(self) -> aiosqlite.Connection:
         if self._db is None:
@@ -120,6 +147,18 @@ class AtomStore:
                 USING fts5(content, atom_id UNINDEXED, tokenize='unicode61')
                 """
             )
+            await db.execute(
+                """
+                CREATE TABLE IF NOT EXISTS memory_atom_embeddings (
+                    atom_id INTEGER PRIMARY KEY REFERENCES memory_atoms(id) ON DELETE CASCADE,
+                    embedding BLOB NOT NULL,
+                    dims INTEGER NOT NULL DEFAULT 0
+                )
+                """
+            )
+            await db.execute(
+                "CREATE INDEX IF NOT EXISTS idx_emb_atom ON memory_atom_embeddings(atom_id)"
+            )
             await db.commit()
         logger.info(f"AtomStore 初始化完成: {self.db_path}")
 
@@ -128,6 +167,8 @@ class AtomStore:
         async with self._connect() as db:
             atom_id = await self._insert_atom(db, atom)
             await db.commit()
+        if self._embed_on_write and self.has_embed:
+            await self._embed_atom(atom_id, atom.content)
         return atom_id
 
     async def insert_many(self, atoms: list[MemoryAtom]) -> list[int]:
@@ -151,6 +192,11 @@ class AtomStore:
                         atom.atom_id = 0
                     raise
                 atom_ids.extend(batch_atom_ids)
+        if self._embed_on_write and self.has_embed:
+            contents = [a.content for a in atoms if a.atom_id > 0]
+            ids = [a.atom_id for a in atoms if a.atom_id > 0]
+            if contents:
+                await self._embed_atoms_batch(ids, contents)
         return atom_ids
 
     def _prepare_atom_for_insert(self, atom: MemoryAtom) -> None:
@@ -456,7 +502,7 @@ class AtomStore:
         session_id: str | None = None,
         include_expired: bool = False,
     ) -> list[MemoryAtom]:
-        """FTS 全文检索 + LIKE 回退，支持 game_id/user_id/atom_types 过滤"""
+        """混合检索：FTS5 + 向量相似度（embedding 可用时），否则退化到纯 FTS5"""
         filters = ["ma.status = 'active'"] if not include_expired else []
         params: list[Any] = []
 
@@ -476,11 +522,13 @@ class AtomStore:
 
         where_clause = f"AND {' AND '.join(filters)}" if filters else ""
 
+        bm25_by_id: dict[int, float] = {}
+        vector_by_id: dict[int, float] = {}
+
         async with self._connect() as db:
             db.row_factory = aiosqlite.Row
-            rows = []
 
-            # FTS 检索
+            # ---- 1. FTS5 检索 ----
             if query and query.strip():
                 tokens = [t for t in query.strip().split() if t]
                 if tokens:
@@ -501,14 +549,15 @@ class AtomStore:
                             ORDER BY bm25_score ASC
                             LIMIT ?
                             """,
-                            (*fts_params, limit),
+                            (*fts_params, limit * 2),
                         )
                         rows = await cursor.fetchall()
+                        for row in rows:
+                            bm25_by_id[int(row["id"])] = float(row["bm25_score"])
                     except Exception:
                         rows = []
 
-                    # LIKE 回退
-                    if not rows:
+                    if not bm25_by_id:
                         like_clauses = " OR ".join(
                             ["ma.content LIKE ?" for _ in tokens]
                         )
@@ -523,9 +572,62 @@ class AtomStore:
                             """,
                             (*like_params, limit),
                         )
-                        rows = await cursor.fetchall()
+                        for row in await cursor.fetchall():
+                            bm25_by_id[int(row["id"])] = float(row["bm25_score"])
+
+            # ---- 2. 向量检索（如可用）----
+            if self.has_embed and query and query.strip():
+                try:
+                    query_vec = await self._embed_client.embed_text(query)
+                    if query_vec:
+                        await self._load_embedding_cache()
+                        # 查询过滤条件匹配的候选 atom ID
+                        cursor = await db.execute(
+                            f"SELECT id FROM memory_atoms ma WHERE 1=1 {where_clause}",
+                            params,
+                        )
+                        candidate_set = {int(r[0]) for r in await cursor.fetchall()}
+                        for atom_id, vec in self._embed_cache.items():
+                            if atom_id not in candidate_set:
+                                continue
+                            sim = self._cosine_similarity(query_vec, vec)
+                            if sim > 0.15:
+                                vector_by_id[atom_id] = sim
+                except Exception as e:
+                    logger.debug(f"向量检索失败，退化到纯 FTS5: {e}")
+
+            # ---- 3. 合并分数 ----
+            alpha = 0.7  # 向量权重
+            merged: dict[int, float] = {}
+            all_ids: set[int] = set(bm25_by_id.keys()) | set(vector_by_id.keys())
+
+            # 归一化 bm25
+            bm25_values = list(bm25_by_id.values())
+            bm25_max = max(bm25_values) if bm25_values else 1.0
+            bm25_min = min(bm25_values) if bm25_values else 0.0
+            bm25_range = bm25_max - bm25_min or 1.0
+
+            for atom_id in all_ids:
+                bm25_raw = bm25_by_id.get(atom_id, 0.0)
+                bm25_norm = (bm25_max - bm25_raw) / bm25_range if bm25_by_id else 0.5
+                vec_score = vector_by_id.get(atom_id, 0.0)
+                if vector_by_id:
+                    merged[atom_id] = alpha * vec_score + (1.0 - alpha) * bm25_norm
+                else:
+                    merged[atom_id] = bm25_norm
+
+            # ---- 4. 查询/加载最终 rows ----
+            if merged:
+                sorted_ids = sorted(merged.keys(), key=lambda x: merged[x], reverse=True)[:limit * 2]
+                placeholders = ",".join("?" * len(sorted_ids))
+                cursor = await db.execute(
+                    f"SELECT ma.* FROM memory_atoms ma WHERE ma.id IN ({placeholders})",
+                    sorted_ids,
+                )
+                rows = await cursor.fetchall()
+            elif query and query.strip():
+                rows = []
             else:
-                # 无查询词，返回所有匹配记录
                 cursor = await db.execute(
                     f"""
                     SELECT ma.*, 0.5 AS bm25_score
@@ -541,33 +643,128 @@ class AtomStore:
         if not rows:
             return []
 
-        # 归一化 BM25 分数
-        scores = [float(row["bm25_score"]) for row in rows]
-        max_score = max(scores)
-        min_score = min(scores)
-        score_range = max_score - min_score
-
         atoms: list[MemoryAtom] = []
         now = time.time()
         for row in rows:
             atom = self._row_to_atom(row)
-            normalized = (
-                1.0
-                if score_range == 0
-                else (max_score - float(row["bm25_score"])) / score_range
-            )
-            atom.metadata["bm25_score"] = normalized
+            atom_id = atom.atom_id
+
+            atom.metadata["bm25_score"] = bm25_by_id.get(atom_id, 0.5)
             atom.metadata["temporal_score"] = atom.compute_temporal_score(now)
+
+            if atom_id in vector_by_id:
+                atom.metadata["vector_score"] = vector_by_id[atom_id]
+
+            combined = merged.get(atom_id, bm25_by_id.get(atom_id, 0.5) * 0.3)
+            atom.metadata["final_score"] = (
+                combined * atom.metadata["temporal_score"] * (0.5 + 0.5 * atom.importance)
+            )
             atoms.append(atom)
 
-        atoms.sort(
-            key=lambda a: (
-                float(a.metadata.get("bm25_score", 0))
-                * float(a.metadata.get("temporal_score", 1))
-            ),
-            reverse=True,
-        )
-        return atoms
+        atoms.sort(key=lambda a: float(a.metadata.get("final_score", 0)), reverse=True)
+        return atoms[:limit]
+
+    # ---- Embedding 辅助方法 ----
+
+    async def _embed_atom(self, atom_id: int, content: str) -> None:
+        if not self._embed_client or not self._embed_client.available:
+            return
+        try:
+            embedding = await self._embed_client.embed_text(content)
+            if embedding:
+                await self._store_embedding(atom_id, embedding)
+        except Exception as e:
+            logger.debug(f"Embedding 生成失败 (atom_id={atom_id}): {e}")
+
+    async def _embed_atoms_batch(
+        self, atom_ids: list[int], contents: list[str]
+    ) -> None:
+        if not self._embed_client or not self._embed_client.available:
+            return
+        try:
+            client = self._embed_client
+            embeddings = await client.embed_batch(contents)
+            if not embeddings:
+                return
+            for atom_id, vec in zip(atom_ids, embeddings):
+                if vec:
+                    await self._store_embedding(atom_id, vec)
+        except Exception as e:
+            logger.debug(f"批量 Embedding 生成失败: {e}")
+
+    async def _store_embedding(self, atom_id: int, embedding: list[float]) -> None:
+        blob = self._pack_embedding(embedding)
+        async with self._connect() as db:
+            await db.execute(
+                """
+                INSERT OR REPLACE INTO memory_atom_embeddings (atom_id, embedding, dims)
+                VALUES (?, ?, ?)
+                """,
+                (atom_id, blob, len(embedding)),
+            )
+            await db.commit()
+        # 更新内存缓存
+        self._embed_cache[atom_id] = embedding
+
+    async def _load_embedding_cache(self) -> None:
+        """加载所有活跃原子的 embedding 到内存缓存（带 TTL）"""
+        now = time.time()
+        if self._embed_cache and (now - self._embed_cache_time) < self._embed_cache_ttl:
+            return
+        async with self._connect() as db:
+            cursor = await db.execute(
+                """
+                SELECT me.atom_id, me.embedding
+                FROM memory_atom_embeddings me
+                JOIN memory_atoms ma ON ma.id = me.atom_id
+                WHERE ma.status = 'active'
+                """
+            )
+            rows = await cursor.fetchall()
+        self._embed_cache = {int(r[0]): self._unpack_embedding(r[1]) for r in rows}
+        self._embed_cache_time = now
+
+    async def backfill_embeddings(self, batch_size: int = 50) -> dict[str, int]:
+        """为没有 embedding 的活跃原子批量生成向量"""
+        if not self.has_embed:
+            return {"skipped": 0, "success": 0, "failed": 0}
+        async with self._connect() as db:
+            cursor = await db.execute(
+                """
+                SELECT ma.id, ma.content FROM memory_atoms ma
+                WHERE ma.status = 'active'
+                AND ma.id NOT IN (SELECT atom_id FROM memory_atom_embeddings)
+                LIMIT ?
+                """,
+                (batch_size,),
+            )
+            rows = await cursor.fetchall()
+        if not rows:
+            return {"skipped": 0, "success": 0, "failed": 0}
+
+        ids = [int(r[0]) for r in rows]
+        contents = [str(r[1]) for r in rows]
+        await self._embed_atoms_batch(ids, contents)
+        return {"skipped": 0, "success": len(ids), "failed": 0}
+
+    @staticmethod
+    def _pack_embedding(embedding: list[float]) -> bytes:
+        return struct.pack(f"<{len(embedding)}f", *embedding)
+
+    @staticmethod
+    def _unpack_embedding(blob: bytes) -> list[float]:
+        return list(struct.unpack(f"<{len(blob) // 4}f", blob))
+
+    @staticmethod
+    def _cosine_similarity(v1: list[float], v2: list[float]) -> float:
+        dot = sum(a * b for a, b in zip(v1, v2))
+        norm1 = math.sqrt(sum(a * a for a in v1))
+        norm2 = math.sqrt(sum(b * b for b in v2))
+        if norm1 == 0.0 or norm2 == 0.0:
+            return 0.0
+        return dot / (norm1 * norm2)
+
+    # ---- 生命周期 ----
 
     async def touch(self, atom_id: int) -> None:
         now = time.time()

@@ -298,6 +298,16 @@ class GameKnowledgeGraph:
                 logger.warning(f"知识导入失败: {item} -> {e}")
         return count
 
+    async def get_all_node_names(self) -> list[str]:
+        """返回当前 game_id 下所有节点的名称列表"""
+        async with self._connect() as db:
+            cursor = await db.execute(
+                "SELECT name FROM graph_nodes WHERE game_id = ?",
+                (self._game_id,),
+            )
+            rows = await cursor.fetchall()
+            return [str(r[0]) for r in rows]
+
     async def _get_node_id(self, name: str) -> int | None:
         canonical = self._canonicalize(name)
         async with self._connect() as db:

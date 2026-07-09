@@ -128,7 +128,6 @@ async def handle_memory_tool_call(
         # 如果是游戏知识类型，同步到知识图谱
         if atom_type in (AtomType.GAME_MECHANIC, AtomType.GAME_LORE) and game_id:
             graph = await engine.ensure_graph(game_id)
-            # 简单: 把记忆内容作为 mechanic 节点
             for entity in atom.entities:
                 await graph.add_node(
                     node_type="mechanic" if atom_type == AtomType.GAME_MECHANIC else "lore",

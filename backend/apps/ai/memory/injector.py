@@ -112,31 +112,61 @@ class MemoryInjector:
         graph: GameKnowledgeGraph,
     ) -> str:
         """从 SessionMemory 中提取当前牌组/遗物关键词，查询图谱"""
-        # 从 important 层提取关键词 (通常包含牌组/遗物信息)
-        keywords: list[str] = []
-        for layer_text in [session.important, session.core]:
-            if not layer_text:
-                continue
-            # 简单提取：查找【】中的关键词
-            import re
-            found = re.findall(r"【([^】]+)】", layer_text)
-            keywords.extend(found[:5])
-
-        if not keywords:
+        session_text = f"{session.important} {session.core}".lower()
+        if not session_text.strip():
             return ""
 
-        # 用关键词查询图谱
-        all_names: list[str] = []
-        for kw in keywords[:3]:
-            results = await graph.search(kw, k=3)
-            all_names.extend(r["name"] for r in results)
+        # 方案1：从图谱已有节点名中反向匹配 SessionMemory 文本
+        all_node_names = await graph.get_all_node_names()
+        relevant = [n for n in all_node_names if n.lower() in session_text]
 
-        if not all_names:
+        # 方案2：从 SessionMemory 文本中解析牌组/遗物实体名，去图谱确认
+        extracted = self._extract_entity_names(session_text)
+        for name in extracted:
+            if name not in (n.lower() for n in relevant):
+                results = await graph.search(name, k=1)
+                relevant.extend(r["name"] for r in results)
+
+        # 去重，取前 8 个
+        unique_names: list[str] = []
+        seen = set()
+        for name in relevant:
+            key = name.lower()
+            if key not in seen:
+                unique_names.append(name)
+                seen.add(key)
+        unique_names = unique_names[:8]
+
+        if not unique_names:
             return ""
 
-        # 去重
-        unique_names = list(dict.fromkeys(all_names))[:8]
         return await graph.get_related(unique_names)
+
+    @staticmethod
+    def _extract_entity_names(text: str) -> list[str]:
+        """从记忆文本中解析牌组/遗物实体名"""
+        import re
+
+        names: list[str] = []
+
+        # 牌组:xxx+yyy+zzz 格式 (request_memory_update 产生的)
+        for match in re.finditer(r"牌组[:：]\s*(.+)", text):
+            cards = re.split(r"[+、,，\s]+", match.group(1))
+            names.extend(
+                c.strip()
+                for c in cards
+                if c.strip() and not re.match(r"^\d+x?\d*$", c.strip())
+            )
+
+        # Nx 卡牌名 (format_initial_state_for_memory 产生的)
+        for match in re.finditer(r"\d+x\s+(.+?)\s*\((\d+)费", text):
+            names.append(match.group(1).strip())
+
+        # - 遗物名 [tier] 格式
+        for match in re.finditer(r"-\s+(.+?)\s*[\[\-\n]", text):
+            names.append(match.group(1).strip())
+
+        return names
 
 
 __all__ = ["MemoryInjector"]

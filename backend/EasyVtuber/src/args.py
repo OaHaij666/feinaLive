@@ -13,7 +13,7 @@ def convert_to_byte(size):
 
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--character', type=str, default='lambda_00')
+parser.add_argument('--character', type=str, default='feina00')
 
 parser.add_argument('--debug_input', action='store_true')
 parser.add_argument('--cam_input', action='store_true')

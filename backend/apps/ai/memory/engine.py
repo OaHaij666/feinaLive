@@ -8,8 +8,10 @@ import time
 from typing import Any
 
 from apps.ai.client import ChatMessage, ChatRequest, get_ai_client
+from apps.ai.embedding import EmbeddingClient
 from apps.ai.memory.atom import AtomType, MemoryAtom
 from apps.ai.memory.atom_store import AtomStore
+from apps.ai.memory.graph_builder import KnowledgeGraphBuilder
 from apps.ai.memory.graph_store import GameKnowledgeGraph
 from apps.ai.memory.injector import MemoryInjector
 from apps.ai.memory.lifecycle import AtomLifecycleManager
@@ -24,12 +26,24 @@ class MemoryEngine:
 
     def __init__(self, db_path: str, config_dict: dict[str, Any] | None = None):
         self._db_path = db_path
+        self._config_dict = config_dict or {}
         self._session = SessionMemory()
         self._store = AtomStore(db_path)
+        self._embed_client = EmbeddingClient()
+        self._embed_on_write = bool(
+            self._config_dict.get("embed_on_write", True)
+        )
+        if self._embed_client.available:
+            self._store.set_embed_client(self._embed_client)
+            self._store.set_embed_on_write(self._embed_on_write)
+            logger.info("Embedding 客户端已接入 AtomStore")
+        else:
+            logger.info("Embedding 未配置，AtomStore 使用纯 FTS5 检索")
         self._lifecycle = AtomLifecycleManager(self._store, config_dict)
         self._extractor = MemoryExtractor(config_dict)
         self._injector = MemoryInjector(self._store)
         self._graphs: dict[str, GameKnowledgeGraph] = {}
+        self._builders: dict[str, KnowledgeGraphBuilder] = {}
         self._initialized = False
 
     async def initialize(self):
@@ -42,6 +56,9 @@ class MemoryEngine:
 
     async def shutdown(self):
         await self._lifecycle.stop()
+        for builder in self._builders.values():
+            await builder.stop()
+        self._builders.clear()
         for graph in self._graphs.values():
             await graph.close()
         self._graphs.clear()
@@ -58,6 +75,10 @@ class MemoryEngine:
     @property
     def store(self) -> AtomStore:
         return self._store
+
+    @property
+    def embed_client(self):
+        return self._embed_client
 
     @property
     def db_path(self) -> str:
@@ -162,16 +183,6 @@ class MemoryEngine:
             user_id=user_id,
             atom_types=atom_types,
         )
-        # 按时间衰减分数排序
-        now = time.time()
-        for atom in results:
-            temporal = atom.compute_temporal_score(now)
-            bm25 = float(atom.metadata.get("bm25_score", 0.5))
-            atom.metadata["final_score"] = bm25 * temporal
-        results.sort(
-            key=lambda a: float(a.metadata.get("final_score", 0)),
-            reverse=True,
-        )
         for atom in results[:k]:
             await self._store.touch(atom.atom_id)
         return results[:k]
@@ -208,6 +219,10 @@ class MemoryEngine:
             graph = GameKnowledgeGraph(self._db_path, game_id)
             await graph.initialize()
             self._graphs[game_id] = graph
+            # 为每个新图谱创建独立的边构建器
+            builder = KnowledgeGraphBuilder(graph, self._store, self._config_dict)
+            await builder.start()
+            self._builders[game_id] = builder
         return self._graphs[game_id]
 
     # === 生命周期 ===

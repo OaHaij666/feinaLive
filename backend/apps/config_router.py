@@ -178,6 +178,14 @@ class AdminConfig(BaseModel):
     username: str = "RongR0Ng"
 
 
+class EmbeddingConfig(BaseModel):
+    provider: str = "openai"
+    model: str = ""
+    api_url: str = ""
+    api_key: str = ""
+    dimensions: int | None = None
+
+
 class FullConfig(BaseModel):
     bilibili: BilibiliConfig = BilibiliConfig()
     host: HostConfig = HostConfig()
@@ -195,6 +203,7 @@ class FullConfig(BaseModel):
     default_playlist: list[dict] = []
     announcement: str = ""
     admin: AdminConfig = AdminConfig()
+    embedding: EmbeddingConfig = EmbeddingConfig()
 
 
 # ---- 辅助: masked 返回 ----
@@ -343,6 +352,13 @@ async def get_full_config():
             uid=config.admin_uid,
             username=config.admin_username,
         ),
+        embedding=EmbeddingConfig(
+            provider=config.embedding_provider,
+            model=config.embedding_model,
+            api_url=config.embedding_api_url,
+            api_key=_mask_sensitive(config.embedding_api_key or ""),
+            dimensions=config.embedding_dimensions,
+        ),
     )
 
 
@@ -354,6 +370,7 @@ SENSITIVE_KEYS = {
     "game.api_key",
     "volcano.access_token",
     "host.api_key",
+    "embedding.api_key",
 }
 
 MASKED_PATTERN = "****"
@@ -528,6 +545,16 @@ async def update_full_config(config_data: FullConfig):
         data["announcement"] = config_data.announcement
         data["admin"] = config_data.admin.model_dump()
 
+        # embedding
+        e = config_data.embedding
+        flat["embedding.provider"] = e.provider
+        flat["embedding.model"] = e.model
+        flat["embedding.api_url"] = e.api_url
+        if e.api_key and MASKED_PATTERN not in (e.api_key or ""):
+            flat["embedding.api_key"] = e.api_key
+        if e.dimensions is not None:
+            flat["embedding.dimensions"] = e.dimensions
+
         # 将 flat 键写入嵌套 dict
         for key, value in flat.items():
             parts = key.split(".")
@@ -567,6 +594,7 @@ async def list_sections():
             {"key": "default_playlist", "label": "默认播放列表", "description": "无人点歌时的默认歌单"},
             {"key": "announcement", "label": "公告", "description": "直播间跑马灯公告"},
             {"key": "admin", "label": "管理员", "description": "管理员身份标识"},
+            {"key": "embedding", "label": "向量模型", "description": "Embedding / 向量检索模型配置"},
         ]
     }
 

@@ -161,6 +161,34 @@
                     <option value="slay_the_spire">Slay the Spire</option>
                   </select>
                 </div>
+
+                <div class="section-title">🧠 向量模型 (Embedding)</div>
+                <p class="section-desc">用于记忆语义检索，未配置时自动退化到纯关键词检索</p>
+                <div class="form-group">
+                  <label>提供商</label>
+                  <select v-model="cfg.embedding.provider">
+                    <option value="openai">OpenAI</option>
+                    <option value="azure">Azure</option>
+                    <option value="ollama">Ollama</option>
+                    <option value="custom">自定义</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label>模型名</label>
+                  <input type="text" v-model="cfg.embedding.model" placeholder="text-embedding-3-small" />
+                </div>
+                <div class="form-group">
+                  <label>API URL <span class="hint">(留空则使用通用模型 API URL)</span></label>
+                  <input type="text" v-model="cfg.embedding.api_url" placeholder="https://api.example.com/v1" />
+                </div>
+                <div class="form-group">
+                  <label>API Key <span v-if="cfg.embedding.api_key.includes(MASKED)" class="hint">(已隐藏)</span></label>
+                  <input :type="cfg.embedding.api_key.includes(MASKED) ? 'password' : 'text'" v-model="cfg.embedding.api_key" placeholder="留空则使用通用模型 API Key" />
+                </div>
+                <div class="form-group">
+                  <label>向量维度 <span class="hint">(留空自动)</span></label>
+                  <input type="number" v-model.number="cfg.embedding.dimensions" placeholder="1536" />
+                </div>
               </div>
 
               <!-- Tab: 语音 -->
@@ -509,6 +537,7 @@ function initCfgShape() {
     default_playlist: [],
     announcement: '',
     admin: { uid: 378810242, username: '' },
+    embedding: { provider: 'openai', model: '', api_url: '', api_key: '', dimensions: null },
   }
   Object.assign(cfg, s)
 }

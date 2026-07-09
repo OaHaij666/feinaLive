@@ -39,6 +39,54 @@ READONLY_MCP_TOOLS = {
 }
 
 
+def _split_memory_text(memory_text: str) -> tuple[str, str, str]:
+    """按 inject_for_game 产出的 section 标记拆分文本为三层
+
+    inject_for_game() 返回的文本包含多个 section:
+      【核心记忆】\n...
+      【重要记忆】\n...
+      【最近记忆】\n...
+      【待总结近期事件】\n...
+      【游戏经验】\n...
+      与【x】协同: ...
+
+    前三个分给 core/important/recent，其余（游戏经验、图谱上下文）追加到 core。
+    """
+    import re
+
+    core = ""
+    important = ""
+    recent = ""
+    extra: list[str] = []
+
+    # 按 section 头分割
+    parts = re.split(r"\n(?=【)", memory_text)
+    for part in parts:
+        stripped = part.strip()
+        if not stripped:
+            continue
+        if stripped.startswith("【核心记忆】"):
+            core = stripped[len("【核心记忆】"):].strip()
+        elif stripped.startswith("【重要记忆】"):
+            important = stripped[len("【重要记忆】"):].strip()
+        elif stripped.startswith("【最近记忆】"):
+            recent = stripped[len("【最近记忆】"):].strip()
+        elif stripped.startswith("【待总结近期事件】"):
+            recent_extra = stripped[len("【待总结近期事件】"):].strip()
+            if recent_extra:
+                recent = f"{recent}\n\n{recent_extra}" if recent else recent_extra
+        else:
+            extra.append(stripped)
+
+    # 将额外内容（游戏经验、图谱上下文）追加到 core
+    if extra:
+        extra_text = "\n\n".join(extra)
+        core = f"{core}\n\n{extra_text}" if core else extra_text
+
+    return core, important, recent
+
+
+# ========== Tool 定义 ==========
 def _commentary_guide(
     seconds_since: float,
     steps_since: int,
@@ -456,10 +504,11 @@ class GameGraph:
                 engine = get_memory_engine()
                 memory_text = await engine.inject_for_game(game_id=self._adapter.game_id)
                 if memory_text:
-                    # 拆分到三层以兼容 prompt 模板
-                    state.core_memory = memory_text
-                    state.important_memory = ""
-                    state.recent_memory = ""
+                    # 按 section 标记拆分为三层
+                    core, important, recent = _split_memory_text(memory_text)
+                    state.core_memory = core
+                    state.important_memory = important
+                    state.recent_memory = recent
                 else:
                     state.core_memory = ""
                     state.important_memory = ""

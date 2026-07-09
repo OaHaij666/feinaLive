@@ -163,6 +163,12 @@ async def lifespan(app: FastAPI):
     admin_handler.register_next_track_callback(lambda: asyncio.create_task(on_next_track()))
     admin_handler.register_remove_track_callback(lambda: asyncio.create_task(on_remove_track()))
 
+    # 启动主播 Graph（弹幕轮询 + 消息队列消费），确保弹幕能走到 LLM
+    from apps.ai.host_graph import HostGraph
+    host_graph = HostGraph()
+    await host_graph.start()
+    logger.info("主播 Graph 启动成功（弹幕处理流水线就绪）")
+
     await start_nginx()
 
     if config.game_enabled:
@@ -178,16 +184,18 @@ async def lifespan(app: FastAPI):
 
         async def on_mcp_change(enabled: bool):
             if enabled:
-                if game_manager.is_running:
-                    logger.info("游戏AI已在运行，跳过")
-                    return
                 adapter = SlayTheSpireAdapter()
                 healthy = await adapter.health_check()
                 if not healthy:
                     logger.warning(f"MCP 服务不可用: {config.game_mcp_url}，无法启动游戏AI")
                     return
                 game_manager.register_game(adapter)
-                await game_manager.start()
+                if game_manager.is_running:
+                    for game_id, graph in game_manager.get_game_graphs().items():
+                        if not graph.is_running:
+                            await graph.start()
+                else:
+                    await game_manager.start()
                 logger.info("游戏AI已通过 /mcp 1 启动")
             else:
                 if not game_manager.is_running:
@@ -212,6 +220,7 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"MemoryEngine shutdown error: {e}")
 
+    await host_graph.stop()
     await queue.stop_auto_play()
     await easyvtuber_manager.stop()
     await stop_nginx()

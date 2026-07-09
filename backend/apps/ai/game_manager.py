@@ -1,12 +1,8 @@
-"""游戏集成管理器 - 统一管理游戏 Graph、主播 Graph"""
+"""游戏集成管理器 - 管理游戏 Graph（HostGraph 在 main.py 中独立启动）"""
 
-import asyncio
 import logging
-from collections.abc import Coroutine
-from typing import Callable
 
 from apps.ai.game_graph import GameGraph
-from apps.ai.host_graph import HostGraph
 from apps.ai.mcp.base_adapter import BaseGameAdapter
 from apps.ai.messaging.queue import get_message_queue
 from apps.ai.shared_context import SharedContext, get_shared_context
@@ -18,7 +14,6 @@ class GameManager:
     def __init__(self, shared_context: SharedContext | None = None):
         self._shared_context = shared_context or get_shared_context()
         self._game_graphs: dict[str, GameGraph] = {}
-        self._host_graph: HostGraph | None = None
         self._running = False
 
     @property
@@ -43,16 +38,10 @@ class GameManager:
             del self._game_graphs[game_id]
             logger.info(f"游戏注销: {game_id}")
 
-    async def start(self, on_reply: Callable[[str], Coroutine] | None = None):
+    async def start(self):
         if self._running:
             logger.warning("GameManager 已在运行")
             return
-
-        if not self._game_graphs:
-            logger.warning("没有注册任何游戏适配器，请先调用 register_game")
-
-        self._host_graph = HostGraph(on_reply=on_reply)
-        await self._host_graph.start()
 
         for game_id, graph in self._game_graphs.items():
             await graph.start()
@@ -64,11 +53,11 @@ class GameManager:
         for game_id, graph in self._game_graphs.items():
             await graph.stop()
 
-        if self._host_graph:
-            await self._host_graph.stop()
-
         self._running = False
         logger.info("GameManager 停止")
+
+    def get_game_graphs(self) -> dict[str, GameGraph]:
+        return dict(self._game_graphs)
 
     def mute(self):
         get_message_queue().mute()
@@ -87,7 +76,6 @@ class GameManager:
                 }
                 for game_id, graph in self._game_graphs.items()
             },
-            "host_running": self._host_graph.is_running if self._host_graph else False,
             "queue": get_message_queue().get_stats(),
         }
 

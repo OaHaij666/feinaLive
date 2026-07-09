@@ -1,5 +1,6 @@
 """弹幕处理逻辑 - 被真实弹幕和测试弹幕共用"""
 
+import asyncio
 import logging
 from dataclasses import dataclass
 from typing import Awaitable, Callable, Optional

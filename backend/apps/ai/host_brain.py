@@ -1,4 +1,4 @@
-"""Danmaku admission, buffering, selection and queueing for HostGraph."""
+"""Danmaku admission, buffering, selection and queueing for HostRuntime."""
 
 import asyncio
 import logging
@@ -45,8 +45,7 @@ class DanmakuInput:
 class AIHostBrain:
     POLL_INTERVAL_SECONDS = config.ai_poll_interval_seconds
 
-    def __init__(self, room_id: int | str):
-        self.room_id = str(room_id)
+    def __init__(self):
         self._danmaku_buffer: list[DanmakuInput] = []
         self._admin_handler = get_admin_handler()
         self._poll_running: bool = False
@@ -180,9 +179,6 @@ class AIHostBrain:
                 break
 
         combined_text = "\n".join(combined_contents)
-        history = get_session(context.session_id)
-        history.mark_answered_batch(combined_msg_ids)
-
         pm = get_priority_manager()
         priority = pm.get_danmaku_priority()
 
@@ -199,6 +195,10 @@ class AIHostBrain:
         ))
 
         if enqueued:
+            # Only commit admission after the queue accepted the message. A
+            # muted/full/rate-limited queue must leave it eligible for retry.
+            history = get_session(context.session_id)
+            history.mark_answered_batch(combined_msg_ids)
             logger.debug(f"弹幕入队: [{user}] {combined_text[:30]} (优先级={priority})")
 
         return enqueued
@@ -215,17 +215,20 @@ class AIHostBrain:
         return len(self.get_unanswered())
 
 
-_brains: dict[str, AIHostBrain] = {}
+_brain: AIHostBrain | None = None
 
 
-def get_host_brain(room_id: int | str) -> AIHostBrain:
-    key = str(room_id)
-    if key not in _brains:
-        _brains[key] = AIHostBrain(room_id)
-    return _brains[key]
+def get_host_brain() -> AIHostBrain:
+    """Return the one admission brain behind the authoritative room session."""
+
+    global _brain
+    if _brain is None:
+        _brain = AIHostBrain()
+    return _brain
 
 
 def reset_host_brains():
-    """清除所有已注册的 HostBrain 实例（用于测试或重启场景）"""
-    global _brains
-    _brains = {}
+    """Clear the HostBrain singleton for tests or application restart."""
+
+    global _brain
+    _brain = None

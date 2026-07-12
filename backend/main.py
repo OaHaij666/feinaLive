@@ -170,11 +170,12 @@ async def lifespan(app: FastAPI):
     admin_handler.register_next_track_callback(lambda: asyncio.create_task(on_next_track()))
     admin_handler.register_remove_track_callback(lambda: asyncio.create_task(on_remove_track()))
 
-    # 启动主播 Graph（弹幕轮询 + 消息队列消费），确保弹幕能走到 LLM
-    from apps.ai.host_graph import HostGraph
-    host_graph = HostGraph()
-    await host_graph.start()
-    logger.info("主播 Graph 启动成功（弹幕处理流水线就绪）")
+    # 启动主播 Runtime（弹幕轮询 + 单一消息队列消费者）。
+    from apps.ai.host_runtime import HostRuntime
+
+    host_runtime = HostRuntime()
+    await host_runtime.start()
+    logger.info("主播 Runtime 启动成功（弹幕处理流水线就绪）")
 
     if config.bilibili_room_id > 0:
         try:
@@ -229,6 +230,16 @@ async def lifespan(app: FastAPI):
 
     logger.info("Application shutting down...")
     await get_room_session_manager().stop()
+
+    # Stop producers and consumers before their memory/output dependencies.
+    from apps.ai.game_manager import get_game_manager
+
+    game_manager = get_game_manager()
+    if game_manager.is_running:
+        await game_manager.stop()
+        logger.info("游戏集成服务已停止")
+
+    await host_runtime.stop()
     await stop_summary_scheduler()
     await save_all_profiles()
 
@@ -240,17 +251,9 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"MemoryEngine shutdown error: {e}")
 
-    await host_graph.stop()
     await queue.stop_auto_play()
     await easyvtuber_manager.stop()
     await stop_nginx()
-
-    if config.game_enabled:
-        from apps.ai.game_manager import get_game_manager
-        game_manager = get_game_manager()
-        if game_manager.is_running:
-            await game_manager.stop()
-            logger.info("游戏集成服务已停止")
 
 
 app = FastAPI(

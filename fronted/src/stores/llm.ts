@@ -1,5 +1,5 @@
+import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
 import { getAvatarInputApi } from '@/composables/useAvatarInput'
 
 export interface LLMMessage {
@@ -9,28 +9,46 @@ export interface LLMMessage {
   timestamp: number
 }
 
-const API_BASE = '/ai'
-
 interface AudioChunk {
+  replyId: string
   data: string
   index: number
   text: string
   charOffset: number
   charLength: number
-  duration: number
+}
+
+interface ReplyChunk {
+  type: string
+  reply_id?: string
+  chunk_seq?: number
+  text?: string
+  audio?: string
+  sentence_index?: number
+  char_offset?: number
+  char_length?: number
+  is_final?: boolean
+  playback_expected?: boolean
+  audio_chunks?: number
+  data?: Omit<ReplyChunk, 'type' | 'data'>
 }
 
 class AudioPlayer {
   private audioContext: AudioContext | null = null
   private analyser: AnalyserNode | null = null
   private audioQueue: AudioChunk[] = []
-  private isPlaying: boolean = false
+  private isPlaying = false
   private currentSource: AudioBufferSourceNode | null = null
-  private onFirstAudioPlay: (() => void) | null = null
-  private onAudioProgress: ((charIndex: number) => void) | null = null
-  private isFirstAudio: boolean = true
+  private activeReplyId: string | null = null
+  private generationFinished = false
+  private playbackStarted = false
   private textDisplayTimer: number | null = null
   private audioLevelTimer: number | null = null
+  private lastAudioLevelSentAt = 0
+  private onAudioProgress: ((charIndex: number) => void) | null = null
+  private onPlaybackStarted: (() => void) | null = null
+  private onPlaybackFinished: (() => void) | null = null
+  private onPlaybackFailed: ((error: string) => void) | null = null
 
   private getAudioContext(): AudioContext {
     if (!this.audioContext) {
@@ -43,194 +61,216 @@ class AudioPlayer {
     return this.audioContext
   }
 
-  setOnFirstAudioPlay(callback: () => void) {
-    this.onFirstAudioPlay = callback
+  async unlock(): Promise<void> {
+    const context = this.getAudioContext()
+    if (context.state !== 'running') {
+      await context.resume()
+    }
+    if (context.state !== 'running') {
+      throw new Error('浏览器没有解锁主播语音播放')
+    }
   }
 
-  setOnAudioProgress(callback: (charIndex: number) => void) {
-    this.onAudioProgress = callback
+  setCallbacks(callbacks: {
+    onAudioProgress: (charIndex: number) => void
+    onPlaybackStarted: () => void
+    onPlaybackFinished: () => void
+    onPlaybackFailed: (error: string) => void
+  }) {
+    this.onAudioProgress = callbacks.onAudioProgress
+    this.onPlaybackStarted = callbacks.onPlaybackStarted
+    this.onPlaybackFinished = callbacks.onPlaybackFinished
+    this.onPlaybackFailed = callbacks.onPlaybackFailed
   }
 
-  queueAudio(
-    base64Data: string,
-    index: number,
-    text: string,
-    charOffset: number,
-    charLength: number
-  ) {
-    this.audioQueue.push({
-      data: base64Data,
-      index,
-      text,
-      charOffset,
-      charLength,
-      duration: 0,
-    })
+  begin(replyId: string) {
+    if (this.activeReplyId && this.activeReplyId !== replyId) {
+      this.failActive('新的回复在上一条播放完成前到达')
+    }
+    this.stopLocal()
+    this.activeReplyId = replyId
+    this.generationFinished = false
+    this.playbackStarted = false
+  }
+
+  queueAudio(chunk: AudioChunk) {
+    if (!this.activeReplyId || chunk.replyId !== this.activeReplyId) return
+    this.audioQueue.push(chunk)
     this.audioQueue.sort((a, b) => a.index - b.index)
-    this.playNext()
+    void this.playNext()
   }
 
-  private startAudioLevelMonitoring() {
-    const api = getAvatarInputApi()
-    
-    if (!this.analyser) {
-      console.warn('Analyser not initialized')
+  finishGeneration(replyId: string, audioChunks: number) {
+    if (replyId !== this.activeReplyId) return
+    this.generationFinished = true
+    if (audioChunks <= 0) {
+      this.failActive('TTS 没有生成可播放音频')
       return
     }
-    
-    const analyser = this.analyser
-    const dataArray = new Uint8Array(analyser.frequencyBinCount)
-    
-    const updateAudioLevel = () => {
-      if (!this.isPlaying) {
-        return
-      }
-      
-      analyser.getByteFrequencyData(dataArray)
-      
-      let sum = 0
-      for (let i = 0; i < dataArray.length; i++) {
-        sum += dataArray[i]
-      }
-      const average = sum / dataArray.length
-      const normalizedLevel = Math.min(average / 100, 1)
-      
-      console.log('[AudioLevel] level:', normalizedLevel.toFixed(3), 'speaking:', true)
-      
-      if (api.setSpeaking) {
-        api.setSpeaking(true)
-      }
-      if (api.sendAudioData) {
-        api.sendAudioData(normalizedLevel, true)
-      }
-      
-      this.audioLevelTimer = requestAnimationFrame(updateAudioLevel)
-    }
-    
-    updateAudioLevel()
+    this.completeIfDrained()
   }
 
-  private stopAudioLevelMonitoring() {
-    if (this.audioLevelTimer) {
-      cancelAnimationFrame(this.audioLevelTimer)
-      this.audioLevelTimer = null
-    }
-    
-    const api = getAvatarInputApi()
-    console.log('[AudioLevel] stopped, speaking: false')
-    if (api.setSpeaking) {
-      api.setSpeaking(false)
-    }
-    if (api.sendAudioData) {
-      api.sendAudioData(0, false)
-    }
+  fail(replyId: string, error: string) {
+    if (replyId === this.activeReplyId) this.failActive(error)
+  }
+
+  stop(error = '播放被客户端停止') {
+    if (this.activeReplyId) this.failActive(error)
+    else this.stopLocal()
   }
 
   private async playNext() {
-    if (this.isPlaying || this.audioQueue.length === 0) return
+    if (this.isPlaying || this.audioQueue.length === 0 || !this.activeReplyId) {
+      this.completeIfDrained()
+      return
+    }
 
-    this.isPlaying = true
     const chunk = this.audioQueue.shift()!
+    const replyId = this.activeReplyId
+    this.isPlaying = true
 
     try {
       const audioContext = this.getAudioContext()
-
-      if (audioContext.state === 'suspended') {
-        await audioContext.resume()
-      }
+      if (audioContext.state !== 'running') await audioContext.resume()
+      if (audioContext.state !== 'running') throw new Error('AudioContext 未解锁')
 
       const binaryString = atob(chunk.data)
       const bytes = new Uint8Array(binaryString.length)
       for (let i = 0; i < binaryString.length; i++) {
         bytes[i] = binaryString.charCodeAt(i)
       }
-
       const audioBuffer = await audioContext.decodeAudioData(bytes.buffer)
-      chunk.duration = audioBuffer.duration
-
-      if (this.isFirstAudio && this.onFirstAudioPlay) {
-        this.isFirstAudio = false
-        this.onFirstAudioPlay()
-      }
+      if (replyId !== this.activeReplyId) return
 
       const source = audioContext.createBufferSource()
       source.buffer = audioBuffer
       source.connect(this.analyser!)
-
       this.currentSource = source
 
-      const textLength = chunk.charLength
-      const startTime = audioContext.currentTime
-      const duration = audioBuffer.duration
-      const charDuration = duration / textLength
-      const charOffset = chunk.charOffset
+      if (!this.playbackStarted) {
+        this.playbackStarted = true
+        getAvatarInputApi().sendPlaybackAck(replyId, 'started')
+        this.onPlaybackStarted?.()
+      }
 
-      this.startTextAnimation(charOffset, textLength, charDuration, startTime)
+      const charDuration = audioBuffer.duration / Math.max(chunk.charLength, 1)
+      this.startTextAnimation(
+        chunk.charOffset,
+        chunk.charLength,
+        charDuration,
+        audioContext.currentTime,
+      )
       this.startAudioLevelMonitoring()
 
       await new Promise<void>((resolve) => {
-        source.onended = () => {
-          this.currentSource = null
-          if (this.textDisplayTimer !== null) {
-            cancelAnimationFrame(this.textDisplayTimer)
-            this.textDisplayTimer = null
-          }
-          this.stopAudioLevelMonitoring()
-          resolve()
-        }
+        source.onended = () => resolve()
         source.start(0)
       })
     } catch (error) {
-      console.error('Audio playback error:', error)
-      this.stopAudioLevelMonitoring()
+      if (replyId === this.activeReplyId) {
+        this.failActive(error instanceof Error ? error.message : String(error))
+      }
+      return
     } finally {
-      this.isPlaying = false
-      this.playNext()
+      if (replyId === this.activeReplyId) {
+        this.currentSource = null
+        this.isPlaying = false
+        this.stopTextAnimation()
+        this.stopAudioLevelMonitoring()
+        void this.playNext()
+      }
     }
+  }
+
+  private completeIfDrained() {
+    if (
+      !this.activeReplyId ||
+      !this.generationFinished ||
+      this.isPlaying ||
+      this.audioQueue.length > 0
+    ) return
+
+    const replyId = this.activeReplyId
+    this.activeReplyId = null
+    getAvatarInputApi().sendPlaybackAck(replyId, 'finished')
+    this.onPlaybackFinished?.()
+  }
+
+  private failActive(error: string) {
+    const replyId = this.activeReplyId
+    this.stopLocal()
+    this.activeReplyId = null
+    if (replyId) getAvatarInputApi().sendPlaybackAck(replyId, 'failed', error)
+    this.onPlaybackFailed?.(error)
+  }
+
+  private stopLocal() {
+    const source = this.currentSource
+    this.currentSource = null
+    if (source) {
+      source.onended = null
+      try { source.stop() } catch { /* already stopped */ }
+    }
+    this.stopTextAnimation()
+    this.stopAudioLevelMonitoring()
+    this.audioQueue = []
+    this.isPlaying = false
+    this.generationFinished = false
+    this.playbackStarted = false
+  }
+
+  private startAudioLevelMonitoring() {
+    if (!this.analyser) return
+    const analyser = this.analyser
+    const dataArray = new Uint8Array(analyser.frequencyBinCount)
+    this.lastAudioLevelSentAt = 0
+
+    const update = (timestamp: number) => {
+      if (!this.isPlaying) return
+      if (timestamp - this.lastAudioLevelSentAt >= 40) {
+        analyser.getByteFrequencyData(dataArray)
+        let sum = 0
+        for (const value of dataArray) sum += value
+        const normalizedLevel = Math.min(sum / dataArray.length / 100, 1)
+        getAvatarInputApi().sendAudioData(normalizedLevel, true)
+        this.lastAudioLevelSentAt = timestamp
+      }
+      this.audioLevelTimer = requestAnimationFrame(update)
+    }
+    this.audioLevelTimer = requestAnimationFrame(update)
+  }
+
+  private stopAudioLevelMonitoring() {
+    if (this.audioLevelTimer !== null) {
+      cancelAnimationFrame(this.audioLevelTimer)
+      this.audioLevelTimer = null
+    }
+    getAvatarInputApi().sendAudioData(0, false)
   }
 
   private startTextAnimation(
     charOffset: number,
     textLength: number,
     charDuration: number,
-    audioStartTime: number
+    audioStartTime: number,
   ) {
     const audioContext = this.getAudioContext()
-
     const animate = () => {
       const elapsed = audioContext.currentTime - audioStartTime
-      const charsToShow = Math.min(Math.floor(elapsed / charDuration), textLength)
-      const currentIdx = charOffset + charsToShow
-
-      if (this.onAudioProgress) {
-        this.onAudioProgress(currentIdx)
-      }
-
+      const charsToShow = Math.min(Math.floor(elapsed / Math.max(charDuration, 0.001)), textLength)
+      this.onAudioProgress?.(charOffset + charsToShow)
       if (charsToShow < textLength && this.isPlaying) {
         this.textDisplayTimer = requestAnimationFrame(animate)
       }
     }
-
     this.textDisplayTimer = requestAnimationFrame(animate)
   }
 
-  stop() {
-    if (this.currentSource) {
-      this.currentSource.stop()
-      this.currentSource = null
-    }
+  private stopTextAnimation() {
     if (this.textDisplayTimer !== null) {
       cancelAnimationFrame(this.textDisplayTimer)
       this.textDisplayTimer = null
     }
-    this.stopAudioLevelMonitoring()
-    this.audioQueue = []
-    this.isPlaying = false
-    this.isFirstAudio = true
-  }
-
-  reset() {
-    this.isFirstAudio = true
   }
 }
 
@@ -241,244 +281,165 @@ export const useLLMStore = defineStore('llm', () => {
   const currentText = ref('')
   const displayText = ref('')
   const messages = ref<LLMMessage[]>([])
+  const audioUnlocked = ref(false)
+  const isPlaybackOwner = ref(false)
   const maxMessages = 50
   let pendingText = ''
-  let audioReady = false
+  let activeReplyId = ''
+  let lastChunkSeq = -1
+  let playbackExpected = false
 
-  const displayMessages = computed(() => {
-    return messages.value.slice(-10)
+  const displayMessages = computed(() => messages.value.slice(-10))
+  const avatarInput = getAvatarInputApi()
+
+  audioPlayer.setCallbacks({
+    onAudioProgress(charIndex) {
+      displayText.value = pendingText.substring(0, Math.min(charIndex, pendingText.length))
+    },
+    onPlaybackStarted() {
+      displayText.value = ''
+    },
+    onPlaybackFinished() {
+      displayText.value = pendingText
+      isGenerating.value = false
+      activeReplyId = ''
+    },
+    onPlaybackFailed(error) {
+      console.error('[HostPlayback] Playback failed:', error)
+      displayText.value = pendingText
+      isGenerating.value = false
+      activeReplyId = ''
+    },
+  })
+
+  avatarInput.onPlaybackRole((isOwner) => {
+    if (isPlaybackOwner.value && !isOwner && activeReplyId) {
+      audioPlayer.stop('播放端租约已转移')
+    }
+    isPlaybackOwner.value = isOwner
   })
 
   function addMessage(type: 'user' | 'assistant', text: string) {
-    const message: LLMMessage = {
-      id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+    messages.value.push({
+      id: `msg_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`,
       type,
       text,
       timestamp: Date.now(),
-    }
-    messages.value.push(message)
+    })
     if (messages.value.length > maxMessages) {
       messages.value = messages.value.slice(-maxMessages)
     }
   }
 
-  function appendToCurrentText(text: string) {
-    currentText.value += text
-  }
-
-  function finalizeCurrentText() {
-    if (currentText.value.trim()) {
-      addMessage('assistant', currentText.value.trim())
-      currentText.value = ''
-    }
-  }
-
-  function clearMessages() {
-    messages.value = []
-    currentText.value = ''
-    displayText.value = ''
-  }
-
-  async function sendReply(user: string, content: string): Promise<void> {
-    if (isGenerating.value) {
-      return
-    }
-
-    addMessage('user', content)
-    isGenerating.value = true
-    currentText.value = ''
-    displayText.value = ''
-    pendingText = ''
-    audioReady = false
-    audioPlayer.stop()
-    audioPlayer.reset()
-
-    audioPlayer.setOnFirstAudioPlay(() => {
-      audioReady = true
-      displayText.value = ''
-    })
-
-    audioPlayer.setOnAudioProgress((charIndex: number) => {
-      if (pendingText && charIndex <= pendingText.length) {
-        displayText.value = pendingText.substring(0, charIndex)
-      }
-    })
-
+  async function unlockAudio(): Promise<boolean> {
     try {
-      const response = await fetch(`${API_BASE}/reply`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user, content }),
-      })
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`)
-      }
-
-      const reader = response.body?.getReader()
-      if (!reader) {
-        throw new Error('No reader available')
-      }
-
-      const decoder = new TextDecoder()
-      let buffer = ''
-
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-
-        buffer += decoder.decode(value, { stream: true })
-        const lines = buffer.split('\n')
-        buffer = lines.pop() || ''
-
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            try {
-              const data = JSON.parse(line.slice(6))
-              handleStreamChunk(data)
-            } catch (e) {
-              console.error('Failed to parse SSE data:', e)
-            }
-          }
-        }
-      }
-
-      finalizeCurrentText()
+      await audioPlayer.unlock()
+      audioUnlocked.value = true
+      avatarInput.setPlaybackReady(true)
+      return true
     } catch (error) {
-      console.error('LLM reply error:', error)
-      addMessage('assistant', '抱歉，回复生成失败，请稍后重试。')
-    } finally {
-      isGenerating.value = false
+      audioUnlocked.value = false
+      avatarInput.setPlaybackReady(false)
+      console.error('[HostPlayback] Audio unlock failed:', error)
+      return false
     }
   }
 
-  function handleStreamChunk(data: {
-    type: string
-    text?: string
-    audio?: string
-    sentence_index?: number
-    char_offset?: number
-    char_length?: number
-    is_final?: boolean
-  }) {
-    switch (data.type) {
-      case 'start':
-        currentText.value = ''
-        pendingText = ''
-        displayText.value = ''
-        break
-      case 'text':
-        if (data.text) {
-          currentText.value += data.text
-          pendingText += data.text
-          if (audioReady) {
-            displayText.value = pendingText
-          }
-        }
-        break
-      case 'audio':
-        if (data.audio && data.text) {
-          audioPlayer.queueAudio(
-            data.audio,
-            data.sentence_index || 0,
-            data.text,
-            data.char_offset || 0,
-            data.char_length || data.text.length
-          )
-        }
-        break
-      case 'end':
-        if (data.text) {
-          currentText.value = data.text
-          pendingText = data.text
-          if (!audioReady) {
-            displayText.value = data.text
-          }
-        }
-        break
-      case 'error':
-        currentText.value = data.text || '发生错误'
-        displayText.value = data.text || '发生错误'
-        break
-    }
-  }
+  function handleExternalChunk(raw: ReplyChunk) {
+    const chunk = normalizeExternalChunk(raw)
+    const replyId = chunk.reply_id || activeReplyId || `legacy_${Date.now()}`
 
-  function handleExternalChunk(data: {
-    type: string
-    text?: string
-    audio?: string
-    sentence_index?: number
-    char_offset?: number
-    char_length?: number
-    is_final?: boolean
-    data?: {
-      text?: string
-      audio?: string
-      sentence_index?: number
-      char_offset?: number
-      char_length?: number
-      is_final?: boolean
-    }
-  }) {
-    const normalized = normalizeExternalChunk(data)
-
-    if (normalized.type === 'start') {
+    if (chunk.type === 'start') {
+      if (activeReplyId && activeReplyId !== replyId) {
+        audioPlayer.stop('收到新的回复')
+      }
+      activeReplyId = replyId
+      lastChunkSeq = chunk.chunk_seq ?? -1
+      playbackExpected = Boolean(chunk.playback_expected && isPlaybackOwner.value)
       isGenerating.value = true
       currentText.value = ''
       displayText.value = ''
       pendingText = ''
-      audioReady = false
-      audioPlayer.stop()
-      audioPlayer.reset()
-      
-      audioPlayer.setOnFirstAudioPlay(() => {
-        audioReady = true
-        displayText.value = ''
-      })
-      
-      audioPlayer.setOnAudioProgress((charIndex: number) => {
-        if (pendingText && charIndex <= pendingText.length) {
-          displayText.value = pendingText.substring(0, charIndex)
-        }
-      })
+      if (playbackExpected) audioPlayer.begin(replyId)
+      return
     }
-    
-    handleStreamChunk(normalized)
-    
-    if (normalized.type === 'end') {
+
+    if (!activeReplyId || replyId !== activeReplyId) return
+    if (chunk.chunk_seq !== undefined) {
+      if (chunk.chunk_seq <= lastChunkSeq) return
+      if (lastChunkSeq >= 0 && chunk.chunk_seq !== lastChunkSeq + 1) {
+        audioPlayer.fail(replyId, '回复数据序号不连续')
+        return
+      }
+      lastChunkSeq = chunk.chunk_seq
+    }
+
+    if (chunk.type === 'text' && chunk.text) {
+      currentText.value += chunk.text
+      pendingText += chunk.text
+    } else if (chunk.type === 'audio' && playbackExpected && chunk.audio && chunk.text) {
+      audioPlayer.queueAudio({
+        replyId,
+        data: chunk.audio,
+        index: chunk.sentence_index ?? 0,
+        text: chunk.text,
+        charOffset: chunk.char_offset ?? 0,
+        charLength: chunk.char_length ?? chunk.text.length,
+      })
+    } else if (chunk.type === 'end') {
+      if (chunk.text) {
+        currentText.value = chunk.text
+        pendingText = chunk.text
+        addMessage('assistant', chunk.text.trim())
+      }
+      if (playbackExpected) {
+        audioPlayer.finishGeneration(replyId, chunk.audio_chunks ?? 0)
+      } else {
+        displayText.value = pendingText
+        isGenerating.value = false
+        activeReplyId = ''
+      }
+    } else if (chunk.type === 'error') {
+      const errorText = chunk.text || '发生错误'
+      currentText.value = errorText
+      pendingText = errorText
+      displayText.value = errorText
+      audioPlayer.fail(replyId, errorText)
       isGenerating.value = false
-      finalizeCurrentText()
+      activeReplyId = ''
     }
   }
 
-  function normalizeExternalChunk(data: {
-    type: string
-    text?: string
-    audio?: string
-    sentence_index?: number
-    char_offset?: number
-    char_length?: number
-    is_final?: boolean
-    data?: {
-      text?: string
-      audio?: string
-      sentence_index?: number
-      char_offset?: number
-      char_length?: number
-      is_final?: boolean
-    }
-  }) {
+  function clearMessages() {
+    audioPlayer.stop('用户清空了回复')
+    messages.value = []
+    currentText.value = ''
+    displayText.value = ''
+    pendingText = ''
+    activeReplyId = ''
+    isGenerating.value = false
+  }
+
+  function normalizeExternalChunk(data: ReplyChunk): ReplyChunk {
     const payload = data.data || {}
     return {
       type: data.type,
+      reply_id: data.reply_id ?? payload.reply_id,
+      chunk_seq: data.chunk_seq ?? payload.chunk_seq,
       text: data.text ?? payload.text,
       audio: data.audio ?? payload.audio,
       sentence_index: data.sentence_index ?? payload.sentence_index,
       char_offset: data.char_offset ?? payload.char_offset,
       char_length: data.char_length ?? payload.char_length,
       is_final: data.is_final ?? payload.is_final,
+      playback_expected: data.playback_expected ?? payload.playback_expected,
+      audio_chunks: data.audio_chunks ?? payload.audio_chunks,
     }
   }
+
+  avatarInput.onHostChunk((chunk) => {
+    handleExternalChunk(chunk as unknown as ReplyChunk)
+  })
 
   return {
     isGenerating,
@@ -486,11 +447,11 @@ export const useLLMStore = defineStore('llm', () => {
     displayText,
     messages,
     displayMessages,
+    audioUnlocked,
+    isPlaybackOwner,
     addMessage,
-    appendToCurrentText,
-    finalizeCurrentText,
     clearMessages,
-    sendReply,
+    unlockAudio,
     handleExternalChunk,
   }
 })

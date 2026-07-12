@@ -1,4 +1,4 @@
-"""优先级消息队列 - GameGraph / 弹幕 / 礼物 → HostGraph 统一消费
+"""优先级消息队列 - GameGraph / 弹幕 / 礼物 → HostRuntime 统一消费
 
 所有消息由主播 LLM 消费，生成话术后 TTS 输出。
 
@@ -7,7 +7,7 @@
   - danmaku:danmaku          观众弹幕原文 (priority=3)
   - gift:gift_thanks         礼物感谢 (priority=动态)
 
-消费端: HostGraph._host_loop() → 主播 LLM 生成话术 → TTS
+消费端: HostRuntime → 主播 LLM 生成话术 → TTS
 """
 
 import asyncio
@@ -94,12 +94,16 @@ class PriorityMessageQueue:
         self._total_consumed: int = 0
 
     async def put(self, msg: Message) -> bool:
-        if msg.source in {"danmaku", "gift"}:
+        if msg.context:
             context = RoomSessionContext.from_mapping(msg.context)
             if context is None or not get_room_session_manager().is_current(context):
                 logger.debug("Dropped message outside the active room session: %s", msg.context)
                 self._total_dropped += 1
                 return False
+        elif msg.source in {"danmaku", "gift"}:
+            logger.debug("Dropped room message without routing context: %s", msg.source)
+            self._total_dropped += 1
+            return False
 
         if self._muted:
             logger.debug("队列全局静音，消息丢弃")
@@ -175,6 +179,10 @@ class PriorityMessageQueue:
                 self._total_dropped += 1
                 continue
             context = RoomSessionContext.from_mapping(msg.context)
+            if msg.context and context is None:
+                logger.debug("Dropped queued message with malformed context: %s", msg.context)
+                self._total_dropped += 1
+                continue
             if context is not None and not get_room_session_manager().is_current(context):
                 logger.debug("Dropped stale queued message: %s", msg.context)
                 self._total_dropped += 1
@@ -201,7 +209,15 @@ class PriorityMessageQueue:
             if msg.is_expired and msg.allow_skip:
                 self._total_dropped += 1
                 return None
+            context = RoomSessionContext.from_mapping(msg.context)
+            if msg.context and context is None:
+                self._total_dropped += 1
+                return None
+            if context is not None and not get_room_session_manager().is_current(context):
+                self._total_dropped += 1
+                return None
             self._total_consumed += 1
+            self._record_consumption(msg)
             return msg
         except asyncio.QueueEmpty:
             return None

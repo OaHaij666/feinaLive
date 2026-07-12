@@ -63,4 +63,5 @@ async def main():
 
     print(f"结束: R{r} {screen} flr={floor}")
 
-asyncio.run(main())
+if __name__ == "__main__":
+    asyncio.run(main())

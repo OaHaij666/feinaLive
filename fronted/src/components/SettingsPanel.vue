@@ -93,7 +93,7 @@
                 </div>
 
                 <div class="section-title">🎙 主播模型</div>
-                <p class="section-desc">AI 主播对话、弹幕回复、风格化解说 (HostGraph)</p>
+                <p class="section-desc">AI 主播对话、弹幕回复、风格化解说 (HostRuntime)</p>
                 <div class="form-group">
                   <label>API URL</label>
                   <input type="text" v-model="cfg.host.api_url" placeholder="留空则使用通用模型 API URL" />
@@ -630,10 +630,10 @@ function connectWebSocket() {
     try {
       const msg = JSON.parse(event.data)
       if (msg.type === 'danmaku') addLog(`[弹幕] ${msg.data.user}: ${msg.data.content}`, 'danmaku')
-      else if (msg.type === 'start') { addLog('[AI] 开始生成回复...', 'system'); if (adminState.value.isTestRoomEnabled) llmStore.handleExternalChunk(msg) }
-      else if (msg.type === 'text') { addLog(`[AI] ${msg.data.text}`, 'reply'); if (adminState.value.isTestRoomEnabled) llmStore.handleExternalChunk(msg) }
-      else if (msg.type === 'audio') { addLog('[AI] 音频已生成', 'system'); if (adminState.value.isTestRoomEnabled) llmStore.handleExternalChunk(msg) }
-      else if (msg.type === 'end') { addLog('[AI] 回复完成', 'system'); if (adminState.value.isTestRoomEnabled) llmStore.handleExternalChunk(msg) }
+      else if (msg.type === 'start') { addLog('[AI] 开始生成回复...', 'system'); if (adminState.value.isTestRoomEnabled && !llmStore.isPlaybackOwner) llmStore.handleExternalChunk(msg) }
+      else if (msg.type === 'text') { addLog(`[AI] ${msg.text ?? msg.data?.text ?? ''}`, 'reply'); if (adminState.value.isTestRoomEnabled && !llmStore.isPlaybackOwner) llmStore.handleExternalChunk(msg) }
+      else if (msg.type === 'audio') { addLog('[AI] 音频已生成', 'system'); if (adminState.value.isTestRoomEnabled && !llmStore.isPlaybackOwner) llmStore.handleExternalChunk(msg) }
+      else if (msg.type === 'end') { addLog('[AI] 回复完成', 'system'); if (adminState.value.isTestRoomEnabled && !llmStore.isPlaybackOwner) llmStore.handleExternalChunk(msg) }
       else if (msg.type === 'error') { addLog(`[错误] ${msg.data?.text || ''}`, 'error'); if (adminState.value.isTestRoomEnabled) llmStore.handleExternalChunk(msg) }
       else if (msg.type === 'music_control') {
         const a = msg.data?.action

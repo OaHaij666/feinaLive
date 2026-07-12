@@ -3,6 +3,11 @@ import { ref } from 'vue'
 interface AvatarInputApi {
   sendAudioData: (level: number, speaking: boolean) => void
   setSpeaking: (speaking: boolean) => void
+  setPlaybackReady: (ready: boolean) => void
+  sendPlaybackAck: (replyId: string, status: 'started' | 'finished' | 'failed', error?: string) => void
+  onPlaybackRole: (callback: (isOwner: boolean) => void) => () => void
+  onHostChunk: (callback: (chunk: Record<string, unknown>) => void) => () => void
+  isPlaybackOwner: () => boolean
   connect: () => void
   disconnect: () => void
 }
@@ -11,6 +16,22 @@ let ws: WebSocket | null = null
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null
 const isConnected = ref(false)
 let mouseListenerAttached = false
+let shouldReconnect = false
+let playbackReady = false
+let playbackOwner = false
+const playbackRoleListeners = new Set<(isOwner: boolean) => void>()
+const hostChunkListeners = new Set<(chunk: Record<string, unknown>) => void>()
+
+function notifyPlaybackRole(isOwner: boolean) {
+  playbackOwner = isOwner
+  playbackRoleListeners.forEach((callback) => callback(isOwner))
+}
+
+function sendJson(payload: Record<string, unknown>) {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify(payload))
+  }
+}
 
 function sendMouseData(x: number, y: number) {
   if (ws && ws.readyState === WebSocket.OPEN) {
@@ -41,6 +62,7 @@ function handleMouseMove(event: MouseEvent) {
 }
 
 function connect() {
+  shouldReconnect = true
   if (ws && (ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.OPEN)) {
     return
   }
@@ -55,9 +77,23 @@ function connect() {
       console.log('[AvatarInput] WebSocket connected')
       isConnected.value = true
       attachMouseListener()
+      sendJson({ type: 'playback_ready', ready: playbackReady })
       if (reconnectTimer) {
         clearTimeout(reconnectTimer)
         reconnectTimer = null
+      }
+    }
+
+    ws.onmessage = (event) => {
+      try {
+        const message = JSON.parse(event.data)
+        if (message.type === 'playback_role') {
+          notifyPlaybackRole(Boolean(message.is_owner))
+        } else if (['start', 'text', 'audio', 'end', 'error'].includes(message.type)) {
+          hostChunkListeners.forEach((callback) => callback(message))
+        }
+      } catch (error) {
+        console.error('[AvatarInput] Invalid server message:', error)
       }
     }
 
@@ -66,7 +102,8 @@ function connect() {
       isConnected.value = false
       detachMouseListener()
       ws = null
-      scheduleReconnect()
+      notifyPlaybackRole(false)
+      if (shouldReconnect) scheduleReconnect()
     }
 
     ws.onerror = (error) => {
@@ -79,50 +116,80 @@ function connect() {
 }
 
 function scheduleReconnect() {
-  if (reconnectTimer) return
+  if (reconnectTimer || !shouldReconnect) return
   reconnectTimer = setTimeout(() => {
     reconnectTimer = null
+    if (!shouldReconnect) return
     console.log('[AvatarInput] Attempting to reconnect...')
     connect()
   }, 3000)
 }
 
 function disconnect() {
+  shouldReconnect = false
   if (reconnectTimer) {
     clearTimeout(reconnectTimer)
     reconnectTimer = null
   }
   if (ws) {
+    sendJson({ type: 'playback_ready', ready: false })
+    ws.onclose = null
     ws.close()
     ws = null
   }
   detachMouseListener()
   isConnected.value = false
+  notifyPlaybackRole(false)
 }
 
 function sendAudioData(level: number, speaking: boolean) {
-  if (ws && ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify({
-      type: 'audio',
-      level,
-      speaking,
-    }))
-  }
+  if (!playbackOwner) return
+  sendJson({ type: 'audio', level, speaking })
 }
 
 function setSpeaking(speaking: boolean) {
-  if (ws && ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify({
-      type: 'speaking',
-      speaking,
-    }))
-  }
+  if (!playbackOwner) return
+  sendJson({ type: 'speaking', speaking })
+}
+
+function setPlaybackReady(ready: boolean) {
+  playbackReady = ready
+  sendJson({ type: 'playback_ready', ready })
+}
+
+function sendPlaybackAck(
+  replyId: string,
+  status: 'started' | 'finished' | 'failed',
+  error = '',
+) {
+  if (!playbackOwner) return
+  sendJson({ type: 'playback_ack', reply_id: replyId, status, error })
+}
+
+function onPlaybackRole(callback: (isOwner: boolean) => void) {
+  playbackRoleListeners.add(callback)
+  callback(playbackOwner)
+  return () => playbackRoleListeners.delete(callback)
+}
+
+function onHostChunk(callback: (chunk: Record<string, unknown>) => void) {
+  hostChunkListeners.add(callback)
+  return () => hostChunkListeners.delete(callback)
+}
+
+function isPlaybackOwner() {
+  return playbackOwner
 }
 
 export function useAvatarInput(): AvatarInputApi {
   return {
     sendAudioData,
     setSpeaking,
+    setPlaybackReady,
+    sendPlaybackAck,
+    onPlaybackRole,
+    onHostChunk,
+    isPlaybackOwner,
     connect,
     disconnect,
   }
@@ -132,6 +199,11 @@ export function getAvatarInputApi(): AvatarInputApi {
   return {
     sendAudioData,
     setSpeaking,
+    setPlaybackReady,
+    sendPlaybackAck,
+    onPlaybackRole,
+    onHostChunk,
+    isPlaybackOwner,
     connect,
     disconnect,
   }

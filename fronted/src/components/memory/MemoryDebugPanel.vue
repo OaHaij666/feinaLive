@@ -189,7 +189,7 @@
       <section class="memory-section inject-section">
         <h3>注入预览</h3>
         <div class="filter-row">
-          <select v-model="injectForm.target"><option value="game">GameGraph</option><option value="host">HostGraph</option></select>
+          <select v-model="injectForm.target"><option value="game">GameGraph</option><option value="host">HostRuntime</option></select>
           <input v-model="injectForm.game_id" placeholder="game_id" />
           <input v-model="injectForm.user_id" placeholder="user_id" />
           <button class="small-btn" @click="runInjectPreview">生成</button>

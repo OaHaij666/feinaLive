@@ -191,6 +191,10 @@ class Config:
         return int(self._data.get("host", {}).get("max_reply_length", 100))
 
     @property
+    def host_playback_timeout_seconds(self) -> float:
+        return float(self._data.get("host", {}).get("playback_timeout_seconds", 90.0))
+
+    @property
     def host_model(self) -> str:
         return os.getenv("HOST_MODEL") or self._data.get("host", {}).get("model", "")
 

@@ -81,19 +81,23 @@ import SettingsPanel from './components/SettingsPanel.vue'
 import { useDanmakuStore } from '@/stores/danmaku'
 import { useStreamStore } from '@/stores/stream'
 import { useMusicStore } from '@/stores/music'
+import { useLLMStore } from '@/stores/llm'
 import { useAvatarInput } from '@/composables/useAvatarInput'
 import { storeToRefs } from 'pinia'
 
 const danmakuStore = useDanmakuStore()
 const streamStore = useStreamStore()
 const musicStore = useMusicStore()
+const llmStore = useLLMStore()
 const avatarInput = useAvatarInput()
-const { isPlaying, audioUnlocked } = storeToRefs(musicStore)
+const { isPlaying, audioUnlocked: musicAudioUnlocked } = storeToRefs(musicStore)
+const { audioUnlocked: hostAudioUnlocked } = storeToRefs(llmStore)
 
 const showPlayUnlock = computed(() => {
-  const locked = !audioUnlocked.value
-  const notPlaying = !isPlaying.value
-  return locked && notPlaying
+  return (
+    !hostAudioUnlocked.value ||
+    (!musicAudioUnlocked.value && !isPlaying.value)
+  )
 })
 
 const showSessdataWarning = ref(false)
@@ -187,8 +191,9 @@ async function handleSessdataUpdate(data: { sessdata: string; uid: number | null
   }
 }
 
-function handlePlayUnlock() {
+async function handlePlayUnlock() {
   musicStore.unlockAndPlay()
+  await llmStore.unlockAudio()
 }
 
 const baseWidth = 1920

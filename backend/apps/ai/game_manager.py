@@ -1,4 +1,4 @@
-"""游戏集成管理器 - 管理游戏 Graph（HostGraph 在 main.py 中独立启动）"""
+"""游戏集成管理器 - 管理游戏 Graph（HostRuntime 在 main.py 中独立启动）"""
 
 import logging
 

@@ -194,8 +194,10 @@ class SharedContext:
         async with self._lock:
             ack = self._commentary_acks.get(request_id)
             if not ack:
+                # A coordinator may already have timed out and released this
+                # request. Return a transient acknowledgement instead of
+                # recreating an entry that nobody will ever consume.
                 ack = CommentaryAck(request_id=request_id, game_step_id=self._game_step_id)
-                self._commentary_acks[request_id] = ack
             ack.status = status
             ack.spoken_text = spoken_text
             ack.error = error
@@ -206,6 +208,12 @@ class SharedContext:
             if ack.event:
                 ack.event.set()
             return ack
+
+    async def release_commentary_request(self, request_id: str) -> None:
+        """Forget a terminal request after its waiting coordinator observed it."""
+
+        async with self._lock:
+            self._commentary_acks.pop(request_id, None)
 
     async def wait_commentary_status(self, request_id: str, timeout: float) -> CommentaryAck:
         async with self._lock:

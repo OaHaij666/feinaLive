@@ -1,4 +1,4 @@
-"""Commentary request coordination between GameGraph and HostGraph."""
+"""Commentary request coordination between GameGraph and HostRuntime."""
 
 from __future__ import annotations
 
@@ -11,6 +11,7 @@ from typing import Any
 from apps.ai.messaging.queue import PRIORITY_HIGH, Message, get_message_queue
 from apps.ai.shared_context import CommentaryAck, SharedContext
 from apps.config import config
+from apps.live.room_session import get_room_session_manager
 
 logger = logging.getLogger(__name__)
 
@@ -95,7 +96,11 @@ class CommentaryCoordinator:
         await self._shared_context.register_commentary_request(request_id, game_step_id)
 
         queue = get_message_queue()
-        hold_timeout = timeout if timeout is not None else config.game_commentary_hold_timeout
+        requested_timeout = timeout if timeout is not None else config.game_commentary_hold_timeout
+        # `spoken` now means browser playback really finished, not merely that
+        # audio bytes were generated. Keep the game-side waiter alive across
+        # generation, TTS, and the playback acknowledgement window.
+        hold_timeout = max(requested_timeout, config.host_playback_timeout_seconds + 30.0)
         msg = Message(
             priority=PRIORITY_HIGH,
             source="game",
@@ -107,6 +112,11 @@ class CommentaryCoordinator:
                 "mood": merged.mood,
                 "game_step_id": game_step_id,
             },
+            context=(
+                get_room_session_manager().active_context.to_dict()
+                if get_room_session_manager().active_context
+                else {}
+            ),
             cancel_key=cancel_key,
             expire_at=now + hold_timeout + 5,
             allow_skip=False,
@@ -114,11 +124,13 @@ class CommentaryCoordinator:
 
         success = await queue.put(msg)
         if not success:
-            return await self._shared_context.signal_commentary_status(
+            ack = await self._shared_context.signal_commentary_status(
                 request_id,
                 "dropped",
                 error="解说消息入队失败",
             )
+            await self._shared_context.release_commentary_request(request_id)
+            return ack
 
         logger.info(
             "解说请求入队: %s (step=%s, id=%s)", merged.key_points, game_step_id, request_id
@@ -130,8 +142,11 @@ class CommentaryCoordinator:
             game_id=self._game_id,
         )
 
-        ack = await self._shared_context.wait_commentary_status(request_id, hold_timeout)
-        if ack.status == "timeout":
-            queue.cancel(cancel_key)
-            logger.info("解说等待超时，已取消未消费消息: id=%s", request_id)
-        return ack
+        try:
+            ack = await self._shared_context.wait_commentary_status(request_id, hold_timeout)
+            if ack.status == "timeout":
+                queue.cancel(cancel_key)
+                logger.info("解说等待超时，已取消未消费消息: id=%s", request_id)
+            return ack
+        finally:
+            await self._shared_context.release_commentary_request(request_id)

@@ -106,7 +106,7 @@ async def get_admin_state():
 async def get_ai_status():
     """获取AI主播状态"""
     from apps.ai.host_brain import get_host_brain
-    brain = get_host_brain(config.default_room_id)
+    brain = get_host_brain()
     return {
         "buffer_size": brain.buffer_size,
         "unanswered_count": brain.unanswered_count,
@@ -117,7 +117,7 @@ async def get_ai_status():
 async def get_buffer():
     """获取当前弹幕缓冲区"""
     from apps.ai.host_brain import get_host_brain
-    brain = get_host_brain(config.default_room_id)
+    brain = get_host_brain()
     return {
         "buffer": [d.to_dict() for d in brain._danmaku_buffer],
         "size": len(brain._danmaku_buffer),

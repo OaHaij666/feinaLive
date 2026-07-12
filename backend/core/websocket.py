@@ -55,10 +55,10 @@ class ConnectionManager:
         async with self._lock:
             connections = list(self._connections.get(room_id, {}).items())
 
-        failed: list[str] = []
-        for connection_id, websocket in connections:
+        async def send_one(connection_id: str, websocket: WebSocket) -> str | None:
             try:
-                await websocket.send_json(message)
+                await asyncio.wait_for(websocket.send_json(message), timeout=5.0)
+                return None
             except Exception as e:
                 logger.warning(
                     "Failed to send message to room=%s connection=%s: %s",
@@ -66,7 +66,15 @@ class ConnectionManager:
                     connection_id,
                     e,
                 )
-                failed.append(connection_id)
+                return connection_id
+
+        failed = [
+            connection_id
+            for connection_id in await asyncio.gather(
+                *(send_one(connection_id, websocket) for connection_id, websocket in connections)
+            )
+            if connection_id is not None
+        ]
 
         for connection_id in failed:
             await self.disconnect(room_id, connection_id)

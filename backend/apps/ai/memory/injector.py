@@ -1,7 +1,7 @@
 """记忆注入器 — 按 Agent 角色差异化注入记忆到 prompt
 
 GameGraph: SessionMemory (全量) + LongTermMemory (游戏知识) + KnowledgeGraph (协同/克制)
-HostGraph: LongTermMemory (观众记忆 + 主播人设 + 互动事件)
+HostRuntime: LongTermMemory (观众记忆 + 主播人设 + 互动事件)
 """
 
 from __future__ import annotations

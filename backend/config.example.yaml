@@ -68,6 +68,7 @@ embedding:
 host:
   reply_interval: 5       # 弹幕回复间隔（秒）
   max_reply_length: 100   # 单条回复最大长度
+  playback_timeout_seconds: 90  # 等待唯一播放端确认实际播放完成
   model: "deepseek-v4-flash"
   temperature: 0.7
   top_p: 0.9

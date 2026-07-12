@@ -5,6 +5,7 @@ from pydantic import BaseModel
 
 from apps.ai.admin_commands import get_admin_handler
 from apps.ai.host_brain import get_host_brain
+from apps.ai.playback import get_playback_coordinator
 from apps.config import config
 
 router = APIRouter(prefix="/ai", tags=["ai"])
@@ -17,10 +18,11 @@ class AdminCommandRequest(BaseModel):
 @router.get("/status")
 async def get_status():
     """获取弹幕缓冲与待消费状态。"""
-    brain = get_host_brain(config.default_room_id)
+    brain = get_host_brain()
     return {
         "buffer_size": brain.buffer_size,
         "unanswered_count": brain.unanswered_count,
+        "playback": await get_playback_coordinator().get_status(),
     }
 
 

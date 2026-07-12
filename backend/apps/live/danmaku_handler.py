@@ -7,7 +7,6 @@ from typing import Awaitable, Callable, Optional
 
 from apps.ai.admin_commands import get_admin_handler
 from apps.ai.host_brain import get_host_brain
-from apps.config import config
 from apps.live.music.service import get_danmaku_service
 from apps.live.room_session import RoomSessionContext, get_room_session_manager
 from core.websocket import manager
@@ -112,7 +111,7 @@ async def process_danmaku(
         },
     }, broadcast_fn)
 
-    accepted = get_host_brain(config.default_room_id).push_danmaku(
+    accepted = get_host_brain().push_danmaku(
         context=context,
         msg_id=danmaku.msg_id,
         user=danmaku.user,

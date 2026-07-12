@@ -124,10 +124,11 @@ export function useBilibiliDanmaku() {
           const popularity = Number(msg.data?.popularity) || 0
           liveStatsStore.setPopularity(popularity)
         } else if (msg.type === 'start' || msg.type === 'text' || msg.type === 'audio' || msg.type === 'end') {
-          if (!adminState.value.isTestRoomEnabled) {
+          if (!adminState.value.isTestRoomEnabled && !llmStore.isPlaybackOwner) {
             llmStore.handleExternalChunk(msg)
           }
         } else if (msg.type === 'reply') {
+          if (llmStore.isPlaybackOwner) return
           llmStore.handleExternalChunk({
             type: 'start',
             data: {},

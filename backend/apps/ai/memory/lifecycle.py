@@ -118,6 +118,8 @@ class AtomLifecycleManager:
                 include_expired=False,
             )
             for ex in existing:
+                if ex.atom_id == getattr(new_atom, "atom_id", 0):
+                    continue
                 ex_content = ex.content.lower()
                 ex_tokens = set(ex_content.split())
                 if len(ex_tokens) < 2:

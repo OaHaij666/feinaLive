@@ -28,6 +28,7 @@ class MemoryInjector:
         session: SessionMemory,
         game_id: str,
         graph: GameKnowledgeGraph | None = None,
+        context_max_chars: int | None = None,
     ) -> str:
         """为 GameGraph 构建完整记忆上下文
 
@@ -39,7 +40,19 @@ class MemoryInjector:
         sections = []
 
         # 1. 单局记忆 — 全量拼接
-        session_text = session.to_prompt_text()
+        context_pending = session.pending_context_to_prompt_text(
+            context_max_chars or config.game_memory_context_max_chars
+        )
+        sections = []
+        for title, content in (
+            ("核心记忆", session.core),
+            ("重要记忆", session.important),
+            ("最近记忆", session.recent),
+            ("待总结近期事件", context_pending),
+        ):
+            if content:
+                sections.append(f"【{title}】\n{content}")
+        session_text = "\n\n".join(sections)
         if session_text:
             sections.append(session_text)
 
@@ -49,7 +62,7 @@ class MemoryInjector:
                 session.core,
                 session.important,
                 session.recent,
-                session.pending_to_prompt_text(),
+                context_pending,
             )
             if part
         )[-4000:]
@@ -70,6 +83,14 @@ class MemoryInjector:
                 atom_types=[AtomType.GAME_MECHANIC, AtomType.GAME_LORE],
                 use_vector=False,
             )
+        unique_knowledge = []
+        seen_contents: set[str] = set()
+        for atom in game_knowledge:
+            key = "".join(atom.content.lower().split())
+            if key and key not in seen_contents:
+                seen_contents.add(key)
+                unique_knowledge.append(atom)
+        game_knowledge = unique_knowledge
         if game_knowledge:
             lines = [f"- {a.content}" for a in game_knowledge]
             sections.append("【游戏经验】\n" + "\n".join(lines))
@@ -200,7 +221,7 @@ class MemoryInjector:
 
         names: list[str] = []
 
-        # 牌组:xxx+yyy+zzz 格式 (request_memory_update 产生的)
+        # 兼容旧数据中的“牌组:xxx+yyy+zzz”格式。
         for match in re.finditer(r"牌组[:：]\s*(.+)", text):
             cards = re.split(r"[+、,，\s]+", match.group(1))
             names.extend(

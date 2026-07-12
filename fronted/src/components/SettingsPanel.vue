@@ -2,7 +2,7 @@
   <Teleport to="body">
     <Transition name="modal">
       <div v-if="visible" class="settings-overlay" @click.self="close">
-        <div :class="['settings-panel', { 'settings-panel-wide': activeTab === 'memory' }]">
+        <div :class="['settings-panel', { 'settings-panel-wide': activeTab === 'memory' || activeTab === 'game_params' }]">
           <div class="settings-header">
             <h2>集中配置</h2>
             <button class="close-btn" @click="close">&times;</button>
@@ -151,17 +151,6 @@
                     禁用思考链 <span class="hint">(模型不支持时取消勾选)</span>
                   </label>
                 </div>
-                <div class="form-group">
-                  <label>MCP 服务地址</label>
-                  <input type="text" v-model="cfg.game.mcp_url" />
-                </div>
-                <div class="form-group">
-                  <label>游戏适配器</label>
-                  <select v-model="cfg.game.adapter">
-                    <option value="slay_the_spire">Slay the Spire</option>
-                  </select>
-                </div>
-
                 <div class="section-title">🧠 向量模型 (Embedding)</div>
                 <p class="section-desc">用于记忆语义检索，未配置时自动退化到纯关键词检索</p>
                 <div class="form-group">
@@ -354,34 +343,7 @@
 
               <!-- Tab: 游戏参数 -->
               <div v-if="activeTab === 'game_params'" class="tab-content">
-                <div class="section-title">游戏基础</div>
-                <div class="form-group">
-                  <label>默认角色</label>
-                  <select v-model="cfg.game.default_character">
-                    <option value="IRONCLAD">铁甲战士</option><option value="SILENT">猎手</option><option value="DEFECT">机器人</option><option value="WATCHER">观者</option>
-                  </select>
-                </div>
-                <div class="section-title">时序控制 <span class="hint">(秒)</span></div>
-                <table class="compact-table">
-                  <tbody>
-                  <tr><td><label>状态轮询间隔</label></td><td><input type="number" v-model.number="cfg.game.poll_interval" min="0.2" max="10" step="0.1" /></td></tr>
-                  <tr><td><label>最小操作间隔</label></td><td><input type="number" v-model.number="cfg.game.min_step_interval" min="1" max="30" step="0.5" /></td></tr>
-                  <tr><td><label>操作间隔抖动</label></td><td><input type="number" v-model.number="cfg.game.step_jitter" min="0" max="5" step="0.1" /></td></tr>
-                  <tr><td><label>解说建议间隔</label></td><td><input type="number" v-model.number="cfg.game.commentary_interval" min="5" max="300" /></td></tr>
-                  <tr><td><label>解说硬间隔</label></td><td><input type="number" v-model.number="cfg.game.min_commentary_interval" min="5" max="120" /></td></tr>
-                  <tr><td><label>解说消费超时</label></td><td><input type="number" v-model.number="cfg.game.commentary_hold_timeout" min="5" max="60" /></td></tr>
-                  </tbody>
-                </table>
-                <div class="section-title">记忆</div>
-                <table class="compact-table">
-                  <tbody>
-                  <tr><td><label>总结阈值 <span class="hint">(条)</span></label></td><td><input type="number" v-model.number="cfg.game.memory_threshold" min="5" max="200" /></td></tr>
-                  <tr><td><label>积极度 <span class="hint">(1-5)</span></label></td><td><input type="number" v-model.number="cfg.game.memory_eagerness" min="1" max="5" /></td></tr>
-                  <tr><td><label>队列最大长度</label></td><td><input type="number" v-model.number="cfg.game.queue_max_size" min="5" max="100" /></td></tr>
-                  <tr><td><label>主播历史条数</label></td><td><input type="number" v-model.number="cfg.game.host_history_maxlen" min="10" max="200" /></td></tr>
-                  <tr><td><label>游戏历史条数</label></td><td><input type="number" v-model.number="cfg.game.game_history_maxlen" min="10" max="200" /></td></tr>
-                  </tbody>
-                </table>
+                <GameSettingsPanel v-model="cfg.game" />
               </div>
 
               <!-- Tab: 直播 -->
@@ -499,6 +461,7 @@ import { useDanmakuStore } from '@/stores/danmaku'
 import { useMusicStore } from '@/stores/music'
 import { DanmakuType } from '@/types/danmaku'
 import MemoryDebugPanel from '@/components/memory/MemoryDebugPanel.vue'
+import GameSettingsPanel from '@/components/settings/game/GameSettingsPanel.vue'
 
 interface Props { visible: boolean }
 const props = defineProps<Props>()
@@ -542,7 +505,7 @@ function initCfgShape() {
     llm: { api_url: '', api_key: '', model: '', temperature: 0.1, top_p: 0.9, max_tokens: 200, auto_collect_min_views: 20000, disable_thinking: true },
     tts: { provider: 'volcano', voice: 'zh-CN-XiaoxiaoNeural', encoding: 'wav', speed_ratio: 1.0 },
     volcano: { appid: '', access_token: '', speaker_id: '' },
-    game: { enabled: false, adapter: 'slay_the_spire', mcp_url: 'http://127.0.0.1:8080', api_url: '', api_key: '', model: '', temperature: 0.4, max_tokens: 500, disable_thinking: true, poll_interval: 1.0, memory_threshold: 30, min_step_interval: 3.0, step_jitter: 0.5, commentary_interval: 30.0, min_commentary_interval: 15.0, commentary_hold_timeout: 20.0, memory_eagerness: 3, default_character: 'IRONCLAD', queue_max_size: 20, host_history_maxlen: 50, game_history_maxlen: 30 },
+    game: { enabled: false, game_id: 'slay_the_spire', mcp_url: 'http://127.0.0.1:8080', api_url: '', api_key: '', model: '', temperature: 0.4, max_tokens: 500, disable_thinking: true, poll_interval: 1.0, memory_threshold: 30, memory_idle_seconds: 120, memory_scan_interval_seconds: 30, memory_context_max_chars: 12000, min_step_interval: 3.0, step_jitter: 0.5, commentary_interval: 30.0, min_commentary_interval: 15.0, commentary_hold_timeout: 20.0, memory_eagerness: 3, queue_max_size: 20, host_history_maxlen: 50, game_history_maxlen: 30, game_config: { default_character: 'IRONCLAD' } },
     easyvtuber: { enabled: true, character: 'feina00', input: { type: 'debug', osf_address: '127.0.0.1:11573', mouse_range: '0,0,1920,1080' }, model: { version: 'v3', precision: 'half', separable: true, use_tensorrt: true, use_eyebrow: true }, performance: { frame_rate: 30, interpolation: 'x2', super_resolution: 'off', ram_cache: '2gb', vram_cache: '2gb' }, output: { websocket: { enabled: true, port: 8765, host: 'localhost' } } },
     ai: { max_history_per_session: 16, summary_interval: 10, summary_idle_seconds: 300.0, summary_scan_interval_seconds: 60.0, max_recent_messages: 16, poll_interval_seconds: 10.0 },
     messaging: { danmaku_starvation_seconds: 30.0, danmaku_flood_threshold: 5, danmaku_flood_window: 20.0, gift_starvation_seconds: 60.0, gift_flood_threshold: 3, gift_flood_window: 30.0, gift_value_highest: 10000, gift_value_high: 5000, gift_value_normal: 1000, gift_value_low: 100, user_cooldown_seconds: 3.0, default_ttl_seconds: 30.0, rate_limit_commentary: 4.0, rate_limit_danmaku: 3.0, rate_limit_gift: 10.0 },
@@ -569,6 +532,7 @@ async function loadConfig() {
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
     const data = await res.json()
     Object.assign(cfg, data)
+    cfg.game.game_config ||= {}
     connected.value = true
   } catch (e) {
     console.error('连接后端失败:', e)
@@ -620,6 +584,7 @@ async function saveConfig() {
     if (res.ok) {
       const data = await res.json()
       Object.assign(cfg, data) // 用后端 canonical 数据覆盖
+      cfg.game.game_config ||= {}
       saveStatus.value = 'ok'
       saveStatusText.value = '已保存'
       emit('saved', cfg.bilibili.room_id)

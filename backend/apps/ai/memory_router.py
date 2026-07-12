@@ -207,6 +207,7 @@ async def graph_overview(
     limit_game_nodes: int = 80,
     limit_edges: int = 140,
 ):
+    game_id = game_id or get_memory_engine().selected_game_id or None
     return await _graph_builder().overview(
         game_id=game_id,
         user_id=user_id,
@@ -220,13 +221,20 @@ async def graph_overview(
 
 @router.post("/graph/query")
 async def graph_query(request: GraphQueryRequest):
-    return await _graph_builder().query(**request.model_dump())
+    payload = request.model_dump()
+    payload["game_id"] = payload["game_id"] or get_memory_engine().selected_game_id or None
+    return await _graph_builder().query(**payload)
 
 
 @router.get("/session")
-async def get_session_memory():
-    session = get_memory_engine().session
+async def get_session_memory(game_id: str | None = None):
+    engine = get_memory_engine()
+    if game_id:
+        session = await engine.ensure_game_session(game_id)
+    else:
+        session = engine.session
     return {
+        "game_id": session.game_id,
         "active": session.active,
         "core": session.core,
         "important": session.important,
@@ -249,9 +257,7 @@ async def get_session_memory():
 async def inject_preview(request: InjectPreviewRequest):
     engine = get_memory_engine()
     if request.target == "host":
-        text = await engine.inject_for_host(
-            user_id=request.user_id, query=request.query
-        )
+        text = await engine.inject_for_host(user_id=request.user_id, query=request.query)
     elif request.target == "game":
         await engine.ensure_graph(request.game_id)
         text = await engine.inject_for_game(game_id=request.game_id)
@@ -292,9 +298,7 @@ async def vector_status():
 
 @router.post("/vector/backfill")
 async def vector_backfill(batch_size: int = 50):
-    return await get_memory_engine().store.backfill_embeddings(
-        max(1, min(batch_size, 500))
-    )
+    return await get_memory_engine().store.backfill_embeddings(max(1, min(batch_size, 500)))
 
 
 @router.post("/vector/rebuild")
@@ -336,7 +340,10 @@ async def create_backup():
         {"name": target.name, "size_bytes": target.stat().st_size},
         {"name": manifest_path.name, "size_bytes": manifest_path.stat().st_size},
     ]
-    return {"success": True, "backup": {"name": target_dir.name, "path": str(target_dir), "files": copied}}
+    return {
+        "success": True,
+        "backup": {"name": target_dir.name, "path": str(target_dir), "files": copied},
+    }
 
 
 def _graph_builder() -> MemoryGraphViewBuilder:

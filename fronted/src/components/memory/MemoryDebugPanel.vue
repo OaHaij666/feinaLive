@@ -1,12 +1,41 @@
 <template>
   <div class="memory-debug">
     <div class="memory-toolbar">
-      <div class="memory-tabs">
-        <button v-for="tab in tabs" :key="tab.key" :class="{ active: activeView === tab.key }" @click="switchView(tab.key)">
-          {{ tab.label }}
-        </button>
+      <div class="toolbar-main">
+        <div class="game-scope-control">
+          <label for="memory-game-scope">游戏作用域</label>
+          <select
+            id="memory-game-scope"
+            :value="selectedGameId"
+            :disabled="!gameScopes.length || !!gameAction"
+            aria-label="选择游戏记忆作用域"
+            @change="changeGameScope"
+          >
+            <option v-if="!gameScopes.length" value="">暂无游戏</option>
+            <option v-for="scope in gameScopes" :key="scope.game_id" :value="scope.game_id">
+              {{ scope.game_id }} · {{ scope.atom_count }} 原子
+            </option>
+          </select>
+          <span :class="['scope-status', gameSessionStatus?.active ? 'active' : 'inactive']">
+            {{ gameSessionStatus?.active ? '会话运行中' : '无活动会话' }}
+          </span>
+        </div>
+        <div class="memory-tabs" role="tablist" aria-label="记忆控制台页面">
+          <button
+            v-for="tab in tabs"
+            :key="tab.key"
+            :class="{ active: activeView === tab.key }"
+            role="tab"
+            :aria-selected="activeView === tab.key"
+            @click="switchView(tab.key)"
+          >
+            {{ tab.label }}
+          </button>
+        </div>
       </div>
-      <button class="small-btn" :disabled="loading" @click="refreshCurrent">刷新</button>
+      <button class="small-btn" :disabled="loading || !!gameAction" aria-label="刷新当前记忆页面" @click="refreshCurrent">
+        {{ loading || gameAction === 'scopes' ? '刷新中…' : '刷新' }}
+      </button>
     </div>
 
     <div v-if="activeView === 'overview'" class="memory-view">
@@ -155,14 +184,9 @@
       </section>
     </div>
 
-    <div v-else-if="activeView === 'session'" class="memory-view session-layout">
-      <section class="memory-section">
-        <h3>单局记忆</h3>
-        <label>核心记忆<textarea :value="session?.core || ''" readonly rows="4"></textarea></label>
-        <label>重要记忆<textarea :value="session?.important || ''" readonly rows="4"></textarea></label>
-        <label>最近记忆<textarea :value="session?.recent || ''" readonly rows="4"></textarea></label>
-      </section>
-      <section class="memory-section">
+    <div v-else-if="activeView === 'session'" class="memory-view">
+      <GameMemoryControl :game-id="selectedGameId" />
+      <section class="memory-section inject-section">
         <h3>注入预览</h3>
         <div class="filter-row">
           <select v-model="injectForm.target"><option value="game">GameGraph</option><option value="host">HostGraph</option></select>
@@ -171,14 +195,6 @@
           <button class="small-btn" @click="runInjectPreview">生成</button>
         </div>
         <textarea :value="injectPreview?.content || ''" readonly rows="14"></textarea>
-      </section>
-      <section class="memory-section">
-        <h3>待总结事件</h3>
-        <div v-for="event in session?.pending_events || []" :key="event.event_id" class="event-item">
-          <b>#{{ event.event_id }} {{ event.event_type }}</b>
-          <p>{{ event.content }}</p>
-        </div>
-        <p v-if="!session?.pending_events.length" class="empty">暂无待总结事件</p>
       </section>
     </div>
 
@@ -203,16 +219,30 @@ import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useMemoryStore } from '@/stores/memory'
 import type { GraphNode, MemoryAtom } from '@/types/memory'
+import GameMemoryControl from '@/components/memory/GameMemoryControl.vue'
 
 const store = useMemoryStore()
-const { loading, stats, atomList, selectedAtom, recall, graph, session, injectPreview, backups } = storeToRefs(store)
+const {
+  loading,
+  stats,
+  atomList,
+  selectedAtom,
+  recall,
+  graph,
+  injectPreview,
+  backups,
+  gameScopes,
+  selectedGameId,
+  gameSessionStatus,
+  gameAction,
+} = storeToRefs(store)
 
 const tabs = [
   { key: 'overview', label: '概览' },
   { key: 'atoms', label: '记忆管理' },
   { key: 'recall', label: '召回测试' },
   { key: 'graph', label: '知识图谱' },
-  { key: 'session', label: '单局/注入' },
+  { key: 'session', label: '游戏会话' },
   { key: 'backups', label: '备份' },
 ]
 const activeView = ref('overview')
@@ -223,7 +253,7 @@ const editAtom = reactive<Partial<MemoryAtom>>({})
 const atomFilters = reactive({ keyword: '', status: 'all', atom_type: '', game_id: '', user_id: '', sort: 'created_desc' })
 const recallForm = reactive({ query: '', k: 5, game_id: '', user_id: '', atom_type: '' })
 const graphForm = reactive({ query: '', memory_id: null as number | null, game_id: '', user_id: '' })
-const injectForm = reactive({ target: 'game', game_id: 'slay_the_spire', user_id: '' })
+const injectForm = reactive({ target: 'game', game_id: '', user_id: '' })
 
 const graphCanvas = ref<HTMLCanvasElement | null>(null)
 const canvasWrap = ref<HTMLElement | null>(null)
@@ -246,9 +276,36 @@ watch(graph, async () => {
 })
 
 onMounted(async () => {
-  await store.fetchStats()
-  await store.fetchAtoms({ page: 1, page_size: 20 })
+  await Promise.all([
+    store.fetchStats(),
+    store.fetchAtoms({ page: 1, page_size: 20 }),
+    store.fetchGameScopes(),
+  ])
+  syncGameScope(selectedGameId.value)
+  if (selectedGameId.value) {
+    await Promise.all([
+      store.fetchGameStatus(selectedGameId.value),
+      store.fetchSession(selectedGameId.value),
+    ])
+  }
 })
+
+async function changeGameScope(event: Event) {
+  const gameId = (event.target as HTMLSelectElement).value
+  if (!gameId || gameId === selectedGameId.value) return
+  const changed = await store.selectGameScope(gameId)
+  if (!changed) return
+  syncGameScope(gameId)
+  await Promise.all([store.fetchGameStatus(gameId), store.fetchSession(gameId)])
+  await refreshCurrent()
+}
+
+function syncGameScope(gameId: string) {
+  atomFilters.game_id = gameId
+  recallForm.game_id = gameId
+  graphForm.game_id = gameId
+  injectForm.game_id = gameId
+}
 
 async function switchView(key: string) {
   activeView.value = key
@@ -259,7 +316,12 @@ async function refreshCurrent() {
   if (activeView.value === 'overview') await store.fetchStats()
   else if (activeView.value === 'atoms') await loadAtoms(atomList.value.page || 1)
   else if (activeView.value === 'graph') await loadGraphOverview()
-  else if (activeView.value === 'session') await store.fetchSession()
+  else if (activeView.value === 'session' && selectedGameId.value) {
+    await Promise.all([
+      store.fetchGameStatus(selectedGameId.value),
+      store.fetchSession(selectedGameId.value),
+    ])
+  }
   else if (activeView.value === 'backups') await store.fetchBackups()
 }
 
@@ -525,7 +587,21 @@ function onGraphWheel(event: WheelEvent) {
 
 <style scoped>
 .memory-debug { display: flex; flex-direction: column; gap: 14px; min-height: 0; }
-.memory-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.memory-toolbar { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.toolbar-main { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 10px; }
+.game-scope-control { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; color: #94a3b8; font-size: 11px; }
+.game-scope-control select {
+  min-width: 220px;
+  min-height: 38px;
+  padding: 7px 10px;
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 8px;
+  color: #e2e8f0;
+  background: #182235;
+}
+.scope-status { padding: 4px 8px; border-radius: 999px; font-weight: 700; }
+.scope-status.active { color: #86efac; background: rgba(34,197,94,0.14); }
+.scope-status.inactive { color: #94a3b8; background: rgba(148,163,184,0.12); }
 .memory-tabs { display: flex; flex-wrap: wrap; gap: 6px; }
 .memory-tabs button, .small-btn {
   background: rgba(255,255,255,0.06);
@@ -537,6 +613,7 @@ function onGraphWheel(event: WheelEvent) {
   font-size: 12px;
 }
 .memory-tabs button.active, .small-btn:hover { background: rgba(59,130,246,0.22); color: #93c5fd; }
+.memory-tabs button:focus-visible, .small-btn:focus-visible, .game-scope-control select:focus-visible { outline: 2px solid #60a5fa; outline-offset: 2px; }
 .small-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 .small-btn.danger { color: #fecaca; background: rgba(239,68,68,0.16); }
 .memory-view { min-height: 0; }
@@ -590,6 +667,7 @@ tr.selected { background: rgba(59,130,246,0.12); }
 .detail-form label { display: flex; flex-direction: column; gap: 5px; color: #94a3b8; font-size: 12px; }
 .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .recall-layout, .session-layout { display: grid; grid-template-columns: 0.8fr 1.2fr; gap: 12px; }
+.inject-section { margin-top: 12px; }
 .result-item, .event-item, .backup-item {
   border: 1px solid rgba(255,255,255,0.08);
   border-radius: 8px;

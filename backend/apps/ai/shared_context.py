@@ -43,6 +43,7 @@ class HostHistoryEntry:
 class GameHistoryEntry:
     action: str
     params: dict
+    game_id: str = ""
     result: str = ""
     timestamp: float = 0.0
 
@@ -54,6 +55,7 @@ class GameHistoryEntry:
         return {
             "action": self.action,
             "params": self.params,
+            "game_id": self.game_id,
             "result": self.result,
             "timestamp": self.timestamp,
         }
@@ -119,8 +121,16 @@ class SharedContext:
         host_history_maxlen: int | None = None,
         game_history_maxlen: int | None = None,
     ):
-        _host_maxlen = host_history_maxlen if host_history_maxlen is not None else config.game_host_history_maxlen
-        _game_maxlen = game_history_maxlen if game_history_maxlen is not None else config.game_game_history_maxlen
+        _host_maxlen = (
+            host_history_maxlen
+            if host_history_maxlen is not None
+            else config.game_host_history_maxlen
+        )
+        _game_maxlen = (
+            game_history_maxlen
+            if game_history_maxlen is not None
+            else config.game_game_history_maxlen
+        )
         self._host_history: deque[HostHistoryEntry] = deque(maxlen=_host_maxlen)
         self._game_history: deque[GameHistoryEntry] = deque(maxlen=_game_maxlen)
         self._memory = LongTermMemory()
@@ -135,9 +145,11 @@ class SharedContext:
             self._host_history.append(HostHistoryEntry(danmaku=danmaku, reply=reply, user=user))
             logger.debug(f"主播历史更新: [{user or '观众'}] {danmaku[:20]} -> [{reply[:20]}]")
 
-    async def add_game_entry(self, action: str, params: dict, result: str = ""):
+    async def add_game_entry(self, action: str, params: dict, result: str = "", game_id: str = ""):
         async with self._lock:
-            self._game_history.append(GameHistoryEntry(action=action, params=params, result=result))
+            self._game_history.append(
+                GameHistoryEntry(action=action, params=params, result=result, game_id=game_id)
+            )
             logger.debug(f"游戏历史更新: {action}({params})")
 
     async def advance_game_step(self):
@@ -243,13 +255,17 @@ class SharedContext:
             lines.append(f"{user_label}: {e.danmaku} | 主播: {e.reply}")
         return "\n".join(lines)
 
-    async def get_game_history(self, limit: int = 15) -> list[GameHistoryEntry]:
+    async def get_game_history(
+        self, limit: int = 15, game_id: str | None = None
+    ) -> list[GameHistoryEntry]:
         async with self._lock:
             entries = list(self._game_history)
+            if game_id:
+                entries = [entry for entry in entries if entry.game_id == game_id]
             return entries[-limit:]
 
-    async def get_game_history_text(self, limit: int = 15) -> str:
-        entries = await self.get_game_history(limit)
+    async def get_game_history_text(self, limit: int = 15, game_id: str | None = None) -> str:
+        entries = await self.get_game_history(limit, game_id)
         if not entries:
             return "（暂无操作）"
         lines = []
@@ -267,7 +283,13 @@ class SharedContext:
                 last_updated=self._memory.last_updated,
             )
 
-    async def update_memory(self, core: str | None = None, important: str | None = None, recent: str | None = None, key_events: list[str] | None = None):
+    async def update_memory(
+        self,
+        core: str | None = None,
+        important: str | None = None,
+        recent: str | None = None,
+        key_events: list[str] | None = None,
+    ):
         async with self._lock:
             if core is not None:
                 self._memory.core = core
@@ -278,7 +300,9 @@ class SharedContext:
             if key_events is not None:
                 self._memory.key_events = key_events
             self._memory.last_updated = time.time()
-            logger.info(f"记忆更新: core={len(self._memory.core)} chars, important={len(self._memory.important)} chars, recent={len(self._memory.recent)} chars")
+            logger.info(
+                f"记忆更新: core={len(self._memory.core)} chars, important={len(self._memory.important)} chars, recent={len(self._memory.recent)} chars"
+            )
 
     async def clear_all_memory(self):
         async with self._lock:
@@ -353,7 +377,7 @@ class SharedContext:
             end_idx = content.find(end, start_idx + len(search) if start_idx != -1 else 0)
             if start_idx == -1 or end_idx == -1:
                 return content
-            return content[:start_idx] + replace + content[end_idx + len(end):]
+            return content[:start_idx] + replace + content[end_idx + len(end) :]
 
         else:
             raise ValueError(f"Unknown mode: {mode}")

@@ -1,6 +1,5 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import type { StreamStatus } from '@/types/stream'
 import { mockStreamStatus } from '@/mock/data'
 
 export const useStreamStore = defineStore('stream', () => {
@@ -47,8 +46,9 @@ export const useStreamStore = defineStore('stream', () => {
   let clockInterval: number | null = null
 
   function startClock() {
+    if (clockInterval !== null) return
     updateClock()
-    clockInterval = window.setInterval(updateClock, 100)
+    clockInterval = window.setInterval(updateClock, 1000)
   }
 
   function stopClock() {

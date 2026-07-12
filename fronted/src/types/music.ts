@@ -20,12 +20,6 @@ export enum MusicStatus {
   FAILED = 'failed'
 }
 
-export interface QueueStats {
-  totalPlayed: number
-  totalQueue: number
-  current: MusicItem | null
-}
-
 export interface QueueResponse {
   current: MusicItem | null
   queue: MusicItem[]

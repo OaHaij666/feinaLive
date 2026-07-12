@@ -88,13 +88,11 @@ const danmakuStore = useDanmakuStore()
 const streamStore = useStreamStore()
 const musicStore = useMusicStore()
 const avatarInput = useAvatarInput()
-const { current, isPlaying, audioUnlocked } = storeToRefs(musicStore)
+const { isPlaying, audioUnlocked } = storeToRefs(musicStore)
 
 const showPlayUnlock = computed(() => {
-  const hasCurrent = !!current.value
   const locked = !audioUnlocked.value
   const notPlaying = !isPlaying.value
-  console.log('[MusicModal] current:', hasCurrent, 'locked:', locked, 'notPlaying:', notPlaying)
   return locked && notPlaying
 })
 
@@ -106,18 +104,14 @@ const bilibiliRoomId = ref<number | null>(null)
 
 async function fetchConfig() {
   try {
-    console.log('[App] Fetching config from /config...')
     const res = await fetch('/config')
-    console.log('[App] Config response status:', res.status)
     if (!res.ok) {
       console.error('[App] Config fetch failed:', res.status, res.statusText)
       return
     }
     const data = await res.json()
-    console.log('[App] Config data:', data)
     const roomId = data.bilibili?.room_id || data.host?.room_id || null
     bilibiliRoomId.value = roomId
-    console.log('[App] fetchConfig: roomId =', roomId, 'bilibiliRoomId =', bilibiliRoomId.value)
   } catch (e) {
     console.error('[App] Failed to fetch config:', e)
   }
@@ -203,7 +197,7 @@ const baseHeight = 1080
 const scale = ref(1)
 
 const particles = reactive(
-  Array.from({ length: 20 }, (_, i) => ({
+  Array.from({ length: 20 }, () => ({
     style: {
       left: `${Math.random() * 100}%`,
       animationDelay: `${Math.random() * 8}s`,
@@ -225,6 +219,13 @@ const layoutStyle = computed(() => ({
   transform: `translate(-50%, -50%) scale(${scale.value})`
 }))
 
+function handleGlobalKeydown(event: KeyboardEvent) {
+  if (event.ctrlKey && event.shiftKey && event.key.toLowerCase() === 's') {
+    event.preventDefault()
+    toggleSettings()
+  }
+}
+
 onMounted(() => {
   streamStore.startClock()
   streamStore.fetchConfig()
@@ -233,25 +234,17 @@ onMounted(() => {
   checkSessdata()
   avatarInput.connect()
   fetchConfig().then(() => {
-    console.log('[App] fetchConfig promise resolved, bilibiliRoomId.value =', bilibiliRoomId.value, 'type =', typeof bilibiliRoomId.value)
     if (bilibiliRoomId.value && bilibiliRoomId.value > 0) {
-      console.log('[App] Calling danmakuStore.connectToRoom with', bilibiliRoomId.value)
       danmakuStore.connectToRoom(bilibiliRoomId.value)
-    } else {
-      console.warn('[App] bilibiliRoomId is falsy, skipping danmaku connection. Value:', bilibiliRoomId.value)
     }
   })
-  
-  window.addEventListener('keydown', (e) => {
-    if (e.ctrlKey && e.shiftKey && e.key === 'S') {
-      e.preventDefault()
-      toggleSettings()
-    }
-  })
+  window.addEventListener('keydown', handleGlobalKeydown)
 })
 
 onUnmounted(() => {
   window.removeEventListener('resize', updateScale)
+  window.removeEventListener('keydown', handleGlobalKeydown)
+  streamStore.stopClock()
   avatarInput.disconnect()
   danmakuStore.disconnectFromRoom()
 })
@@ -262,7 +255,6 @@ onUnmounted(() => {
   margin: 0;
   padding: 0;
   box-sizing: border-box;
-  outline: none;
   border: none;
 }
 
@@ -271,7 +263,6 @@ html, body {
   height: 100%;
   overflow: hidden;
   border: none;
-  outline: none;
   color-scheme: dark;
 }
 </style>

@@ -1,7 +1,6 @@
 import { defineStore } from 'pinia'
-import { ref, computed, watch } from 'vue'
+import { ref, watch } from 'vue'
 import type { MusicItem, QueueResponse } from '@/types/music'
-import { MusicStatus } from '@/types/music'
 import { useNotification } from '@/utils/notification'
 
 const API_BASE = '/music'
@@ -28,8 +27,6 @@ export const useMusicStore = defineStore('music', () => {
   const { error } = useNotification()
   const current = ref<MusicItem | null>(null)
   const queue = ref<MusicItem[]>([])
-  const history = ref<MusicItem[]>([])
-  const totalPlayed = ref(0)
   const isPlaying = ref(false)
   const currentTime = ref(0)
   const duration = ref(0)
@@ -100,8 +97,6 @@ export const useMusicStore = defineStore('music', () => {
     }
   })
 
-  const hasNext = computed(() => queue.value.length > 0)
-
   async function fetchQueue() {
     try {
       const res = await fetch(`${API_BASE}/queue`)
@@ -115,15 +110,6 @@ export const useMusicStore = defineStore('music', () => {
       queue.value = data.queue
     } catch (e) {
       error('网络错误，无法获取播放队列')
-    }
-  }
-
-  async function fetchHistory() {
-    try {
-      const res = await fetch(`${API_BASE}/history`)
-      history.value = await res.json()
-    } catch (e) {
-      console.error('Failed to fetch history:', e)
     }
   }
 
@@ -183,15 +169,6 @@ export const useMusicStore = defineStore('music', () => {
     }
   }
 
-  async function clearQueue() {
-    try {
-      await fetch(`${API_BASE}/queue`, { method: 'DELETE' })
-      queue.value = []
-    } catch (e) {
-      console.error('Failed to clear queue:', e)
-    }
-  }
-
   function unlockAndPlay() {
     audioUnlocked.value = true
     if (current.value?.audioUrl && !isPlaying.value) {
@@ -241,20 +218,15 @@ export const useMusicStore = defineStore('music', () => {
   return {
     current,
     queue,
-    history,
-    totalPlayed,
     isPlaying,
     currentTime,
     duration,
     audioUnlocked,
-    hasNext,
     fetchQueue,
-    fetchHistory,
     playNext,
     skipCurrent,
     addSong,
     removeFromQueue,
-    clearQueue,
     unlockAndPlay,
     togglePlay,
     seekTo,

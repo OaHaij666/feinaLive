@@ -11,7 +11,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from apps.ai.game_graph import GameGraph
-from apps.ai.mcp.adapters.slay_the_spire import SlayTheSpireAdapter
+from apps.ai.mcp.games.registry import create_mcp_game
 from apps.ai.shared_context import get_shared_context
 from apps.config import config
 
@@ -29,7 +29,11 @@ async def main():
     logger.info(f"Game Model: {config.game_model}")
     logger.info(f"Poll Interval: {config.game_poll_interval}s")
 
-    adapter = SlayTheSpireAdapter()
+    adapter = create_mcp_game(
+        "slay_the_spire",
+        mcp_url=config.game_mcp_url,
+        game_config={"default_character": "IRONCLAD"},
+    )
     
     logger.info("检查 MCP 服务健康状态...")
     healthy = await adapter.health_check()

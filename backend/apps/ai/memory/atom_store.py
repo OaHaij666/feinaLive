@@ -144,9 +144,7 @@ class AtomStore:
             await db.execute(
                 "CREATE INDEX IF NOT EXISTS idx_atoms_source_group ON memory_atoms(source_group_id)"
             )
-            await db.execute(
-                "CREATE INDEX IF NOT EXISTS idx_atoms_status ON memory_atoms(status)"
-            )
+            await db.execute("CREATE INDEX IF NOT EXISTS idx_atoms_status ON memory_atoms(status)")
             await db.execute(
                 "CREATE INDEX IF NOT EXISTS idx_atoms_expires ON memory_atoms(expires_at)"
             )
@@ -169,6 +167,92 @@ class AtomStore:
                 """
             )
             await initialize_knowledge_schema(db)
+            await db.execute(
+                """
+                CREATE TABLE IF NOT EXISTS game_memory_sessions (
+                    session_id TEXT PRIMARY KEY,
+                    game_id TEXT NOT NULL,
+                    external_session_id TEXT,
+                    policy_json TEXT NOT NULL DEFAULT '{}',
+                    core TEXT NOT NULL DEFAULT '',
+                    important TEXT NOT NULL DEFAULT '',
+                    recent TEXT NOT NULL DEFAULT '',
+                    summarized_until_event_id INTEGER NOT NULL DEFAULT 0,
+                    active INTEGER NOT NULL DEFAULT 1,
+                    created_at REAL NOT NULL,
+                    updated_at REAL NOT NULL
+                )
+                """
+            )
+            await db.execute(
+                """
+                CREATE TABLE IF NOT EXISTS game_memory_events (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    session_id TEXT NOT NULL REFERENCES game_memory_sessions(session_id) ON DELETE CASCADE,
+                    game_id TEXT NOT NULL,
+                    external_event_id TEXT,
+                    event_type TEXT NOT NULL,
+                    content TEXT NOT NULL,
+                    metadata TEXT NOT NULL DEFAULT '{}',
+                    created_at REAL NOT NULL,
+                    summarized_batch_id TEXT
+                )
+                """
+            )
+            await db.execute(
+                """
+                CREATE TABLE IF NOT EXISTS game_summary_batches (
+                    source_group_id TEXT PRIMARY KEY,
+                    session_id TEXT NOT NULL,
+                    game_id TEXT NOT NULL,
+                    first_event_id INTEGER NOT NULL,
+                    last_event_id INTEGER NOT NULL,
+                    result_json TEXT NOT NULL,
+                    created_at REAL NOT NULL,
+                    applied_at REAL
+                )
+                """
+            )
+            await db.execute(
+                "CREATE INDEX IF NOT EXISTS idx_game_events_pending "
+                "ON game_memory_events(session_id, summarized_batch_id, id)"
+            )
+            await db.execute(
+                "CREATE INDEX IF NOT EXISTS idx_game_sessions_active "
+                "ON game_memory_sessions(game_id, active, updated_at)"
+            )
+            session_columns = {
+                str(row[1])
+                for row in await (
+                    await db.execute("PRAGMA table_info(game_memory_sessions)")
+                ).fetchall()
+            }
+            if "external_session_id" not in session_columns:
+                await db.execute(
+                    "ALTER TABLE game_memory_sessions ADD COLUMN external_session_id TEXT"
+                )
+            if "policy_json" not in session_columns:
+                await db.execute(
+                    "ALTER TABLE game_memory_sessions ADD COLUMN policy_json TEXT NOT NULL DEFAULT '{}'"
+                )
+            event_columns = {
+                str(row[1])
+                for row in await (
+                    await db.execute("PRAGMA table_info(game_memory_events)")
+                ).fetchall()
+            }
+            if "external_event_id" not in event_columns:
+                await db.execute("ALTER TABLE game_memory_events ADD COLUMN external_event_id TEXT")
+            await db.execute(
+                "CREATE UNIQUE INDEX IF NOT EXISTS idx_game_sessions_external "
+                "ON game_memory_sessions(game_id, external_session_id) "
+                "WHERE external_session_id IS NOT NULL"
+            )
+            await db.execute(
+                "CREATE UNIQUE INDEX IF NOT EXISTS idx_game_events_external "
+                "ON game_memory_events(game_id, external_event_id) "
+                "WHERE external_event_id IS NOT NULL"
+            )
             await db.commit()
         await self._migrate_legacy_atom_nodes()
         if self._vector_store:
@@ -182,9 +266,7 @@ class AtomStore:
     async def _migrate_legacy_atom_nodes(self) -> int:
         async with self._connect() as db:
             rows = await (
-                await db.execute(
-                    "SELECT id FROM memory_atoms WHERE node_id IS NULL ORDER BY id"
-                )
+                await db.execute("SELECT id FROM memory_atoms WHERE node_id IS NULL ORDER BY id")
             ).fetchall()
         migrated = 0
         for row in rows:
@@ -291,26 +373,371 @@ class AtomStore:
     async def get(self, atom_id: int) -> MemoryAtom | None:
         async with self._connect() as db:
             db.row_factory = aiosqlite.Row
-            cursor = await db.execute(
-                "SELECT * FROM memory_atoms WHERE id = ?", (atom_id,)
-            )
+            cursor = await db.execute("SELECT * FROM memory_atoms WHERE id = ?", (atom_id,))
             row = await cursor.fetchone()
             return self._row_to_atom(row) if row else None
 
-    async def source_group_contents(
-        self, user_id: str, source_group_id: str
-    ) -> set[str]:
+    async def source_group_contents(self, user_id: str, source_group_id: str) -> set[str]:
         """Return already committed contents for an idempotent summary batch."""
 
         async with self._connect() as db:
             rows = await (
                 await db.execute(
-                    "SELECT content FROM memory_atoms "
-                    "WHERE user_id=? AND source_group_id=?",
+                    "SELECT content FROM memory_atoms WHERE user_id=? AND source_group_id=?",
                     (user_id, source_group_id),
                 )
             ).fetchall()
         return {str(row[0]) for row in rows}
+
+    async def game_source_group_contents(self, game_id: str, source_group_id: str) -> set[str]:
+        async with self._connect() as db:
+            rows = await (
+                await db.execute(
+                    "SELECT content FROM memory_atoms WHERE game_id=? AND source_group_id=?",
+                    (game_id, source_group_id),
+                )
+            ).fetchall()
+        return {str(row[0]) for row in rows}
+
+    async def create_game_session(
+        self,
+        session_id: str,
+        game_id: str,
+        *,
+        external_session_id: str | None = None,
+        policy: dict[str, Any] | None = None,
+    ) -> None:
+        now = time.time()
+        async with self._connect() as db:
+            await db.execute(
+                "UPDATE game_memory_sessions SET active=0,updated_at=? WHERE game_id=? AND active=1",
+                (now, game_id),
+            )
+            await db.execute(
+                """
+                INSERT OR IGNORE INTO game_memory_sessions(
+                    session_id,game_id,external_session_id,policy_json,created_at,updated_at
+                ) VALUES(?,?,?,?,?,?)
+                """,
+                (
+                    session_id,
+                    game_id,
+                    external_session_id,
+                    self._to_json(policy or {}),
+                    now,
+                    now,
+                ),
+            )
+            await db.execute(
+                "UPDATE game_memory_sessions SET active=1,updated_at=? WHERE session_id=?",
+                (now, session_id),
+            )
+            await db.commit()
+
+    async def append_game_event(
+        self,
+        *,
+        session_id: str,
+        game_id: str,
+        event_type: str,
+        content: str,
+        metadata: dict[str, Any] | None = None,
+        created_at: float | None = None,
+        external_event_id: str | None = None,
+    ) -> tuple[int, float]:
+        timestamp = float(created_at or time.time())
+        async with self._connect() as db:
+            cursor = await db.execute(
+                """
+                INSERT OR IGNORE INTO game_memory_events(
+                    session_id,game_id,external_event_id,event_type,content,metadata,created_at
+                ) VALUES(?,?,?,?,?,?,?)
+                """,
+                (
+                    session_id,
+                    game_id,
+                    external_event_id,
+                    event_type,
+                    content,
+                    self._to_json(metadata or {}),
+                    timestamp,
+                ),
+            )
+            if cursor.rowcount == 1:
+                event_id = int(cursor.lastrowid)
+            elif external_event_id:
+                row = await (
+                    await db.execute(
+                        "SELECT id,created_at FROM game_memory_events WHERE game_id=? AND external_event_id=?",
+                        (game_id, external_event_id),
+                    )
+                ).fetchone()
+                event_id = int(row[0])
+                timestamp = float(row[1])
+            else:
+                raise RuntimeError("游戏事件写入失败")
+            await db.execute(
+                "UPDATE game_memory_sessions SET updated_at=? WHERE session_id=?",
+                (timestamp, session_id),
+            )
+            await db.commit()
+        return event_id, timestamp
+
+    async def save_game_summary_batch(
+        self,
+        *,
+        source_group_id: str,
+        session_id: str,
+        game_id: str,
+        first_event_id: int,
+        last_event_id: int,
+        result_json: str,
+    ) -> str:
+        async with self._connect() as db:
+            await db.execute(
+                """
+                INSERT OR IGNORE INTO game_summary_batches(
+                    source_group_id,session_id,game_id,first_event_id,last_event_id,
+                    result_json,created_at
+                ) VALUES(?,?,?,?,?,?,?)
+                """,
+                (
+                    source_group_id,
+                    session_id,
+                    game_id,
+                    first_event_id,
+                    last_event_id,
+                    result_json,
+                    time.time(),
+                ),
+            )
+            row = await (
+                await db.execute(
+                    "SELECT result_json FROM game_summary_batches WHERE source_group_id=?",
+                    (source_group_id,),
+                )
+            ).fetchone()
+            await db.commit()
+        return str(row[0])
+
+    async def get_game_summary_batch(self, source_group_id: str) -> str | None:
+        async with self._connect() as db:
+            row = await (
+                await db.execute(
+                    "SELECT result_json FROM game_summary_batches WHERE source_group_id=?",
+                    (source_group_id,),
+                )
+            ).fetchone()
+        return str(row[0]) if row else None
+
+    async def apply_game_summary_batch(
+        self,
+        *,
+        source_group_id: str,
+        session_id: str,
+        core: str,
+        important: str,
+        recent: str,
+        last_event_id: int,
+    ) -> None:
+        now = time.time()
+        async with self._connect() as db:
+            await db.execute(
+                """
+                UPDATE game_memory_sessions
+                SET core=?,important=?,recent=?,summarized_until_event_id=?,updated_at=?
+                WHERE session_id=?
+                """,
+                (core, important, recent, last_event_id, now, session_id),
+            )
+            await db.execute(
+                """
+                UPDATE game_memory_events SET summarized_batch_id=?
+                WHERE session_id=? AND id<=? AND summarized_batch_id IS NULL
+                """,
+                (source_group_id, session_id, last_event_id),
+            )
+            await db.execute(
+                "UPDATE game_summary_batches SET applied_at=? WHERE source_group_id=?",
+                (now, source_group_id),
+            )
+            await db.commit()
+
+    async def close_game_session(self, session_id: str) -> None:
+        if not session_id:
+            return
+        async with self._connect() as db:
+            await db.execute(
+                "UPDATE game_memory_sessions SET active=0,updated_at=? WHERE session_id=?",
+                (time.time(), session_id),
+            )
+            await db.commit()
+
+    async def save_game_session_snapshot(
+        self, session_id: str, core: str, important: str, recent: str
+    ) -> None:
+        if not session_id:
+            return
+        async with self._connect() as db:
+            await db.execute(
+                """
+                UPDATE game_memory_sessions SET core=?,important=?,recent=?,updated_at=?
+                WHERE session_id=?
+                """,
+                (core, important, recent, time.time(), session_id),
+            )
+            await db.commit()
+
+    async def restore_active_game_session(self, game_id: str) -> dict[str, Any] | None:
+        async with self._connect() as db:
+            db.row_factory = aiosqlite.Row
+            session = await (
+                await db.execute(
+                    """
+                    SELECT * FROM game_memory_sessions
+                    WHERE game_id=? AND active=1 ORDER BY updated_at DESC LIMIT 1
+                    """,
+                    (game_id,),
+                )
+            ).fetchone()
+            if not session:
+                return None
+            events = await (
+                await db.execute(
+                    """
+                    SELECT * FROM game_memory_events
+                    WHERE session_id=? AND summarized_batch_id IS NULL ORDER BY id
+                    """,
+                    (session["session_id"],),
+                )
+            ).fetchall()
+        return {
+            "session": dict(session),
+            "events": [
+                {
+                    **dict(row),
+                    "metadata": self._from_json(row["metadata"]),
+                }
+                for row in events
+            ],
+        }
+
+    async def restore_game_session_by_external_id(
+        self, game_id: str, external_session_id: str
+    ) -> dict[str, Any] | None:
+        async with self._connect() as db:
+            db.row_factory = aiosqlite.Row
+            session = await (
+                await db.execute(
+                    """
+                    SELECT * FROM game_memory_sessions
+                    WHERE game_id=? AND external_session_id=? LIMIT 1
+                    """,
+                    (game_id, external_session_id),
+                )
+            ).fetchone()
+            if not session:
+                return None
+            events = await (
+                await db.execute(
+                    """
+                    SELECT * FROM game_memory_events
+                    WHERE session_id=? AND summarized_batch_id IS NULL ORDER BY id
+                    """,
+                    (session["session_id"],),
+                )
+            ).fetchall()
+        return {
+            "session": dict(session),
+            "events": [
+                {**dict(row), "metadata": self._from_json(row["metadata"])} for row in events
+            ],
+        }
+
+    async def restore_oldest_pending_game_session(
+        self, game_id: str, exclude_session_id: str = ""
+    ) -> dict[str, Any] | None:
+        """Load durable backlog from a previous run without making it active."""
+        async with self._connect() as db:
+            db.row_factory = aiosqlite.Row
+            session = await (
+                await db.execute(
+                    """
+                    SELECT s.* FROM game_memory_sessions s
+                    WHERE s.game_id=? AND s.session_id!=?
+                      AND EXISTS(
+                        SELECT 1 FROM game_memory_events e
+                        WHERE e.session_id=s.session_id
+                          AND e.summarized_batch_id IS NULL
+                      )
+                    ORDER BY s.created_at ASC LIMIT 1
+                    """,
+                    (game_id, exclude_session_id),
+                )
+            ).fetchone()
+            if not session:
+                return None
+            events = await (
+                await db.execute(
+                    """
+                    SELECT * FROM game_memory_events
+                    WHERE session_id=? AND summarized_batch_id IS NULL ORDER BY id
+                    """,
+                    (session["session_id"],),
+                )
+            ).fetchall()
+        return {
+            "session": dict(session),
+            "events": [
+                {**dict(row), "metadata": self._from_json(row["metadata"])} for row in events
+            ],
+        }
+
+    async def list_game_scopes(self) -> list[dict[str, Any]]:
+        async with self._connect() as db:
+            db.row_factory = aiosqlite.Row
+            rows = await (
+                await db.execute(
+                    """
+                    WITH games(game_id) AS (
+                        SELECT DISTINCT game_id FROM game_memory_sessions
+                        UNION
+                        SELECT DISTINCT game_id FROM memory_atoms WHERE game_id IS NOT NULL
+                        UNION
+                        SELECT DISTINCT owner_id FROM knowledge_nodes WHERE owner_type='game'
+                    )
+                    SELECT games.game_id,
+                           COUNT(DISTINCT s.session_id) AS session_count,
+                           COUNT(DISTINCT a.id) AS atom_count,
+                           MAX(CASE WHEN s.active=1 THEN 1 ELSE 0 END) AS active
+                    FROM games
+                    LEFT JOIN game_memory_sessions s ON s.game_id=games.game_id
+                    LEFT JOIN memory_atoms a ON a.game_id=games.game_id
+                    WHERE games.game_id IS NOT NULL AND games.game_id!=''
+                    GROUP BY games.game_id ORDER BY games.game_id
+                    """
+                )
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    async def game_session_status(self, session_id: str) -> dict[str, Any] | None:
+        async with self._connect() as db:
+            db.row_factory = aiosqlite.Row
+            row = await (
+                await db.execute(
+                    """
+                    SELECT s.*,
+                           COUNT(e.id) AS event_count,
+                           SUM(CASE WHEN e.summarized_batch_id IS NULL THEN 1 ELSE 0 END) AS pending_count,
+                           MAX(e.created_at) AS last_event_at
+                    FROM game_memory_sessions s
+                    LEFT JOIN game_memory_events e ON e.session_id=s.session_id
+                    WHERE s.session_id=? GROUP BY s.session_id
+                    """,
+                    (session_id,),
+                )
+            ).fetchone()
+        return dict(row) if row else None
 
     async def list_atoms(
         self,
@@ -346,9 +773,7 @@ class AtomStore:
         if keyword:
             keyword_like = f"%{keyword}%"
             if keyword.isdigit():
-                filters.append(
-                    "(CAST(id AS TEXT) = ? OR content LIKE ? OR entities LIKE ?)"
-                )
+                filters.append("(CAST(id AS TEXT) = ? OR content LIKE ? OR entities LIKE ?)")
                 params.extend([keyword, keyword_like, keyword_like])
             else:
                 filters.append("(content LIKE ? OR entities LIKE ? OR metadata LIKE ?)")
@@ -455,12 +880,8 @@ class AtomStore:
 
         return {
             "total_atoms": int(total_row["total"]) if total_row else 0,
-            "status_breakdown": {
-                str(row["status"]): int(row["count"]) for row in status_rows
-            },
-            "atom_type_breakdown": {
-                str(row["atom_type"]): int(row["count"]) for row in type_rows
-            },
+            "status_breakdown": {str(row["status"]): int(row["count"]) for row in status_rows},
+            "atom_type_breakdown": {str(row["atom_type"]): int(row["count"]) for row in type_rows},
             "importance_distribution": distribution,
             "scope": {
                 "games": int(scope_rows["game_count"] or 0) if scope_rows else 0,
@@ -493,7 +914,9 @@ class AtomStore:
             updates["status"] = AtomStatus(updates["status"]).value
         if "entities" in updates:
             entities = updates["entities"]
-            updates["entities"] = json.dumps(entities if isinstance(entities, list) else [], ensure_ascii=False)
+            updates["entities"] = json.dumps(
+                entities if isinstance(entities, list) else [], ensure_ascii=False
+            )
         if "metadata" in updates:
             updates["metadata"] = self._to_json(updates["metadata"])
         for numeric in ("importance", "confidence"):
@@ -531,9 +954,7 @@ class AtomStore:
                     if self.has_embed:
                         await self._embed_atom(atom_id, atom.content)
                 else:
-                    await self._vector_store.update_metadata(
-                        atom_id, self._vector_metadata(atom)
-                    )
+                    await self._vector_store.update_metadata(atom_id, self._vector_metadata(atom))
         return atom
 
     async def batch_update_status(self, atom_ids: list[int], status: AtomStatus) -> int:
@@ -555,9 +976,7 @@ class AtomStore:
             for atom_id in atom_ids:
                 atom = await self.get(atom_id)
                 if atom:
-                    await self._vector_store.update_metadata(
-                        atom_id, self._vector_metadata(atom)
-                    )
+                    await self._vector_store.update_metadata(atom_id, self._vector_metadata(atom))
         return updated
 
     async def batch_update_fields(self, atom_ids: list[int], fields: dict[str, Any]) -> int:
@@ -574,9 +993,7 @@ class AtomStore:
         """Privacy erase: atoms, graph nodes/edges/evidence and vector index."""
         async with self._connect() as db:
             rows = await (
-                await db.execute(
-                    "SELECT id FROM memory_atoms WHERE user_id=?", (user_id,)
-                )
+                await db.execute("SELECT id FROM memory_atoms WHERE user_id=?", (user_id,))
             ).fetchall()
             atom_ids = [int(row[0]) for row in rows]
             if atom_ids:
@@ -585,9 +1002,7 @@ class AtomStore:
                     f"DELETE FROM memory_atoms_fts WHERE atom_id IN ({placeholders})",
                     atom_ids,
                 )
-                await db.execute(
-                    f"DELETE FROM memory_atoms WHERE id IN ({placeholders})", atom_ids
-                )
+                await db.execute(f"DELETE FROM memory_atoms WHERE id IN ({placeholders})", atom_ids)
             await db.execute(
                 "DELETE FROM knowledge_nodes WHERE owner_type='user' AND owner_id=?",
                 (user_id,),
@@ -639,10 +1054,7 @@ class AtomStore:
                 tokens = [t for t in query.strip().split() if t]
                 if tokens:
                     escaped = [t.replace('"', '""') for t in tokens]
-                    fts_tokens = [
-                        f'"{t}"' if (" " in t or len(t) > 3) else t
-                        for t in escaped
-                    ]
+                    fts_tokens = [f'"{t}"' if (" " in t or len(t) > 3) else t for t in escaped]
                     fts_query = " OR ".join(fts_tokens)
                     fts_params = [fts_query] + params
                     try:
@@ -664,9 +1076,7 @@ class AtomStore:
                         rows = []
 
                     if not bm25_by_id:
-                        like_clauses = " OR ".join(
-                            ["ma.content LIKE ?" for _ in tokens]
-                        )
+                        like_clauses = " OR ".join(["ma.content LIKE ?" for _ in tokens])
                         like_params = [f"%{t}%" for t in tokens] + params
                         cursor = await db.execute(
                             f"""
@@ -733,7 +1143,9 @@ class AtomStore:
 
             # ---- 4. 查询/加载最终 rows ----
             if merged:
-                sorted_ids = sorted(merged.keys(), key=lambda x: merged[x], reverse=True)[:limit * 2]
+                sorted_ids = sorted(merged.keys(), key=lambda x: merged[x], reverse=True)[
+                    : limit * 2
+                ]
                 placeholders = ",".join("?" * len(sorted_ids))
                 cursor = await db.execute(
                     f"SELECT ma.* FROM memory_atoms ma WHERE ma.id IN ({placeholders}) {where_clause}",
@@ -791,9 +1203,7 @@ class AtomStore:
         except Exception as e:
             logger.debug(f"Embedding 生成失败 (atom_id={atom_id}): {e}")
 
-    async def _embed_atoms_batch(
-        self, atom_ids: list[int], contents: list[str]
-    ) -> None:
+    async def _embed_atoms_batch(self, atom_ids: list[int], contents: list[str]) -> None:
         if not self._embed_client or not self._embed_client.available:
             return
         try:
@@ -852,7 +1262,10 @@ class AtomStore:
             if atom is None:
                 continue
             await self._vector_store.upsert(
-                int(atom_id), self._unpack_embedding(blob), atom.content, self._vector_metadata(atom)
+                int(atom_id),
+                self._unpack_embedding(blob),
+                atom.content,
+                self._vector_metadata(atom),
             )
             migrated += 1
         async with self._connect() as db:
@@ -876,9 +1289,7 @@ class AtomStore:
             if atom is None:
                 await self._vector_store.delete([atom_id])
             else:
-                await self._vector_store.update_metadata(
-                    atom_id, self._vector_metadata(atom)
-                )
+                await self._vector_store.update_metadata(atom_id, self._vector_metadata(atom))
             synced += 1
         return synced
 
@@ -897,12 +1308,12 @@ class AtomStore:
                     (max(batch_size * 4, batch_size),),
                 )
             ).fetchall()
-        missing = [(int(row[0]), str(row[1])) for row in rows if int(row[0]) not in existing][:batch_size]
+        missing = [(int(row[0]), str(row[1])) for row in rows if int(row[0]) not in existing][
+            :batch_size
+        ]
         if not missing:
             return {"skipped": len(rows), "success": 0, "failed": 0}
-        await self._embed_atoms_batch(
-            [item[0] for item in missing], [item[1] for item in missing]
-        )
+        await self._embed_atoms_batch([item[0] for item in missing], [item[1] for item in missing])
         return {"skipped": len(rows) - len(missing), "success": len(missing), "failed": 0}
 
     @staticmethod
@@ -920,9 +1331,7 @@ class AtomStore:
             )
             await db.commit()
 
-    async def reinforce(
-        self, atom_id: int, new_confidence: float | None = None
-    ) -> None:
+    async def reinforce(self, atom_id: int, new_confidence: float | None = None) -> None:
         now = time.time()
         async with self._connect() as db:
             db.row_factory = aiosqlite.Row
@@ -1043,7 +1452,9 @@ class AtomStore:
             confidence=float(row["confidence"]),
             created_at=float(row["created_at"]),
             last_accessed_at=float(row["last_accessed_at"]),
-            last_reinforced_at=float(row["last_reinforced_at"]) if row["last_reinforced_at"] else None,
+            last_reinforced_at=float(row["last_reinforced_at"])
+            if row["last_reinforced_at"]
+            else None,
             event_time=float(row["event_time"]) if row["event_time"] else None,
             ttl_days=float(row["ttl_days"]),
             expires_at=float(row["expires_at"]),

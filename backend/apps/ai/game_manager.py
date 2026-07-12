@@ -3,7 +3,7 @@
 import logging
 
 from apps.ai.game_graph import GameGraph
-from apps.ai.mcp.base_adapter import BaseGameAdapter
+from apps.ai.mcp.adapter import MCPGameAdapter
 from apps.ai.messaging.queue import get_message_queue
 from apps.ai.shared_context import SharedContext, get_shared_context
 
@@ -13,51 +13,47 @@ logger = logging.getLogger(__name__)
 class GameManager:
     def __init__(self, shared_context: SharedContext | None = None):
         self._shared_context = shared_context or get_shared_context()
-        self._game_graphs: dict[str, GameGraph] = {}
+        self._game_graph: GameGraph | None = None
         self._running = False
 
     @property
     def is_running(self) -> bool:
         return self._running
 
-    def register_game(self, adapter: BaseGameAdapter):
-        game_id = adapter.game_id
-        if game_id in self._game_graphs:
-            logger.warning(f"游戏 {game_id} 已注册，跳过")
-            return
+    def configure_single_game(self, adapter: MCPGameAdapter) -> None:
+        """Replace the configured game while stopped.
 
-        graph = GameGraph(
+        The live product currently permits one active game integration at a time.
+        """
+        if self._running:
+            raise RuntimeError("游戏运行中，不能切换当前游戏")
+        self._game_graph = GameGraph(
             adapter=adapter,
             shared_context=self._shared_context,
         )
-        self._game_graphs[game_id] = graph
-        logger.info(f"游戏注册: {game_id}")
-
-    def unregister_game(self, game_id: str):
-        if game_id in self._game_graphs:
-            del self._game_graphs[game_id]
-            logger.info(f"游戏注销: {game_id}")
+        logger.info("当前游戏配置: %s", adapter.game_id)
 
     async def start(self):
         if self._running:
             logger.warning("GameManager 已在运行")
             return
 
-        for game_id, graph in self._game_graphs.items():
-            await graph.start()
-
-        self._running = True
-        logger.info(f"GameManager 启动: {len(self._game_graphs)} 个游戏")
+        if self._game_graph is None:
+            raise RuntimeError("尚未配置游戏")
+        await self._game_graph.start()
+        self._running = self._game_graph.is_running
+        logger.info("GameManager 启动: %s", self._running)
 
     async def stop(self):
-        for game_id, graph in self._game_graphs.items():
-            await graph.stop()
+        if self._game_graph is not None:
+            await self._game_graph.stop()
 
         self._running = False
         logger.info("GameManager 停止")
 
-    def get_game_graphs(self) -> dict[str, GameGraph]:
-        return dict(self._game_graphs)
+    @property
+    def current_graph(self) -> GameGraph | None:
+        return self._game_graph
 
     def mute(self):
         get_message_queue().mute()
@@ -66,16 +62,15 @@ class GameManager:
         get_message_queue().unmute()
 
     def get_game_status(self) -> dict:
-        registered = list(self._game_graphs.keys())
+        from apps.ai.memory.engine import get_memory_engine
+
+        graph = self._game_graph
+        game_id = graph.game_id if graph else ""
         return {
             "running": self._running,
-            "registered_games": registered,
-            "games": {
-                game_id: {
-                    "running": graph.is_running,
-                }
-                for game_id, graph in self._game_graphs.items()
-            },
+            "selected_game_id": get_memory_engine().selected_game_id,
+            "configured_game_id": game_id,
+            "game": {"game_id": game_id, "running": bool(graph and graph.is_running)},
             "queue": get_message_queue().get_stats(),
         }
 

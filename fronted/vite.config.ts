@@ -32,6 +32,10 @@ export default defineConfig({
         target: 'http://localhost:9191',
         changeOrigin: true,
       },
+      '/game': {
+        target: 'http://localhost:9191',
+        changeOrigin: true,
+      },
       '/config': {
         target: 'http://localhost:9191',
         changeOrigin: true,

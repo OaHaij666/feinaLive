@@ -5,13 +5,17 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from apps.ai.game_graph import GameGraph
-from apps.ai.mcp.adapters.slay_the_spire import SlayTheSpireAdapter
+from apps.ai.mcp.games.registry import create_mcp_game
 from apps.ai.shared_context import SharedContext
 from apps.config import config
 
 async def main():
     print(f"model={config.game_model} 解说={config.game_commentary_eagerness} 记忆={config.game_memory_eagerness} 步间隔={config.game_min_step_interval}s")
-    adapter = SlayTheSpireAdapter()
+    adapter = create_mcp_game(
+        "slay_the_spire",
+        mcp_url=config.game_mcp_url,
+        game_config={"default_character": "IRONCLAD"},
+    )
     shared = SharedContext()
     graph = GameGraph(adapter=adapter, shared_context=shared)
     if not await adapter.health_check():

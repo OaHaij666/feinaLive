@@ -46,7 +46,7 @@ export interface VolcanoConfig {
 
 export interface GameConfig {
   enabled: boolean
-  adapter: string
+  game_id: string
   mcp_url: string
   api_url: string
   api_key: string
@@ -56,16 +56,42 @@ export interface GameConfig {
   disable_thinking: boolean
   poll_interval: number
   memory_threshold: number
+  memory_idle_seconds: number
+  memory_scan_interval_seconds: number
+  memory_context_max_chars: number
   min_step_interval: number
   step_jitter: number
   commentary_interval: number
   min_commentary_interval: number
   commentary_hold_timeout: number
   memory_eagerness: number
-  default_character: string
   queue_max_size: number
   host_history_maxlen: number
   game_history_maxlen: number
+  game_config: Record<string, unknown>
+}
+
+export interface RegisteredGameConfigField {
+  key: string
+  label: string
+  input_type: 'text' | 'number' | 'select' | 'textarea' | 'checkbox'
+  default: unknown
+  description: string
+  required: boolean
+  options: Array<{ value: string; label: string }>
+}
+
+export interface RegisteredGameDefinition {
+  game_id: string
+  display_name: string
+  description: string
+  game_type: string
+  config_fields: RegisteredGameConfigField[]
+}
+
+export interface GameCatalogPayload {
+  selected_game_id: string
+  games: RegisteredGameDefinition[]
 }
 
 export interface EasyVtuberInputConfig {
@@ -182,8 +208,3 @@ export interface FullConfig {
 
 /** MASKED_PATTERN: 后端返回敏感字段时使用的掩码 */
 export const MASKED = '****'
-
-/** 判断字段是否处于掩码状态（用户未修改） */
-export function isMasked(value: string): boolean {
-  return value.includes(MASKED)
-}

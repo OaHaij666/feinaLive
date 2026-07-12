@@ -2,11 +2,8 @@ import { defineStore } from 'pinia'
 import { ref, computed, watch } from 'vue'
 import type { DanmakuMessage } from '@/types/danmaku'
 import { DanmakuType } from '@/types/danmaku'
-import { useBilibiliDanmaku, type DanmakuMessage as WsDanmaku } from '@/composables/useBilibiliDanmaku'
+import { useBilibiliDanmaku } from '@/composables/useBilibiliDanmaku'
 import { useAdminCommands } from '@/composables/useAdminCommands'
-
-const ADMIN_UID = 378810242
-const ADMIN_USERNAME = 'RongR0Ng'
 
 export const useDanmakuStore = defineStore('danmaku', () => {
   const danmakuList = ref<DanmakuMessage[]>([])
@@ -74,9 +71,6 @@ export const useDanmakuStore = defineStore('danmaku', () => {
     disconnect()
   }
 
-  function startMockGeneration() {
-  }
-
   return {
     danmakuList,
     sortedList,
@@ -86,6 +80,5 @@ export const useDanmakuStore = defineStore('danmaku', () => {
     clearDanmaku,
     connectToRoom,
     disconnectFromRoom,
-    startMockGeneration
   }
 })

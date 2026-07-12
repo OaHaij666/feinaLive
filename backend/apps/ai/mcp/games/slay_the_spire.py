@@ -1,21 +1,55 @@
-"""Slay the Spire MCP 适配器 — 包裹 MCPClient，实现 BaseGameAdapter"""
+"""杀戮尖塔 MCP 游戏 Profile。"""
 
-import asyncio
 import json
 import logging
-from typing import Any
+from typing import Any, cast
 
-from apps.ai.mcp.base_adapter import BaseGameAdapter, UnifiedAction, UnifiedGameState
+from pydantic import BaseModel, ConfigDict, Field
+
 from apps.ai.mcp.client import MCPClient
-from apps.ai.memory.engine import get_memory_engine
+from apps.ai.mcp.games.base import (
+    GameConfigField,
+    GameProfile,
+    UnifiedAction,
+    UnifiedGameState,
+)
+from apps.ai.memory.game_memory import GameMemoryAPI, GameMemoryPolicy
 from apps.config import config
 
 logger = logging.getLogger(__name__)
 
 
-class SlayTheSpireAdapter(BaseGameAdapter):
-    def __init__(self, base_url: str = ""):
-        self._mcp = MCPClient(base_url=base_url or config.game_mcp_url)
+class SlayTheSpireConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    default_character: str = Field(default="IRONCLAD", min_length=1, max_length=120)
+
+
+class SlayTheSpireProfile(GameProfile):
+    config_model = SlayTheSpireConfig
+    profile_id = "slay_the_spire"
+    catalog_name = "杀戮尖塔"
+    catalog_description = "内置状态归一化、角色开局、卡牌/遗物补全和单局记忆边界。"
+    catalog_game_type = "roguelike_card"
+    config_fields = [
+        GameConfigField(
+            "default_character",
+            "默认角色",
+            input_type="select",
+            default="IRONCLAD",
+            description="自动重开或未指定角色时使用。",
+            options=[
+                {"value": "IRONCLAD", "label": "铁甲战士"},
+                {"value": "SILENT", "label": "猎手"},
+                {"value": "DEFECT", "label": "机器人"},
+                {"value": "WATCHER", "label": "观者"},
+            ],
+        )
+    ]
+
+    @property
+    def values(self) -> SlayTheSpireConfig:
+        return cast(SlayTheSpireConfig, self.config)
 
     @property
     def game_id(self) -> str:
@@ -25,6 +59,84 @@ class SlayTheSpireAdapter(BaseGameAdapter):
     def game_type(self) -> str:
         return "roguelike_card"
 
+    @property
+    def display_name(self) -> str:
+        return "杀戮尖塔"
+
+    @property
+    def prompt_guidance(self) -> str:
+        return """【杀戮尖塔决策原则】
+- 能在本回合击杀敌人时优先斩杀；否则根据敌人意图平衡格挡和输出。
+- 敌人 target_index 从 0 开始；击杀会导致后续索引移动，多目标行动应从高索引向低索引处理。
+- 每次决策可返回多个动作，系统会按真人节奏逐步执行。
+- 不清楚卡牌、遗物或药水效果时，先调用对应 info 工具，禁止猜测。
+- 主菜单可用 start_game 开局；默认角色由当前游戏配置决定。
+- start_game 成功后，Profile 会自动采集初始牌组与遗物并写入重要工作记忆。"""
+
+    @property
+    def prompt_examples(self) -> str:
+        return """选择或操作时：
+{"actions":[
+  {"function":{"name":"request_host_commentary","arguments":{"key_points":["说明当前局势和选择"],"mood":"confident"}}},
+  {"function":{"name":"execute_actions","arguments":{"actions":[{"action":"play_card","card_name":"防御","target_index":0},{"action":"end_turn"}]}}}
+]}"""
+
+    @property
+    def memory_policy(self) -> GameMemoryPolicy:
+        return GameMemoryPolicy(
+            session_mode="per_run",
+            layer_retention={
+                "core": "reset",
+                "important": "reset",
+                "recent": "reset",
+            },
+            summary_threshold=config.game_memory_threshold,
+            idle_summary_seconds=config.game_memory_idle_seconds,
+            context_max_chars=config.game_memory_context_max_chars,
+        )
+
+    def is_session_finished(self, state: UnifiedGameState) -> bool:
+        return state.screen_type == "GAME_OVER" or state.raw_state.get("screen_type") == "GAME_OVER"
+
+    def session_restart_actions(self, state: UnifiedGameState) -> list[UnifiedAction]:
+        return [
+            UnifiedAction(action_type="proceed", params={}),
+            UnifiedAction(
+                action_type="start_game",
+                params={"character": self.values.default_character},
+            ),
+        ]
+
+    def is_readonly_tool(self, name: str) -> bool:
+        return name in {
+            "get_game_state",
+            "get_screen_state",
+            "get_available_commands",
+            "get_card_info",
+            "get_relic_info",
+            "get_potion_info",
+        }
+
+    def expand_action(self, action: UnifiedAction) -> list[UnifiedAction]:
+        if action.action_type != "execute_actions":
+            return [action]
+        items = action.params.get("actions", [])
+        if not isinstance(items, list) or not items:
+            return [action]
+        expanded: list[UnifiedAction] = []
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            name = item.get("action") or item.get("name")
+            if not name:
+                continue
+            params = {key: value for key, value in item.items() if key not in {"action", "name"}}
+            expanded.append(UnifiedAction(action_type=str(name), params=params))
+        return expanded or [action]
+
+    def is_session_start_action(self, action: UnifiedAction) -> bool:
+        return action.action_type == "start_game"
+
     CHARACTERS = ["IRONCLAD", "SILENT", "DEFECT", "WATCHER"]
 
     @staticmethod
@@ -33,7 +145,7 @@ class SlayTheSpireAdapter(BaseGameAdapter):
             s = str(val)
             upper = s.upper()
             # 仅当大写后命中原生 4 角色时才统一大写；mod class 名（PascalCase）保持原样
-            return upper if upper in SlayTheSpireAdapter.CHARACTERS else s
+            return upper if upper in SlayTheSpireProfile.CHARACTERS else s
 
         if "character" in params:
             params["character"] = _normalize(params["character"])
@@ -43,7 +155,7 @@ class SlayTheSpireAdapter(BaseGameAdapter):
                 val = params[alias]
                 if isinstance(val, int):
                     idx = val
-                    chars = SlayTheSpireAdapter.CHARACTERS
+                    chars = SlayTheSpireProfile.CHARACTERS
                     params["character"] = chars[idx] if 0 <= idx < len(chars) else chars[0]
                 else:
                     params["character"] = _normalize(val)
@@ -65,9 +177,9 @@ class SlayTheSpireAdapter(BaseGameAdapter):
                         return text
         return raw
 
-    async def get_state(self) -> UnifiedGameState:
+    async def get_state(self, client: MCPClient) -> UnifiedGameState:
         try:
-            raw = await self._mcp.call_tool("get_game_state")
+            raw = await client.call_tool("get_game_state")
             state = self._unwrap_tool_result(raw)
             if isinstance(state, dict) and "game_state" in state:
                 gs = state.pop("game_state")
@@ -76,14 +188,20 @@ class SlayTheSpireAdapter(BaseGameAdapter):
                     if k not in state:
                         state[k] = v
             if isinstance(state, dict) and not state.get("screen_type"):
-                screen_raw = await self._mcp.call_tool("get_screen_state")
+                screen_raw = await client.call_tool("get_screen_state")
                 screen_state = self._unwrap_tool_result(screen_raw)
                 if isinstance(screen_state, dict):
-                    for k in ("screen_type", "screen_name", "room_phase", "room_type", "choice_list"):
+                    for k in (
+                        "screen_type",
+                        "screen_name",
+                        "room_phase",
+                        "room_type",
+                        "choice_list",
+                    ):
                         if k in screen_state and k not in state:
                             state[k] = screen_state[k]
             if not isinstance(state, dict) or not state.get("screen_type"):
-                cmds_raw = await self._mcp.call_tool("get_available_commands")
+                cmds_raw = await client.call_tool("get_available_commands")
                 cmds_state = self._unwrap_tool_result(cmds_raw)
                 if isinstance(cmds_state, dict) and cmds_state.get("screen_type"):
                     if not isinstance(state, dict):
@@ -98,7 +216,7 @@ class SlayTheSpireAdapter(BaseGameAdapter):
             logger.error(f"获取游戏状态异常: {e}")
             return self._raw_to_unified({})
 
-    async def get_initial_state(self) -> dict | None:
+    async def get_initial_state(self, client: MCPClient) -> dict | None:
         """start_game 之后调：从 MCP 拉初始牌组/遗物/角色，含具体数值与效果描述。
 
         返回结构:
@@ -118,7 +236,7 @@ class SlayTheSpireAdapter(BaseGameAdapter):
         }
         """
         try:
-            state = await self.get_state()
+            state = await self.get_state(client)
         except Exception as e:
             logger.error(f"get_initial_state: get_state 失败: {e}")
             return None
@@ -128,6 +246,7 @@ class SlayTheSpireAdapter(BaseGameAdapter):
 
         # 1. 牌组：合并相同 id 的牌，统计 count
         from collections import Counter
+
         raw_deck = raw.get("deck", []) or []
         if not isinstance(raw_deck, list):
             return None
@@ -144,7 +263,7 @@ class SlayTheSpireAdapter(BaseGameAdapter):
         deck_cards: list[dict] = []
         if card_id_counts:
             try:
-                card_info = await self._mcp.call_tool(
+                card_info = await client.call_tool(
                     "get_card_info", {"card_ids": list(card_id_counts.keys())}
                 )
             except Exception as e:
@@ -159,18 +278,20 @@ class SlayTheSpireAdapter(BaseGameAdapter):
 
             for cid, cnt in card_id_counts.items():
                 info = info_map.get(cid, {})
-                deck_cards.append({
-                    "id": cid,
-                    "name": info.get("name", cid),
-                    "count": cnt,
-                    "cost": info.get("cost"),
-                    "type": info.get("type", ""),
-                    "base_damage": info.get("base_damage"),
-                    "base_block": info.get("base_block"),
-                    "base_magic_number": info.get("base_magic_number"),
-                    "description": info.get("description", ""),
-                    "upgraded": info.get("upgraded"),
-                })
+                deck_cards.append(
+                    {
+                        "id": cid,
+                        "name": info.get("name", cid),
+                        "count": cnt,
+                        "cost": info.get("cost"),
+                        "type": info.get("type", ""),
+                        "base_damage": info.get("base_damage"),
+                        "base_block": info.get("base_block"),
+                        "base_magic_number": info.get("base_magic_number"),
+                        "description": info.get("description", ""),
+                        "upgraded": info.get("upgraded"),
+                    }
+                )
 
         # 3. 遗物：批量查
         raw_relics = raw.get("relics", []) or []
@@ -179,9 +300,7 @@ class SlayTheSpireAdapter(BaseGameAdapter):
         relic_info_map: dict[str, dict] = {}
         if relic_ids:
             try:
-                relic_info = await self._mcp.call_tool(
-                    "get_relic_info", {"relic_ids": relic_ids}
-                )
+                relic_info = await client.call_tool("get_relic_info", {"relic_ids": relic_ids})
             except Exception as e:
                 logger.warning(f"get_relic_info 失败: {e}")
                 relic_info = None
@@ -196,13 +315,15 @@ class SlayTheSpireAdapter(BaseGameAdapter):
                 continue
             rid = r.get("id", "")
             info = relic_info_map.get(rid, {})
-            relics.append({
-                "id": rid,
-                "name": info.get("name", r.get("name", rid)),
-                "tier": info.get("tier", ""),
-                "description": info.get("description", ""),
-                "counter_type": info.get("counter_type", "none"),
-            })
+            relics.append(
+                {
+                    "id": rid,
+                    "name": info.get("name", r.get("name", rid)),
+                    "tier": info.get("tier", ""),
+                    "description": info.get("description", ""),
+                    "counter_type": info.get("counter_type", "none"),
+                }
+            )
 
         return {
             "character": character,
@@ -268,75 +389,69 @@ class SlayTheSpireAdapter(BaseGameAdapter):
 
         return "\n".join(lines)
 
-    async def on_game_started(self, memory_writer) -> None:
-        """开局成功后：从 MCP 拉初始牌组/遗物/角色，格式化成文本写入 important 记忆。
+    async def on_game_session_opened(
+        self, client: MCPClient, memory: GameMemoryAPI
+    ) -> None:
+        initial = await self.get_initial_state(client)
+        if not initial:
+            return
+        await memory.update_layer(
+            "important",
+            self.format_initial_state_for_memory(initial),
+            source="profile",
+        )
 
-        memory_writer 是 BaseGameAdapter 协议传入的可调用对象: await memory_writer(text: str)
-        """
-        try:
-            initial = await self.get_initial_state()
-            if not initial:
-                return
-            text = self.format_initial_state_for_memory(initial)
-            await memory_writer(text)
-            card_total = sum(c.get("count", 0) for c in initial.get("deck_cards", []))
-            logger.info(
-                f"杀戮尖塔开局副作用: 已写入初始状态到 important 记忆 "
-                f"({card_total}张牌, {len(initial.get('relics', []))}个遗物)"
-            )
-        except Exception as e:
-            logger.warning(f"杀戮尖塔开局副作用失败: {e}")
-
-    async def execute_action(self, action: UnifiedAction) -> tuple[bool, str]:
+    async def execute_action(
+        self, client: MCPClient, action: UnifiedAction
+    ) -> tuple[bool, str]:
         try:
             params = dict(action.params)
             atype = action.action_type
             error_msg = ""
 
             if atype == "start_game":
-                await self._mcp.call_tool("abandon_run")
+                await client.call_tool("abandon_run")
                 params = self._fix_start_game_params(params)
-                result = await self._mcp.call_tool("start_game", params)
+                result = await client.call_tool("start_game", params)
                 success = result is not None
                 if not success:
                     error_msg = f"start_game failed: {result}"
-                else:
-                    # 确保知识图谱初始化
-                    try:
-                        engine = get_memory_engine()
-                        await engine.ensure_graph(self.game_id)
-                    except Exception as e:
-                        logger.debug(f"知识图谱初始化失败: {e}")
                 return success, error_msg
             elif atype == "execute_actions":
-                result = await self._mcp.call_tool("execute_actions", params)
+                result = await client.call_tool("execute_actions", params)
             elif atype == "play_card":
-                result = await self._mcp.call_tool("play_card", params)
+                result = await client.call_tool("play_card", params)
             elif atype == "end_turn":
-                result = await self._mcp.call_tool("end_turn", params)
+                result = await client.call_tool("end_turn", params)
             elif atype == "choose":
-                result = await self._mcp.call_tool("choose", params)
+                result = await client.call_tool("choose", params)
             elif atype == "use_potion":
-                result = await self._mcp.call_tool("use_potion", params)
+                result = await client.call_tool("use_potion", params)
             elif atype == "discard_potion":
-                result = await self._mcp.call_tool("discard_potion", params)
+                result = await client.call_tool("discard_potion", params)
             elif atype == "proceed":
-                result = await self._mcp.call_tool("proceed", params)
+                result = await client.call_tool("proceed", params)
             elif atype == "confirm":
-                result = await self._mcp.call_tool("confirm", params)
+                result = await client.call_tool("confirm", params)
             elif atype == "skip":
-                result = await self._mcp.call_tool("skip", params)
+                result = await client.call_tool("skip", params)
             elif atype == "cancel":
-                result = await self._mcp.call_tool("cancel", params)
+                result = await client.call_tool("cancel", params)
             elif atype == "select_cards":
-                result = await self._mcp.call_tool("select_cards", params)
-            elif atype in ("get_screen_state", "get_game_state", "get_available_commands",
-                           "get_card_info", "get_relic_info", "get_potion_info"):
-                result = await self._mcp.call_tool(atype, params)
+                result = await client.call_tool("select_cards", params)
+            elif atype in (
+                "get_screen_state",
+                "get_game_state",
+                "get_available_commands",
+                "get_card_info",
+                "get_relic_info",
+                "get_potion_info",
+            ):
+                result = await client.call_tool(atype, params)
             elif atype == "abandon_run":
-                result = await self._mcp.call_tool("abandon_run", params)
+                result = await client.call_tool("abandon_run", params)
             elif atype == "save_game":
-                result = await self._mcp.call_tool("save_game", params)
+                result = await client.call_tool("save_game", params)
             else:
                 logger.warning(f"未知动作类型: {atype}")
                 return False, f"unknown action: {atype}"
@@ -360,16 +475,18 @@ class SlayTheSpireAdapter(BaseGameAdapter):
             logger.error(f"执行游戏动作失败 [{action.action_type}]: {e}")
             return False, str(e)
 
-    async def get_available_actions(self) -> list[UnifiedAction]:
-        commands = await self._mcp.call_tool("get_available_commands")
+    async def get_available_actions(self, client: MCPClient) -> list[UnifiedAction]:
+        commands = await client.call_tool("get_available_commands")
         if not commands:
             return []
         result = []
         for cmd in commands.get("available_tools", []):
-            result.append(UnifiedAction(
-                action_type=cmd.get("tool", ""),
-                description=cmd.get("description", ""),
-            ))
+            result.append(
+                UnifiedAction(
+                    action_type=cmd.get("tool", ""),
+                    description=cmd.get("description", ""),
+                )
+            )
         return result
 
     def is_my_turn(self, state: UnifiedGameState) -> bool:
@@ -383,13 +500,33 @@ class SlayTheSpireAdapter(BaseGameAdapter):
         if not ready:
             return False
 
-        return in_combat or screen in ("MAIN_MENU", "NONE", "MAP", "EVENT", "COMBAT_REWARD", "CARD_REWARD",
-                                        "SHOP_SCREEN", "SHOP_ROOM", "REST", "BOSS_REWARD",
-                                        "GRID", "HAND_SELECT") or can_proceed
+        return (
+            in_combat
+            or screen
+            in (
+                "MAIN_MENU",
+                "NONE",
+                "MAP",
+                "EVENT",
+                "COMBAT_REWARD",
+                "CARD_REWARD",
+                "SHOP_SCREEN",
+                "SHOP_ROOM",
+                "REST",
+                "BOSS_REWARD",
+                "GRID",
+                "HAND_SELECT",
+            )
+            or can_proceed
+        )
 
-    async def get_tools_definition(self) -> list[dict]:
-        result = await self._mcp.get_tools()
-        mcp_tools = result.get("tools", []) if isinstance(result, dict) else (result if isinstance(result, list) else [])
+    async def get_tools_definition(self, client: MCPClient) -> list[dict]:
+        result = await client.get_tools()
+        mcp_tools = (
+            result.get("tools", [])
+            if isinstance(result, dict)
+            else (result if isinstance(result, list) else [])
+        )
         openai_tools = []
         for t in mcp_tools:
             defn = {
@@ -403,13 +540,15 @@ class SlayTheSpireAdapter(BaseGameAdapter):
             openai_tools.append(defn)
         return openai_tools
 
-    async def query_tool(self, name: str, params: dict | None = None) -> Any:
-        raw = await self._mcp.call_tool(name, params or {})
+    async def query_tool(
+        self, client: MCPClient, name: str, params: dict | None = None
+    ) -> Any:
+        raw = await client.call_tool(name, params or {})
         return self._unwrap_tool_result(raw)
 
-    async def health_check(self) -> bool:
+    async def health_check(self, client: MCPClient) -> bool:
         try:
-            result = await self._mcp.call_tool("get_game_state")
+            result = await client.call_tool("get_game_state")
             return result is not None
         except Exception:
             return False
@@ -424,13 +563,15 @@ class SlayTheSpireAdapter(BaseGameAdapter):
         enemies = []
         for m in combat.get("monsters", []):
             move = m.get("move", {})
-            enemies.append({
-                "name": m.get("name", "未知"),
-                "hp": m.get("current_hp", 0),
-                "max_hp": m.get("max_hp", 0),
-                "intent": m.get("intent", ""),
-                "damage": move.get("damage") if move else None,
-            })
+            enemies.append(
+                {
+                    "name": m.get("name", "未知"),
+                    "hp": m.get("current_hp", 0),
+                    "max_hp": m.get("max_hp", 0),
+                    "intent": m.get("intent", ""),
+                    "damage": move.get("damage") if move else None,
+                }
+            )
 
         resources = {}
         energy = player_combat.get("current_energy", raw.get("current_energy"))
@@ -503,7 +644,9 @@ class SlayTheSpireAdapter(BaseGameAdapter):
                         intent_detail += f"x{hits}"
                 block = m.get("block", 0)
                 block_str = f" [格挡{block}]" if block else ""
-                lines.append(f"  [{i}] {m.get('name')} HP:{m.get('current_hp')}/{m.get('max_hp')} 意图:{intent_detail}{block_str}")
+                lines.append(
+                    f"  [{i}] {m.get('name')} HP:{m.get('current_hp')}/{m.get('max_hp')} 意图:{intent_detail}{block_str}"
+                )
 
         hand = combat.get("hand", raw.get("hand", []))
         if hand:
@@ -520,64 +663,3 @@ class SlayTheSpireAdapter(BaseGameAdapter):
                 lines.append(f"  {i}. {ch}")
 
         return "\n".join(lines)
-
-    async def ingest_game_state_to_graph(self, state: UnifiedGameState) -> int:
-        """从当前游戏状态提取知识图谱节点
-
-        提取: 手牌、遗物、敌人 → 图谱节点
-        """
-        try:
-            engine = get_memory_engine()
-            graph = await engine.ensure_graph(self.game_id)
-        except Exception as e:
-            logger.debug(f"知识图谱不可用: {e}")
-            return 0
-
-        items = []
-        raw = state.raw_state
-
-        # 手牌 → card 节点
-        combat = raw.get("combat_state", {})
-        for card in combat.get("hand", []):
-            name = card.get("name", "")
-            if name:
-                items.append({
-                    "type": "node",
-                    "node_type": "card",
-                    "name": name,
-                    "properties": {
-                        "cost": card.get("cost"),
-                        "type": card.get("type", ""),
-                        "rarity": card.get("rarity", ""),
-                    },
-                })
-
-        # 遗物 → relic 节点
-        for relic in raw.get("relics", []):
-            name = relic.get("name", "") if isinstance(relic, dict) else str(relic)
-            if name:
-                items.append({
-                    "type": "node",
-                    "node_type": "relic",
-                    "name": name,
-                    "properties": {},
-                })
-
-        # 敌人 → enemy 节点
-        for enemy in state.enemies:
-            name = enemy.get("name", "")
-            if name:
-                items.append({
-                    "type": "node",
-                    "node_type": "enemy",
-                    "name": name,
-                    "properties": {
-                        "hp": enemy.get("hp"),
-                        "max_hp": enemy.get("max_hp"),
-                        "intent": enemy.get("intent", ""),
-                    },
-                })
-
-        if items:
-            return await graph.ingest(items)
-        return 0

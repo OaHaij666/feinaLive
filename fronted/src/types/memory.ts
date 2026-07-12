@@ -105,6 +105,7 @@ export interface GraphPayload {
 }
 
 export interface SessionMemoryPayload {
+  game_id: string
   active: boolean
   core: string
   important: string
@@ -117,6 +118,65 @@ export interface SessionMemoryPayload {
     created_at: number
   }>
   summarized_until_id: number
+}
+
+export type GameLayerName = 'core' | 'important' | 'recent'
+export type LayerRetention = 'reset' | 'carry'
+export type GameSessionMode = 'per_run' | 'continuous' | 'external'
+
+export interface GameMemoryPolicy {
+  session_mode: GameSessionMode
+  layer_retention: Record<GameLayerName, LayerRetention>
+  flush_on_session_end: boolean
+  summary_threshold: number
+  idle_summary_seconds: number
+  context_max_chars: number
+  capture_action_results: boolean
+  capture_query_results: boolean
+  durable_memory_enabled: boolean
+}
+
+export interface GameMemoryScope {
+  game_id: string
+  session_count: number
+  atom_count: number
+  active: number | boolean
+  selected: boolean
+  policy: GameMemoryPolicy
+}
+
+export interface GameMemoryScopesPayload {
+  selected_game_id: string
+  games: GameMemoryScope[]
+}
+
+export interface GameSessionStatus {
+  game_id: string
+  selected: boolean
+  policy: GameMemoryPolicy
+  session_id: string
+  active: boolean
+  core: string
+  important: string
+  recent: string
+  pending_count: number
+  stored: Record<string, unknown>
+}
+
+export interface GameMemoryContextPayload {
+  game_id: string
+  session_id: string
+  core: string
+  important: string
+  recent: string
+  pending_events: SessionMemoryPayload['pending_events']
+  recalled_atoms: Array<{
+    atom_id: number
+    type: string
+    content: string
+    entities: string[]
+  }>
+  graph_facts: Array<Record<string, unknown>>
 }
 
 export interface InjectPreviewPayload {

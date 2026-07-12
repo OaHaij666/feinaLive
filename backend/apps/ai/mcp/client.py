@@ -56,7 +56,6 @@ class MCPClient:
             "id": self._next_id(),
         }
 
-        last_error: Exception | None = None
         for attempt in range(self._max_retries):
             try:
                 client = await self._get_client()
@@ -72,7 +71,6 @@ class MCPClient:
                     return None
                 return data.get("result")
             except (httpx.ConnectError, httpx.TimeoutException) as e:
-                last_error = e
                 if attempt < self._max_retries - 1:
                     wait = self._retry_delay * (2 ** attempt)
                     logger.warning(

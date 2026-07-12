@@ -186,7 +186,7 @@ async def lifespan(app: FastAPI):
 
     if config.game_enabled:
         from apps.ai.game_manager import get_game_manager
-        from apps.ai.mcp.adapters.slay_the_spire import SlayTheSpireAdapter
+        from apps.ai.mcp.games.registry import create_mcp_game
         game_manager = get_game_manager()
 
         def on_sleep_mute(state_dict: dict):
@@ -197,18 +197,23 @@ async def lifespan(app: FastAPI):
 
         async def on_mcp_change(enabled: bool):
             if enabled:
-                adapter = SlayTheSpireAdapter()
+                if game_manager.is_running:
+                    return
+                try:
+                    adapter = create_mcp_game(
+                        config.game_id,
+                        mcp_url=config.game_mcp_url,
+                        game_config=config.game_config,
+                    )
+                except ValueError as exc:
+                    logger.error("游戏适配器配置无效: %s", exc)
+                    return
                 healthy = await adapter.health_check()
                 if not healthy:
                     logger.warning(f"MCP 服务不可用: {config.game_mcp_url}，无法启动游戏AI")
                     return
-                game_manager.register_game(adapter)
-                if game_manager.is_running:
-                    for game_id, graph in game_manager.get_game_graphs().items():
-                        if not graph.is_running:
-                            await graph.start()
-                else:
-                    await game_manager.start()
+                game_manager.configure_single_game(adapter)
+                await game_manager.start()
                 logger.info("游戏AI已通过 /mcp 1 启动")
             else:
                 if not game_manager.is_running:

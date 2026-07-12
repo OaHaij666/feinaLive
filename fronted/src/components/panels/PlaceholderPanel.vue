@@ -78,8 +78,8 @@ import { useLLMStore } from '@/stores/llm'
 
 const musicStore = useMusicStore()
 const llmStore = useLLMStore()
-const { current, queue, isPlaying, currentTime, duration } = storeToRefs(musicStore)
-const { isGenerating, displayText, latestAssistantMessage } = storeToRefs(llmStore)
+const { current, queue, currentTime, duration } = storeToRefs(musicStore)
+const { isGenerating, displayText } = storeToRefs(llmStore)
 
 const hasCurrent = computed(() => !!current.value)
 
@@ -89,8 +89,6 @@ const progressPercent = computed(() => {
   if (!duration.value) return 0
   return (currentTime.value / duration.value) * 100
 })
-
-const latestMessage = computed(() => latestAssistantMessage.value)
 
 const marqueeWrapperRef = ref<HTMLElement | null>(null)
 const textContentRef = ref<HTMLElement | null>(null)

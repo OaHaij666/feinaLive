@@ -122,7 +122,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useMusicStore } from '@/stores/music'
 
@@ -138,8 +138,6 @@ const progressPercent = computed(() => {
   if (!current.value?.duration) return 0
   return (currentTime.value / current.value.duration) * 100
 })
-
-let progressInterval: number | null = null
 
 function toggleMinimize() {
   isMinimized.value = !isMinimized.value
@@ -158,7 +156,9 @@ function skipNext() {
 }
 
 function seekTo(event: MouseEvent) {
-  // Placeholder for seek functionality
+  const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
+  const percent = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width))
+  musicStore.seekTo(percent)
 }
 
 function removeItem(id: string) {

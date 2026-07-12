@@ -1,6 +1,7 @@
 """MCP 模块 - Model Context Protocol 游戏集成"""
 
-from apps.ai.mcp.base_adapter import BaseGameAdapter, UnifiedAction, UnifiedGameState
+from apps.ai.mcp.adapter import MCPGameAdapter
 from apps.ai.mcp.client import MCPClient
+from apps.ai.mcp.games.base import UnifiedAction, UnifiedGameState
 
-__all__ = ["BaseGameAdapter", "UnifiedAction", "UnifiedGameState", "MCPClient"]
+__all__ = ["MCPClient", "MCPGameAdapter", "UnifiedAction", "UnifiedGameState"]

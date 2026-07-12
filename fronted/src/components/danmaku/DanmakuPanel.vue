@@ -46,7 +46,6 @@ import { computed } from 'vue'
 import { storeToRefs } from 'pinia'
 import DanmakuItem from './DanmakuItem.vue'
 import { useDanmakuStore } from '@/stores/danmaku'
-import type { DanmakuMessage } from '@/types/danmaku'
 
 const danmakuStore = useDanmakuStore()
 
@@ -109,7 +108,7 @@ function onBeforeMove(el: Element) {
   element.style.transition = 'transform 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94)'
 }
 
-function onMove(el: Element, done: () => void) {
+function onMove(_el: Element, done: () => void) {
   setTimeout(done, 400)
 }
 </script>

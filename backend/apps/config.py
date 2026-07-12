@@ -355,8 +355,13 @@ class Config:
         return os.getenv("GAME_MCP_URL") or self._data.get("game", {}).get("mcp_url", "http://127.0.0.1:8080")
 
     @property
-    def game_adapter(self) -> str:
-        return self._data.get("game", {}).get("adapter", "slay_the_spire")
+    def game_id(self) -> str:
+        return str(self._data.get("game", {}).get("game_id", "slay_the_spire"))
+
+    @property
+    def game_config(self) -> dict:
+        values = self._data.get("game", {}).get("game_config", {})
+        return dict(values) if isinstance(values, dict) else {}
 
     @property
     def game_poll_interval(self) -> float:
@@ -367,8 +372,18 @@ class Config:
         return int(self._data.get("game", {}).get("memory_threshold", 30))
 
     @property
-    def game_default_character(self) -> str:
-        return self._data.get("game", {}).get("default_character", "IRONCLAD")
+    def game_memory_idle_seconds(self) -> float:
+        return float(self._data.get("game", {}).get("memory_idle_seconds", 120.0))
+
+    @property
+    def game_memory_scan_interval_seconds(self) -> float:
+        return float(
+            self._data.get("game", {}).get("memory_scan_interval_seconds", 30.0)
+        )
+
+    @property
+    def game_memory_context_max_chars(self) -> int:
+        return int(self._data.get("game", {}).get("memory_context_max_chars", 12000))
 
     @property
     def game_min_commentary_interval(self) -> float:

@@ -9,12 +9,6 @@ export interface LLMMessage {
   timestamp: number
 }
 
-export interface LLMState {
-  isGenerating: boolean
-  currentText: string
-  messages: LLMMessage[]
-}
-
 const API_BASE = '/ai'
 
 interface AudioChunk {
@@ -37,7 +31,6 @@ class AudioPlayer {
   private isFirstAudio: boolean = true
   private textDisplayTimer: number | null = null
   private audioLevelTimer: number | null = null
-  private currentBuffer: AudioBuffer | null = null
 
   private getAudioContext(): AudioContext {
     if (!this.audioContext) {
@@ -154,7 +147,6 @@ class AudioPlayer {
 
       const audioBuffer = await audioContext.decodeAudioData(bytes.buffer)
       chunk.duration = audioBuffer.duration
-      this.currentBuffer = audioBuffer
 
       if (this.isFirstAudio && this.onFirstAudioPlay) {
         this.isFirstAudio = false
@@ -179,7 +171,6 @@ class AudioPlayer {
       await new Promise<void>((resolve) => {
         source.onended = () => {
           this.currentSource = null
-          this.currentBuffer = null
           if (this.textDisplayTimer !== null) {
             cancelAnimationFrame(this.textDisplayTimer)
             this.textDisplayTimer = null
@@ -256,15 +247,6 @@ export const useLLMStore = defineStore('llm', () => {
 
   const displayMessages = computed(() => {
     return messages.value.slice(-10)
-  })
-
-  const latestAssistantMessage = computed(() => {
-    for (let i = messages.value.length - 1; i >= 0; i--) {
-      if (messages.value[i].type === 'assistant') {
-        return messages.value[i]
-      }
-    }
-    return null
   })
 
   function addMessage(type: 'user' | 'assistant', text: string) {
@@ -504,7 +486,6 @@ export const useLLMStore = defineStore('llm', () => {
     displayText,
     messages,
     displayMessages,
-    latestAssistantMessage,
     addMessage,
     appendToCurrentText,
     finalizeCurrentText,

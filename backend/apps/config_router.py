@@ -6,7 +6,7 @@ from pathlib import Path
 
 import yaml
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from apps.config import config
 from apps.storage.secrets import secret_store
@@ -66,7 +66,7 @@ class VolcanoConfig(BaseModel):
 
 class GameConfig(BaseModel):
     enabled: bool = False
-    adapter: str = "slay_the_spire"
+    game_id: str = "slay_the_spire"
     mcp_url: str = "http://127.0.0.1:8080"
     api_url: str = ""
     api_key: str = ""
@@ -76,16 +76,19 @@ class GameConfig(BaseModel):
     disable_thinking: bool = True
     poll_interval: float = 1.0
     memory_threshold: int = 30
+    memory_idle_seconds: float = 120.0
+    memory_scan_interval_seconds: float = 30.0
+    memory_context_max_chars: int = 12000
     min_step_interval: float = 3.0
     step_jitter: float = 0.5
     commentary_interval: float = 30.0
     min_commentary_interval: float = 15.0
     commentary_hold_timeout: float = 20.0
     memory_eagerness: int = 3
-    default_character: str = "IRONCLAD"
     queue_max_size: int = 20
     host_history_maxlen: int = 50
     game_history_maxlen: int = 30
+    game_config: dict[str, object] = Field(default_factory=dict)
 
 
 class EasyVtuberInputConfig(BaseModel):
@@ -261,7 +264,7 @@ async def get_full_config():
         ),
         game=GameConfig(
             enabled=config.game_enabled,
-            adapter=config.game_adapter,
+            game_id=config.game_id,
             mcp_url=config.game_mcp_url,
             api_url=config.game_api_url,
             api_key=_mask_sensitive(config.game_api_key or ""),
@@ -271,16 +274,19 @@ async def get_full_config():
             disable_thinking=config.game_disable_thinking,
             poll_interval=config.game_poll_interval,
             memory_threshold=config.game_memory_threshold,
+            memory_idle_seconds=config.game_memory_idle_seconds,
+            memory_scan_interval_seconds=config.game_memory_scan_interval_seconds,
+            memory_context_max_chars=config.game_memory_context_max_chars,
             min_step_interval=config.game_min_step_interval,
             step_jitter=config.game_step_jitter,
             commentary_interval=config.game_commentary_interval,
             min_commentary_interval=config.game_min_commentary_interval,
             commentary_hold_timeout=config.game_commentary_hold_timeout,
             memory_eagerness=config.game_memory_eagerness,
-            default_character=config.game_default_character,
             queue_max_size=config.game_queue_max_size,
             host_history_maxlen=config.game_host_history_maxlen,
             game_history_maxlen=config.game_game_history_maxlen,
+            game_config=config.game_config,
         ),
         easyvtuber=EasyVtuberConfig(
             enabled=config.easyvtuber_enabled,
@@ -478,8 +484,14 @@ async def update_full_config(config_data: FullConfig):
 
         # game
         g = config_data.game
+        from apps.ai.mcp.games.registry import validate_game_config
+
+        try:
+            validated_game_config = validate_game_config(g.game_id, g.game_config)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
         flat["game.enabled"] = g.enabled
-        flat["game.adapter"] = g.adapter
+        flat["game.game_id"] = g.game_id
         flat["game.mcp_url"] = g.mcp_url
         flat["game.api_url"] = g.api_url
         _store_secret(data, "game.api_key", g.api_key)
@@ -489,16 +501,19 @@ async def update_full_config(config_data: FullConfig):
         flat["game.disable_thinking"] = g.disable_thinking
         flat["game.poll_interval"] = g.poll_interval
         flat["game.memory_threshold"] = g.memory_threshold
+        flat["game.memory_idle_seconds"] = g.memory_idle_seconds
+        flat["game.memory_scan_interval_seconds"] = g.memory_scan_interval_seconds
+        flat["game.memory_context_max_chars"] = g.memory_context_max_chars
         flat["game.min_step_interval"] = g.min_step_interval
         flat["game.step_jitter"] = g.step_jitter
         flat["game.commentary_interval"] = g.commentary_interval
         flat["game.min_commentary_interval"] = g.min_commentary_interval
         flat["game.commentary_hold_timeout"] = g.commentary_hold_timeout
         flat["game.memory_eagerness"] = g.memory_eagerness
-        flat["game.default_character"] = g.default_character
         flat["game.queue_max_size"] = g.queue_max_size
         flat["game.host_history_maxlen"] = g.host_history_maxlen
         flat["game.game_history_maxlen"] = g.game_history_maxlen
+        flat["game.game_config"] = validated_game_config
 
         # easyvtuber
         ev = config_data.easyvtuber

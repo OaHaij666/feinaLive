@@ -41,7 +41,9 @@ class CommentaryCoordinator:
     ):
         self._shared_context = shared_context
         self._game_id = game_id
-        self._min_interval = min_interval if min_interval is not None else config.game_min_commentary_interval
+        self._min_interval = (
+            min_interval if min_interval is not None else config.game_min_commentary_interval
+        )
 
     def merge_requests(self, requests: list[dict]) -> CommentaryRequest | None:
         key_points: list[str] = []
@@ -118,11 +120,14 @@ class CommentaryCoordinator:
                 error="解说消息入队失败",
             )
 
-        logger.info("解说请求入队: %s (step=%s, id=%s)", merged.key_points, game_step_id, request_id)
+        logger.info(
+            "解说请求入队: %s (step=%s, id=%s)", merged.key_points, game_step_id, request_id
+        )
         await self._shared_context.add_game_entry(
             action="request_host_commentary",
             params={"key_points": merged.key_points, "mood": merged.mood, "request_id": request_id},
             result="enqueued",
+            game_id=self._game_id,
         )
 
         ack = await self._shared_context.wait_commentary_status(request_id, hold_timeout)

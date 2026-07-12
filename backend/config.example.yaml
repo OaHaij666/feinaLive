@@ -91,11 +91,12 @@ volcano:
   speaker_id: "your_speaker_id"
 
 # ============================================================
-# 游戏 AI 配置
+# Agent 与静态场景配置
 # ============================================================
 
-game:
-  enabled: false          # 是否启用游戏 AI
+agent:
+  enabled: false          # 是否启用 AgentRuntime
+  scenario_id: "slay_the_spire"
   mcp_url: "http://127.0.0.1:8080"  # MCP 服务地址
   api_url: "https://api.deepseek.com"
   api_key: "your_api_key"
@@ -108,11 +109,12 @@ game:
   step_jitter: 0.5        # 操作间隔随机误差范围（±秒），使操作更自然
   commentary_interval: 30.0 # 解说建议间隔（秒），只是建议，无值得说的事时不强行解说
   memory_eagerness: 3     # 记忆积极度 1-5，越大越爱记录
-  default_character: "IRONCLAD"  # 默认游戏角色（杀戮尖塔: IRONCLAD/SILENT/DEFECT/WATCHER）
-  min_commentary_interval: 15.0  # GameGraph 层解说请求最小间隔（秒）
+  scenario_config:
+    default_character: "IRONCLAD"  # 杀戮尖塔场景配置
+  min_commentary_interval: 15.0  # 解说请求最小间隔（秒）
   queue_max_size: 20      # 消息队列最大容量
   host_history_maxlen: 50 # 主播回答历史最大条数
-  game_history_maxlen: 30 # 游戏操作历史最大条数
+  action_history_maxlen: 30 # Agent 动作历史最大条数
 
 # ============================================================
 # EasyVTuber Live2D 配置

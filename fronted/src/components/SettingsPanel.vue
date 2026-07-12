@@ -2,7 +2,7 @@
   <Teleport to="body">
     <Transition name="modal">
       <div v-if="visible" class="settings-overlay" @click.self="close">
-        <div :class="['settings-panel', { 'settings-panel-wide': activeTab === 'memory' || activeTab === 'game_params' }]">
+        <div :class="['settings-panel', { 'settings-panel-wide': activeTab === 'memory' || activeTab === 'agent_params' }]">
           <div class="settings-header">
             <h2>集中配置</h2>
             <button class="close-btn" @click="close">&times;</button>
@@ -121,33 +121,33 @@
                   <input type="number" v-model.number="cfg.host.max_tokens" min="50" max="4096" />
                 </div>
 
-                <div class="section-title">🎮 游戏模型</div>
-                <p class="section-desc">游戏 AI 决策与操作 (GameGraph) <span class="hint">启停请在主界面使用 AI ON/OFF 按钮</span></p>
+                <div class="section-title">Agent 模型</div>
+                <p class="section-desc">通用 Agent 的决策与解说编排模型 <span class="hint">启停请在主界面使用 AI ON/OFF 按钮</span></p>
                 <div class="form-group">
                   <label>API URL</label>
-                  <input type="text" v-model="cfg.game.api_url" placeholder="https://api.example.com/v1" />
+                  <input type="text" v-model="cfg.agent.api_url" placeholder="https://api.example.com/v1" />
                 </div>
                 <div class="form-group">
-                  <label>API Key <span v-if="cfg.game.api_key.includes(MASKED)" class="hint">(已隐藏)</span></label>
-                  <input :type="cfg.game.api_key.includes(MASKED) ? 'password' : 'text'" v-model="cfg.game.api_key" />
+                  <label>API Key <span v-if="cfg.agent.api_key.includes(MASKED)" class="hint">(已隐藏)</span></label>
+                  <input :type="cfg.agent.api_key.includes(MASKED) ? 'password' : 'text'" v-model="cfg.agent.api_key" />
                 </div>
                 <div class="form-group">
                   <label>模型名</label>
-                  <input type="text" v-model="cfg.game.model" placeholder="deepseek-v4-flash" />
+                  <input type="text" v-model="cfg.agent.model" placeholder="deepseek-v4-flash" />
                 </div>
                 <div class="form-row-2">
                   <div class="form-group">
-                    <label>温度 <span class="range-value">{{ cfg.game.temperature }}</span></label>
-                    <input type="range" v-model.number="cfg.game.temperature" min="0" max="1" step="0.1" />
+                    <label>温度 <span class="range-value">{{ cfg.agent.temperature }}</span></label>
+                    <input type="range" v-model.number="cfg.agent.temperature" min="0" max="1" step="0.1" />
                   </div>
                   <div class="form-group">
                     <label>最大 Token 数</label>
-                    <input type="number" v-model.number="cfg.game.max_tokens" min="50" max="16384" />
+                    <input type="number" v-model.number="cfg.agent.max_tokens" min="50" max="16384" />
                   </div>
                 </div>
                 <div class="form-group">
                   <label class="checkbox-label">
-                    <input type="checkbox" v-model="cfg.game.disable_thinking" />
+                    <input type="checkbox" v-model="cfg.agent.disable_thinking" />
                     禁用思考链 <span class="hint">(模型不支持时取消勾选)</span>
                   </label>
                 </div>
@@ -341,9 +341,9 @@
                 </div>
               </div>
 
-              <!-- Tab: 游戏参数 -->
-              <div v-if="activeTab === 'game_params'" class="tab-content">
-                <GameSettingsPanel v-model="cfg.game" />
+              <!-- Tab: Agent 参数 -->
+              <div v-if="activeTab === 'agent_params'" class="tab-content">
+                <AgentSettingsPanel v-model="cfg.agent" />
               </div>
 
               <!-- Tab: 直播 -->
@@ -461,7 +461,7 @@ import { useDanmakuStore } from '@/stores/danmaku'
 import { useMusicStore } from '@/stores/music'
 import { DanmakuType } from '@/types/danmaku'
 import MemoryDebugPanel from '@/components/memory/MemoryDebugPanel.vue'
-import GameSettingsPanel from '@/components/settings/game/GameSettingsPanel.vue'
+import AgentSettingsPanel from '@/components/settings/agent/AgentSettingsPanel.vue'
 
 interface Props { visible: boolean }
 const props = defineProps<Props>()
@@ -483,7 +483,7 @@ const tabs = [
   { key: 'tts', label: '语音' },
   { key: 'messaging', label: '消息调度' },
   { key: 'easyvtuber', label: '数字人' },
-  { key: 'game_params', label: '游戏参数' },
+  { key: 'agent_params', label: 'Agent 场景' },
   { key: 'live', label: '直播' },
   { key: 'monitor', label: '直播状况' },
   { key: 'memory', label: '记忆' },
@@ -505,7 +505,7 @@ function initCfgShape() {
     llm: { api_url: '', api_key: '', model: '', temperature: 0.1, top_p: 0.9, max_tokens: 200, auto_collect_min_views: 20000, disable_thinking: true },
     tts: { provider: 'volcano', voice: 'zh-CN-XiaoxiaoNeural', encoding: 'wav', speed_ratio: 1.0 },
     volcano: { appid: '', access_token: '', speaker_id: '' },
-    game: { enabled: false, game_id: 'slay_the_spire', mcp_url: 'http://127.0.0.1:8080', api_url: '', api_key: '', model: '', temperature: 0.4, max_tokens: 500, disable_thinking: true, poll_interval: 1.0, memory_threshold: 30, memory_idle_seconds: 120, memory_scan_interval_seconds: 30, memory_context_max_chars: 12000, min_step_interval: 3.0, step_jitter: 0.5, commentary_interval: 30.0, min_commentary_interval: 15.0, commentary_hold_timeout: 20.0, memory_eagerness: 3, queue_max_size: 20, host_history_maxlen: 50, game_history_maxlen: 30, game_config: { default_character: 'IRONCLAD' } },
+    agent: { enabled: false, scenario_id: 'slay_the_spire', mcp_url: 'http://127.0.0.1:8080', api_url: '', api_key: '', model: '', temperature: 0.4, max_tokens: 500, disable_thinking: true, poll_interval: 1.0, memory_threshold: 30, memory_idle_seconds: 120, memory_scan_interval_seconds: 30, memory_context_max_chars: 12000, min_step_interval: 3.0, step_jitter: 0.5, commentary_interval: 30.0, min_commentary_interval: 15.0, commentary_hold_timeout: 20.0, memory_eagerness: 3, queue_max_size: 20, host_history_maxlen: 50, action_history_maxlen: 30, scenario_config: { default_character: 'IRONCLAD' } },
     easyvtuber: { enabled: true, character: 'feina00', input: { type: 'debug', osf_address: '127.0.0.1:11573', mouse_range: '0,0,1920,1080' }, model: { version: 'v3', precision: 'half', separable: true, use_tensorrt: true, use_eyebrow: true }, performance: { frame_rate: 30, interpolation: 'x2', super_resolution: 'off', ram_cache: '2gb', vram_cache: '2gb' }, output: { websocket: { enabled: true, port: 8765, host: 'localhost' } } },
     ai: { max_history_per_session: 16, summary_interval: 10, summary_idle_seconds: 300.0, summary_scan_interval_seconds: 60.0, max_recent_messages: 16, poll_interval_seconds: 10.0 },
     messaging: { danmaku_starvation_seconds: 30.0, danmaku_flood_threshold: 5, danmaku_flood_window: 20.0, gift_starvation_seconds: 60.0, gift_flood_threshold: 3, gift_flood_window: 30.0, gift_value_highest: 10000, gift_value_high: 5000, gift_value_normal: 1000, gift_value_low: 100, user_cooldown_seconds: 3.0, default_ttl_seconds: 30.0, rate_limit_commentary: 4.0, rate_limit_danmaku: 3.0, rate_limit_gift: 10.0 },
@@ -532,7 +532,7 @@ async function loadConfig() {
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
     const data = await res.json()
     Object.assign(cfg, data)
-    cfg.game.game_config ||= {}
+    cfg.agent.scenario_config ||= {}
     connected.value = true
   } catch (e) {
     console.error('连接后端失败:', e)
@@ -584,9 +584,11 @@ async function saveConfig() {
     if (res.ok) {
       const data = await res.json()
       Object.assign(cfg, data) // 用后端 canonical 数据覆盖
-      cfg.game.game_config ||= {}
+      cfg.agent.scenario_config ||= {}
       saveStatus.value = 'ok'
-      saveStatusText.value = '已保存'
+      saveStatusText.value = data.restart_required || res.headers.get('X-Restart-Required') === 'true'
+        ? '已保存；场景、MCP 或能力配置需重启应用后生效'
+        : '已保存'
       emit('saved', cfg.bilibili.room_id)
     } else {
       const errText = await res.text()

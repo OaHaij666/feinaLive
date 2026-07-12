@@ -1,4 +1,4 @@
-"""MCP 游戏差异协议与统一状态格式。"""
+"""Scenario protocol semantics and the normalized state/action contract."""
 
 import logging
 from abc import ABC, abstractmethod
@@ -90,7 +90,7 @@ class EmptyGameConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-class GameProfile(ABC):
+class ScenarioProfile(ABC):
     config_model: type[BaseModel] = EmptyGameConfig
     profile_id: str = ""
     catalog_name: str = ""
@@ -104,10 +104,10 @@ class GameProfile(ABC):
     @classmethod
     def catalog_entry(cls) -> dict[str, Any]:
         return {
-            "game_id": cls.profile_id,
+            "scenario_id": cls.profile_id,
             "display_name": cls.catalog_name,
             "description": cls.catalog_description,
-            "game_type": cls.catalog_game_type,
+            "category": cls.catalog_game_type,
             "config_fields": [item.to_dict() for item in cls.config_fields],
         }
 
@@ -133,9 +133,10 @@ class GameProfile(ABC):
     @property
     def prompt_examples(self) -> str:
         return (
-            '{"actions":[{"function":{"name":"request_host_commentary",'
-            '"arguments":{"key_points":["说明当前决策"],"mood":"neutral"}}},'
-            '{"function":{"name":"<MCP工具名>","arguments":{}}}]}'
+            '{"tool_calls":[{"function":{"name":"request_commentary",'
+            '"arguments":{"event_summary":"说明当前决策","reason":"关键节点",'
+            '"sync":"on_speech_start"}}},{"function":{"name":"mcp__<工具名>",'
+            '"arguments":{}}}]}'
         )
 
     @abstractmethod
@@ -180,7 +181,7 @@ class GameProfile(ABC):
 
     @property
     def memory_policy(self) -> GameMemoryPolicy:
-        """Declare memory lifecycle without teaching GameGraph game semantics."""
+        """Declare memory lifecycle without teaching AgentGraph scene semantics."""
         return GameMemoryPolicy()
 
     def is_session_finished(self, state: UnifiedGameState) -> bool:

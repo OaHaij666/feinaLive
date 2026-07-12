@@ -219,48 +219,48 @@ class Config:
         return int(os.getenv("HOST_MAX_TOKENS") or self._data.get("host", {}).get("max_tokens", 200))
 
     @property
-    def game_model(self) -> str:
-        return os.getenv("GAME_MODEL") or self._data.get("game", {}).get("model", "")
+    def agent_model(self) -> str:
+        return os.getenv("AGENT_MODEL") or self._data.get("agent", {}).get("model", "")
 
     @property
-    def game_temperature(self) -> float:
-        return float(os.getenv("GAME_TEMPERATURE") or self._data.get("game", {}).get("temperature", 0.4))
+    def agent_temperature(self) -> float:
+        return float(os.getenv("AGENT_TEMPERATURE") or self._data.get("agent", {}).get("temperature", 0.4))
 
     @property
-    def game_max_tokens(self) -> int:
-        return int(os.getenv("GAME_MAX_TOKENS") or self._data.get("game", {}).get("max_tokens", 500))
+    def agent_max_tokens(self) -> int:
+        return int(os.getenv("AGENT_MAX_TOKENS") or self._data.get("agent", {}).get("max_tokens", 500))
 
     @property
-    def game_api_url(self) -> str:
-        return os.getenv("GAME_API_URL") or self._data.get("game", {}).get("api_url", "")
+    def agent_api_url(self) -> str:
+        return os.getenv("AGENT_API_URL") or self._data.get("agent", {}).get("api_url", "")
 
     @property
-    def game_api_key(self) -> str | None:
-        return os.getenv("GAME_API_KEY") or secret_store.get("game.api_key") or self._data.get("game", {}).get("api_key") or self.llm_api_key
+    def agent_api_key(self) -> str | None:
+        return os.getenv("AGENT_API_KEY") or secret_store.get("agent.api_key") or self._data.get("agent", {}).get("api_key") or self.llm_api_key
 
     @property
-    def game_disable_thinking(self) -> bool:
-        return self._data.get("game", {}).get("disable_thinking", self.llm_disable_thinking)
+    def agent_disable_thinking(self) -> bool:
+        return self._data.get("agent", {}).get("disable_thinking", self.llm_disable_thinking)
 
     @property
-    def game_min_step_interval(self) -> float:
-        return float(os.getenv("GAME_MIN_STEP_INTERVAL") or self._data.get("game", {}).get("min_step_interval", 3.0))
+    def agent_min_step_interval(self) -> float:
+        return float(os.getenv("AGENT_MIN_STEP_INTERVAL") or self._data.get("agent", {}).get("min_step_interval", 3.0))
 
     @property
-    def game_step_jitter(self) -> float:
-        return float(os.getenv("GAME_STEP_JITTER") or self._data.get("game", {}).get("step_jitter", 0.5))
+    def agent_step_jitter(self) -> float:
+        return float(os.getenv("AGENT_STEP_JITTER") or self._data.get("agent", {}).get("step_jitter", 0.5))
 
     @property
-    def game_commentary_interval(self) -> float:
-        return float(os.getenv("GAME_COMMENTARY_INTERVAL") or self._data.get("game", {}).get("commentary_interval", 30.0))
+    def agent_commentary_interval(self) -> float:
+        return float(os.getenv("AGENT_COMMENTARY_INTERVAL") or self._data.get("agent", {}).get("commentary_interval", 30.0))
 
     @property
-    def game_commentary_hold_timeout(self) -> float:
-        return float(os.getenv("GAME_COMMENTARY_HOLD_TIMEOUT", "") or self._data.get("game", {}).get("commentary_hold_timeout", 20.0))
+    def agent_commentary_hold_timeout(self) -> float:
+        return float(os.getenv("AGENT_COMMENTARY_HOLD_TIMEOUT", "") or self._data.get("agent", {}).get("commentary_hold_timeout", 20.0))
 
     @property
-    def game_memory_eagerness(self) -> int:
-        return int(os.getenv("GAME_MEMORY_EAGERNESS") or self._data.get("game", {}).get("memory_eagerness", 3))
+    def agent_memory_eagerness(self) -> int:
+        return int(os.getenv("AGENT_MEMORY_EAGERNESS") or self._data.get("agent", {}).get("memory_eagerness", 3))
 
     @property
     def default_room_id(self) -> int:
@@ -351,59 +351,59 @@ class Config:
         return self._data.get("admin", {}).get("username", "RongR0Ng")
 
     @property
-    def game_enabled(self) -> bool:
-        return self._data.get("game", {}).get("enabled", False)
+    def agent_enabled(self) -> bool:
+        return self._data.get("agent", {}).get("enabled", False)
 
     @property
-    def game_mcp_url(self) -> str:
-        return os.getenv("GAME_MCP_URL") or self._data.get("game", {}).get("mcp_url", "http://127.0.0.1:8080")
+    def agent_mcp_url(self) -> str:
+        return os.getenv("AGENT_MCP_URL") or self._data.get("agent", {}).get("mcp_url", "http://127.0.0.1:8080")
 
     @property
-    def game_id(self) -> str:
-        return str(self._data.get("game", {}).get("game_id", "slay_the_spire"))
+    def agent_scenario_id(self) -> str:
+        return str(self._data.get("agent", {}).get("scenario_id", "slay_the_spire"))
 
     @property
-    def game_config(self) -> dict:
-        values = self._data.get("game", {}).get("game_config", {})
+    def agent_scenario_config(self) -> dict:
+        values = self._data.get("agent", {}).get("scenario_config", {})
         return dict(values) if isinstance(values, dict) else {}
 
     @property
-    def game_poll_interval(self) -> float:
-        return float(self._data.get("game", {}).get("poll_interval", 1.0))
+    def agent_poll_interval(self) -> float:
+        return float(self._data.get("agent", {}).get("poll_interval", 1.0))
 
     @property
-    def game_memory_threshold(self) -> int:
-        return int(self._data.get("game", {}).get("memory_threshold", 30))
+    def agent_memory_threshold(self) -> int:
+        return int(self._data.get("agent", {}).get("memory_threshold", 30))
 
     @property
-    def game_memory_idle_seconds(self) -> float:
-        return float(self._data.get("game", {}).get("memory_idle_seconds", 120.0))
+    def agent_memory_idle_seconds(self) -> float:
+        return float(self._data.get("agent", {}).get("memory_idle_seconds", 120.0))
 
     @property
-    def game_memory_scan_interval_seconds(self) -> float:
+    def agent_memory_scan_interval_seconds(self) -> float:
         return float(
-            self._data.get("game", {}).get("memory_scan_interval_seconds", 30.0)
+            self._data.get("agent", {}).get("memory_scan_interval_seconds", 30.0)
         )
 
     @property
-    def game_memory_context_max_chars(self) -> int:
-        return int(self._data.get("game", {}).get("memory_context_max_chars", 12000))
+    def agent_memory_context_max_chars(self) -> int:
+        return int(self._data.get("agent", {}).get("memory_context_max_chars", 12000))
 
     @property
-    def game_min_commentary_interval(self) -> float:
-        return float(self._data.get("game", {}).get("min_commentary_interval", 15.0))
+    def agent_min_commentary_interval(self) -> float:
+        return float(self._data.get("agent", {}).get("min_commentary_interval", 15.0))
 
     @property
-    def game_queue_max_size(self) -> int:
-        return int(self._data.get("game", {}).get("queue_max_size", 20))
+    def agent_queue_max_size(self) -> int:
+        return int(self._data.get("agent", {}).get("queue_max_size", 20))
 
     @property
-    def game_host_history_maxlen(self) -> int:
-        return int(self._data.get("game", {}).get("host_history_maxlen", 50))
+    def agent_host_history_maxlen(self) -> int:
+        return int(self._data.get("agent", {}).get("host_history_maxlen", 50))
 
     @property
-    def game_game_history_maxlen(self) -> int:
-        return int(self._data.get("game", {}).get("game_history_maxlen", 30))
+    def agent_action_history_maxlen(self) -> int:
+        return int(self._data.get("agent", {}).get("action_history_maxlen", 30))
 
     # ---- 消息调度 (messaging) ----
 

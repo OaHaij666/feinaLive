@@ -1,13 +1,13 @@
-"""优先级消息队列 - GameGraph / 弹幕 / 礼物 → HostRuntime 统一消费
+"""优先级消息队列 - 弹幕 / 礼物 → HostRuntime 统一消费
 
-所有消息由主播 LLM 消费，生成话术后 TTS 输出。
+所有需要主播发声的工作都由唯一 HostRuntime 消费。
 
 消息来源:
-  - game:commentary_request  GameGraph 请求主播解说(带草稿要点) (priority=2)
+  - agent:prepared_speech    Agent 已生成的最终文字（不再调用 LLM）
   - danmaku:danmaku          观众弹幕原文 (priority=3)
   - gift:gift_thanks         礼物感谢 (priority=动态)
 
-消费端: HostRuntime → 主播 LLM 生成话术 → TTS
+消费端: HostRuntime → 可选 LLM 生成话术 → TTS / 播放 ACK
 """
 
 import asyncio
@@ -83,7 +83,7 @@ class PriorityMessageQueue:
         default_ttl = default_ttl or _DEFAULT_TTL_SECONDS
         self._queue: asyncio.PriorityQueue[Message] = asyncio.PriorityQueue()
         self._rate_limiter = rate_limiter or get_rate_limiter()
-        self._max_size = max_size if max_size is not None else config.game_queue_max_size
+        self._max_size = max_size if max_size is not None else config.agent_queue_max_size
         self._default_ttl = default_ttl
         self._pending_merge: dict[str, Message] = {}
         self._cancelled_keys: set[str] = set()

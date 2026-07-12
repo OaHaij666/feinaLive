@@ -9,7 +9,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from apps.ai.game_router import router as game_router
+from apps.agent.router import router as agent_router
 from apps.ai.memory_router import router as memory_router
 from apps.ai.router import router as ai_router
 from apps.config import config
@@ -185,46 +185,41 @@ async def lifespan(app: FastAPI):
 
     await start_nginx()
 
-    if config.game_enabled:
-        from apps.ai.game_manager import get_game_manager
-        from apps.ai.mcp.games.registry import create_mcp_game
-        game_manager = get_game_manager()
+    from apps.agent.manager import get_agent_manager
+
+    # Bind one immutable scenario snapshot for the lifetime of this process.
+    agent_manager = get_agent_manager()
+    if config.agent_enabled:
 
         def on_sleep_mute(state_dict: dict):
             if state_dict.get("is_sleeping"):
-                game_manager.mute()
+                agent_manager.mute()
             else:
-                game_manager.unmute()
+                agent_manager.unmute()
 
-        async def on_mcp_change(enabled: bool):
+        async def on_agent_change(enabled: bool):
             if enabled:
-                if game_manager.is_running:
+                if agent_manager.is_running:
                     return
                 try:
-                    adapter = create_mcp_game(
-                        config.game_id,
-                        mcp_url=config.game_mcp_url,
-                        game_config=config.game_config,
-                    )
-                except ValueError as exc:
-                    logger.error("游戏适配器配置无效: %s", exc)
+                    healthy = await agent_manager.health_check()
+                except RuntimeError as exc:
+                    logger.error("启动场景配置无效: %s", exc)
                     return
-                healthy = await adapter.health_check()
                 if not healthy:
-                    logger.warning(f"MCP 服务不可用: {config.game_mcp_url}，无法启动游戏AI")
+                    logger.warning(f"场景能力不可用: {config.agent_mcp_url}，无法启动 Agent")
                     return
-                game_manager.configure_single_game(adapter)
-                await game_manager.start()
-                logger.info("游戏AI已通过 /mcp 1 启动")
+                await agent_manager.start()
+                logger.info("Agent 已通过 /agent 1 启动")
             else:
-                if not game_manager.is_running:
+                if not agent_manager.is_running:
                     return
-                await game_manager.stop()
-                logger.info("游戏AI已通过 /mcp 0 停止")
+                await agent_manager.stop()
+                logger.info("Agent 已通过 /agent 0 停止")
 
         admin_handler.register_state_change_callback(on_sleep_mute)
-        admin_handler.register_mcp_change_callback(lambda e: asyncio.create_task(on_mcp_change(e)))
-        logger.info("游戏集成模块已就绪（可通过 /mcp 1 或 /game/start 启动）")
+        admin_handler.register_agent_change_callback(lambda e: asyncio.create_task(on_agent_change(e)))
+        logger.info("AgentRuntime 已就绪（可通过 /agent 1 或 /agent/start 启动）")
 
     yield
 
@@ -232,12 +227,13 @@ async def lifespan(app: FastAPI):
     await get_room_session_manager().stop()
 
     # Stop producers and consumers before their memory/output dependencies.
-    from apps.ai.game_manager import get_game_manager
+    from apps.agent.manager import get_agent_manager
 
-    game_manager = get_game_manager()
-    if game_manager.is_running:
-        await game_manager.stop()
-        logger.info("游戏集成服务已停止")
+    agent_manager = get_agent_manager()
+    was_agent_running = agent_manager.is_running
+    await agent_manager.shutdown()
+    if was_agent_running:
+        logger.info("AgentRuntime 已停止")
 
     await host_runtime.stop()
     await stop_summary_scheduler()
@@ -276,7 +272,7 @@ app.include_router(music_router, prefix="/music", tags=["Music"])
 app.include_router(config_router, tags=["Config"])
 app.include_router(ai_router, tags=["AI"])
 app.include_router(memory_router, tags=["AI Memory"])
-app.include_router(game_router, tags=["Game"])
+app.include_router(agent_router, tags=["Agent"])
 app.include_router(easyvtuber_router, tags=["Avatar"])
 app.include_router(test_router, tags=["Test"])
 

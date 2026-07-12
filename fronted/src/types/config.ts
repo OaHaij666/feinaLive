@@ -44,9 +44,9 @@ export interface VolcanoConfig {
   speaker_id: string
 }
 
-export interface GameConfig {
+export interface AgentConfig {
   enabled: boolean
-  game_id: string
+  scenario_id: string
   mcp_url: string
   api_url: string
   api_key: string
@@ -67,11 +67,11 @@ export interface GameConfig {
   memory_eagerness: number
   queue_max_size: number
   host_history_maxlen: number
-  game_history_maxlen: number
-  game_config: Record<string, unknown>
+  action_history_maxlen: number
+  scenario_config: Record<string, unknown>
 }
 
-export interface RegisteredGameConfigField {
+export interface RegisteredScenarioConfigField {
   key: string
   label: string
   input_type: 'text' | 'number' | 'select' | 'textarea' | 'checkbox'
@@ -81,17 +81,19 @@ export interface RegisteredGameConfigField {
   options: Array<{ value: string; label: string }>
 }
 
-export interface RegisteredGameDefinition {
-  game_id: string
+export interface RegisteredScenarioDefinition {
+  scenario_id: string
   display_name: string
   description: string
-  game_type: string
-  config_fields: RegisteredGameConfigField[]
+  category: string
+  capability_sources: string[]
+  config_fields: RegisteredScenarioConfigField[]
 }
 
-export interface GameCatalogPayload {
-  selected_game_id: string
-  games: RegisteredGameDefinition[]
+export interface ScenarioCatalogPayload {
+  selected_scenario_id: string
+  scenarios: RegisteredScenarioDefinition[]
+  restart_required?: boolean
 }
 
 export interface EasyVtuberInputConfig {
@@ -195,7 +197,7 @@ export interface FullConfig {
   llm: LLMConfig
   tts: TTSConfig
   volcano: VolcanoConfig
-  game: GameConfig
+  agent: AgentConfig
   easyvtuber: EasyVtuberConfig
   ai: AIConfig
   messaging: MessagingConfig
@@ -204,6 +206,7 @@ export interface FullConfig {
   announcement: string
   admin: AdminConfig
   embedding: EmbeddingConfig
+  restart_required?: boolean
 }
 
 /** MASKED_PATTERN: 后端返回敏感字段时使用的掩码 */

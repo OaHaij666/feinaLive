@@ -1,4 +1,4 @@
-"""通用 MCP 游戏 Profile。
+"""通用 MCP 场景 Profile。
 
 它只依赖 MCP 的工具描述和少量可配置字段，不包含任何具体游戏规则。
 """
@@ -10,13 +10,13 @@ from typing import Any, cast
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from apps.ai.mcp.client import MCPClient
-from apps.ai.mcp.games.base import (
+from apps.agent.scenarios.profile import (
     GameConfigField,
-    GameProfile,
+    ScenarioProfile,
     UnifiedAction,
     UnifiedGameState,
 )
+from apps.ai.mcp.client import MCPClient
 from apps.ai.memory.game_memory import GameMemoryPolicy
 from apps.config import config
 
@@ -35,7 +35,7 @@ class GenericGameConfig(BaseModel):
     instructions: str = Field(default="", max_length=12000)
 
 
-class GenericGameProfile(GameProfile):
+class GenericMCPScenarioProfile(ScenarioProfile):
     config_model = GenericGameConfig
     profile_id = "generic_mcp"
     catalog_name = "通用 MCP 游戏"
@@ -118,9 +118,9 @@ class GenericGameProfile(GameProfile):
     def memory_policy(self) -> GameMemoryPolicy:
         return GameMemoryPolicy(
             session_mode="continuous" if self.values.session_end_field == "" else "per_run",
-            summary_threshold=config.game_memory_threshold,
-            idle_summary_seconds=config.game_memory_idle_seconds,
-            context_max_chars=config.game_memory_context_max_chars,
+            summary_threshold=config.agent_memory_threshold,
+            idle_summary_seconds=config.agent_memory_idle_seconds,
+            context_max_chars=config.agent_memory_context_max_chars,
         )
 
     @staticmethod

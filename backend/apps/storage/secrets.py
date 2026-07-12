@@ -54,7 +54,7 @@ def migrate_legacy_secrets(config_path: str | Path) -> int:
         "bilibili.sessdata",
         "llm.api_key",
         "host.api_key",
-        "game.api_key",
+        "agent.api_key",
         "embedding.api_key",
         "volcano.access_token",
     )

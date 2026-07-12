@@ -3,14 +3,16 @@ from types import SimpleNamespace
 
 import pytest
 
+from apps.agent.capabilities.host_speech import HostSpeechCapability
+from apps.agent.mutual_context import MutualContext
 from apps.ai import speech_pipeline as speech_module
 from apps.ai.host_brain import AIHostBrain, DanmakuInput
 from apps.ai.host_messages import HostMessageProcessor
 from apps.ai.host_runtime import HostRuntime, HostRuntimeState
 from apps.ai.messaging.queue import Message, PriorityMessageQueue
 from apps.ai.playback import PlaybackCoordinator
-from apps.ai.shared_context import SharedContext
-from apps.ai.speech_pipeline import SpeechPipeline
+from apps.ai.speech_jobs import SpeechJobCoordinator, SpeechJobStatus
+from apps.ai.speech_pipeline import SpeechPipeline, SpeechResult
 from apps.live.room_session import RoomSessionContext
 
 
@@ -44,11 +46,11 @@ class FakeProcessor:
         self.failures: list[str] = []
         self.ready = asyncio.Event()
 
-    async def handle_commentary(self, message):
+    async def handle_danmaku(self, message):
         self.processed.append(message.id)
         self.ready.set()
 
-    async def handle_danmaku(self, message):
+    async def handle_prepared_speech(self, message):
         self.processed.append(message.id)
         self.ready.set()
 
@@ -150,18 +152,6 @@ def test_message_processor_does_not_fallback_from_malformed_context():
 
 
 @pytest.mark.asyncio
-async def test_released_commentary_ack_is_not_recreated_by_late_signal():
-    shared = SharedContext()
-    await shared.register_commentary_request("request")
-    await shared.signal_commentary_status("request", "timeout")
-    await shared.release_commentary_request("request")
-
-    await shared.signal_commentary_status("request", "spoken")
-
-    assert "request" not in shared._commentary_acks
-
-
-@pytest.mark.asyncio
 async def test_speech_pipeline_enforces_reply_limit_before_tts(monkeypatch):
     broadcasts = []
     synthesized = []
@@ -230,6 +220,121 @@ async def test_speech_pipeline_enforces_reply_limit_before_tts(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_speak_text_bypasses_llm_and_waits_for_playback(monkeypatch):
+    synthesized = []
+    delivered = []
+
+    class TTSResult:
+        audio_data = b"audio"
+
+    class TTS:
+        async def synthesize(self, text):
+            synthesized.append(text)
+            return TTSResult()
+
+    class Playback:
+        async def begin(self, reply_id):
+            return SimpleNamespace(reply_id=reply_id, owner_id="owner")
+
+        async def send_chunk(self, reply_id, chunk):
+            delivered.append(chunk)
+            return True
+
+        async def wait_for_completion(self, reply_id, timeout):
+            return SimpleNamespace(status="finished", error="")
+
+        async def abort(self, reply_id, error):
+            return None
+
+    async def broadcast(context, chunk):
+        return None
+
+    monkeypatch.setattr("apps.ai.speech_pipeline.get_tts_client", lambda: TTS())
+    result = await SpeechPipeline(broadcaster=broadcast, playback=Playback()).speak_text(
+        "这是 Agent 已经写好的最终解说。",
+        RoomSessionContext.test_room(),
+    )
+
+    assert result is not None and result.played
+    assert synthesized == ["这是 Agent 已经写好的最终解说。"]
+    assert [item["type"] for item in delivered] == ["start", "text", "audio", "end"]
+
+
+@pytest.mark.asyncio
+async def test_prepared_speech_handler_plays_final_text_without_llm():
+    jobs = SpeechJobCoordinator()
+    job = await jobs.create("最终解说")
+    calls = []
+
+    class Speech:
+        async def speak_text(self, text, context, *, on_playback_started=None):
+            calls.append(text)
+            if on_playback_started:
+                await on_playback_started("reply")
+            return SpeechResult(
+                text=text,
+                reply_id="reply",
+                playback_status="finished",
+            )
+
+    processor = HostMessageProcessor(
+        speech=Speech(),
+        speech_jobs=jobs,
+    )
+    await processor.handle_prepared_speech(
+        Message(
+            source="agent",
+            msg_type="prepared_speech",
+            content="最终解说",
+            data={"speech_job_id": job.job_id},
+            context=RoomSessionContext.test_room().to_dict(),
+        )
+    )
+
+    assert calls == ["最终解说"]
+    assert job.status is SpeechJobStatus.FINISHED
+    assert job.started_event.is_set()
+
+
+@pytest.mark.asyncio
+async def test_agent_speech_capability_enqueues_and_waits_for_ack(monkeypatch):
+    context = RoomSessionContext.test_room()
+    messages = []
+    jobs = SpeechJobCoordinator()
+
+    class Queue:
+        async def put(self, message):
+            messages.append(message)
+            return True
+
+        def cancel(self, cancel_key):
+            return None
+
+    class Rooms:
+        active_context = context
+
+    monkeypatch.setattr(
+        "apps.agent.capabilities.host_speech.get_room_session_manager",
+        lambda: Rooms(),
+    )
+    capability = HostSpeechCapability(MutualContext(), queue=Queue(), jobs=jobs)
+    waiter = asyncio.create_task(capability.speak("排队后的最终解说"))
+    while not messages:
+        await asyncio.sleep(0)
+
+    message = messages[0]
+    job = await jobs.get(message.data["speech_job_id"])
+    assert job is not None
+    await jobs.started(job.job_id, "reply")
+    await jobs.finish(job.job_id, SpeechJobStatus.FINISHED, reply_id="reply")
+    result = await waiter
+
+    assert message.msg_type == "prepared_speech"
+    assert message.content == "排队后的最终解说"
+    assert result is job and result.played
+
+
+@pytest.mark.asyncio
 async def test_playback_coordinator_elects_one_owner_and_waits_for_real_finish():
     coordinator = PlaybackCoordinator()
     messages_a = []
@@ -253,7 +358,9 @@ async def test_playback_coordinator_elects_one_owner_and_waits_for_real_finish()
     assert messages_a[-1] == {"type": "audio"}
     assert messages_b[-1]["type"] == "playback_role"
     assert not await coordinator.acknowledge("b", "reply", "finished")
+    started = asyncio.create_task(coordinator.wait_for_started("reply", timeout=0.1))
     assert await coordinator.acknowledge("a", "reply", "started")
+    assert await started
     assert await coordinator.acknowledge("a", "reply", "finished")
 
     completed = await coordinator.wait_for_completion("reply", timeout=0.1)

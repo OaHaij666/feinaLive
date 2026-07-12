@@ -4,9 +4,11 @@ from types import SimpleNamespace
 import aiosqlite
 import pytest
 
+from apps.agent.capabilities.mcp import MCPCapability
+from apps.agent.mutual_context import MutualContext
+from apps.agent.scenarios.profile import UnifiedAction
+from apps.agent.state import CapabilityCall, Observation
 from apps.ai.client import ChatResponse
-from apps.ai.game_graph import GameGraph, GameLoopState
-from apps.ai.mcp.games.base import UnifiedAction
 from apps.ai.memory.atom import AtomType, MemoryAtom
 from apps.ai.memory.engine import MemoryEngine
 from apps.ai.memory.game_memory import GameMemoryPolicy
@@ -262,7 +264,7 @@ async def test_offline_finished_run_is_replayed_as_durable_backlog(tmp_path, mon
 
 
 @pytest.mark.asyncio
-async def test_game_graph_flushes_before_manual_start_and_game_over(monkeypatch):
+async def test_mcp_capability_flushes_before_manual_start_and_scenario_end(monkeypatch):
     timeline = []
 
     class Session:
@@ -306,6 +308,9 @@ async def test_game_graph_flushes_before_manual_start_and_game_over(monkeypatch)
         def is_session_start_action(self, action):
             return action.action_type == "start_game"
 
+        def is_readonly_tool(self, name):
+            return False
+
         async def on_game_session_opened(self, memory):
             await memory.update_layer("important", "初始牌组", source="test")
 
@@ -321,34 +326,21 @@ async def test_game_graph_flushes_before_manual_start_and_game_over(monkeypatch)
                 UnifiedAction(action_type="start_game", params={"character": "IRONCLAD"}),
             ]
 
-    class Shared:
-        async def clear_all_memory(self):
-            timeline.append("clear")
-
-        async def rewrite_memory(self, *args, **kwargs):
-            timeline.append("shared_important")
-
-        async def add_game_entry(self, *args, **kwargs):
-            return None
-
-        async def advance_game_step(self):
-            return None
-
     engine = Engine()
-    monkeypatch.setattr("apps.ai.game_graph.get_memory_engine", lambda: engine)
+    monkeypatch.setattr("apps.agent.capabilities.mcp.get_memory_engine", lambda: engine)
 
-    async def no_sleep(_seconds):
-        return None
-
-    monkeypatch.setattr("apps.ai.game_graph.asyncio.sleep", no_sleep)
-    graph = GameGraph(Adapter(), Shared())
-    await graph._handle_game_action("start_game", {})
+    capability = MCPCapability(Adapter(), MutualContext())
+    await capability.execute(
+        CapabilityCall(name="mcp__start_game", arguments={})
+    )
     assert timeline.index("flush") < timeline.index("execute:start_game")
     assert "new_session" in timeline
 
     timeline.clear()
-    state = GameLoopState(game_state=SimpleNamespace(raw_state={"screen_type": "GAME_OVER"}))
-    assert await graph._node_handle_game_over(state)
+    state = SimpleNamespace(raw_state={"screen_type": "GAME_OVER"})
+    assert await capability.handle_terminal(
+        Observation(source="mcp", summary="game over", data=state, terminal=True)
+    )
     assert timeline[0] == "flush"
     assert "execute:proceed" in timeline
     assert "execute:start_game" in timeline

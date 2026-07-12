@@ -20,6 +20,7 @@ from apps.live.room_session import RoomSessionContext, get_room_session_manager
 logger = logging.getLogger(__name__)
 
 ChunkBroadcaster = Callable[[RoomSessionContext, dict[str, Any]], Awaitable[None]]
+PlaybackStartedCallback = Callable[[str], Awaitable[None]]
 
 
 @dataclass
@@ -258,6 +259,100 @@ class SpeechPipeline:
             raise
         finally:
             await self._cancel_pending(tts_tasks)
+
+    async def speak_text(
+        self,
+        text: str,
+        context: RoomSessionContext | None,
+        *,
+        on_playback_started: PlaybackStartedCallback | None = None,
+    ) -> SpeechResult | None:
+        """Speak already-final text without another LLM call.
+
+        This is the Agent commentary entry point. The caller owns wording; this
+        pipeline only performs sentence TTS, ordered delivery, and real browser
+        playback acknowledgement.
+        """
+
+        final_text = text.strip()[: config.host_max_reply_length]
+        if not final_text or context is None or not self._is_current(context):
+            return None
+
+        reply_id = uuid.uuid4().hex
+        playback_session = await self._playback.begin(reply_id)
+        chunk_seq = 0
+        delivery_failed = False
+        audio_chunks = 0
+        started_task: asyncio.Task[None] | None = None
+
+        async def emit(chunk: dict[str, Any]) -> None:
+            nonlocal chunk_seq, delivery_failed
+            chunk["reply_id"] = reply_id
+            chunk["chunk_seq"] = chunk_seq
+            chunk.setdefault("context", context.to_dict())
+            chunk_seq += 1
+            if playback_session is not None and not delivery_failed:
+                delivery_failed = not await self._playback.send_chunk(reply_id, dict(chunk))
+            observer_chunk = dict(chunk)
+            if observer_chunk.get("type") == "audio":
+                observer_chunk.pop("audio", None)
+                observer_chunk["observer_only"] = True
+            await self._broadcast(observer_chunk, context)
+
+        async def notify_started() -> None:
+            if await self._playback.wait_for_started(
+                reply_id,
+                timeout=config.host_playback_timeout_seconds,
+            ) and on_playback_started:
+                await on_playback_started(reply_id)
+
+        await emit({"type": "start", "is_final": False, "playback_expected": playback_session is not None})
+        if playback_session is not None and on_playback_started is not None:
+            started_task = asyncio.create_task(notify_started())
+
+        try:
+            buffer = SentenceBuffer()
+            sentences = buffer.add(final_text)
+            remaining = buffer.flush()
+            if remaining:
+                sentences.append(remaining)
+
+            char_offset = 0
+            for sentence_index, sentence in enumerate(sentences):
+                if not self._is_current(context):
+                    await self._playback.abort(reply_id, "room session changed")
+                    return None
+                await emit({"type": "text", "text": sentence, "is_final": False})
+                audio = await self._synthesize_sentence(sentence, sentence_index, char_offset)
+                char_offset += len(sentence)
+                if audio:
+                    await emit(audio.to_dict())
+                    audio_chunks += 1
+
+            await emit({"type": "end", "text": final_text, "is_final": True, "audio_chunks": audio_chunks})
+            if playback_session is None:
+                return SpeechResult(final_text, reply_id, "no_owner", "no ready playback owner")
+            if delivery_failed:
+                await self._playback.abort(reply_id, "playback channel disconnected during delivery")
+                return SpeechResult(final_text, reply_id, "failed", "playback channel disconnected during delivery")
+            if audio_chunks == 0:
+                await self._playback.abort(reply_id, "TTS produced no playable audio")
+                return SpeechResult(final_text, reply_id, "failed", "TTS produced no playable audio")
+            completed = await self._playback.wait_for_completion(
+                reply_id,
+                timeout=config.host_playback_timeout_seconds,
+            )
+            return SpeechResult(final_text, reply_id, completed.status, completed.error)
+        except asyncio.CancelledError:
+            await self._playback.abort(reply_id, "speech cancelled")
+            raise
+        except Exception:
+            await self._playback.abort(reply_id, "speech delivery failed")
+            raise
+        finally:
+            if started_task and not started_task.done():
+                started_task.cancel()
+                await asyncio.gather(started_task, return_exceptions=True)
 
     async def _synthesize_sentence(
         self,

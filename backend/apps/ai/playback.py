@@ -19,6 +19,7 @@ class PlaybackSession:
     owner_id: str
     status: str = "buffering"
     error: str = ""
+    started_event: asyncio.Event = field(default_factory=asyncio.Event, repr=False)
     event: asyncio.Event = field(default_factory=asyncio.Event, repr=False)
 
 
@@ -135,9 +136,38 @@ class PlaybackCoordinator:
                 return False
             session.status = status
             session.error = error
+            if status in {"started", "finished"}:
+                session.started_event.set()
             if status in {"finished", "failed"}:
                 session.event.set()
             return True
+
+    async def wait_for_started(self, reply_id: str, timeout: float) -> bool:
+        """Wait until the elected renderer confirms that audible playback began."""
+
+        async with self._lock:
+            session = self._sessions.get(reply_id)
+            if session is None:
+                return False
+            if session.status in {"started", "finished"}:
+                return True
+            started_event = session.started_event
+            terminal_event = session.event
+
+        started_wait = asyncio.create_task(started_event.wait())
+        terminal_wait = asyncio.create_task(terminal_event.wait())
+        try:
+            done, _ = await asyncio.wait(
+                {started_wait, terminal_wait},
+                timeout=timeout,
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+            return started_wait in done and started_event.is_set()
+        finally:
+            for task in (started_wait, terminal_wait):
+                if not task.done():
+                    task.cancel()
+            await asyncio.gather(started_wait, terminal_wait, return_exceptions=True)
 
     async def send_chunk(self, reply_id: str, chunk: dict[str, Any]) -> bool:
         async with self._lock:

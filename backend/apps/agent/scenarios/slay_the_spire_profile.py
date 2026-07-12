@@ -1,4 +1,4 @@
-"""杀戮尖塔 MCP 游戏 Profile。"""
+"""杀戮尖塔场景的 MCP 语义 Profile。"""
 
 import json
 import logging
@@ -6,13 +6,13 @@ from typing import Any, cast
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from apps.ai.mcp.client import MCPClient
-from apps.ai.mcp.games.base import (
+from apps.agent.scenarios.profile import (
     GameConfigField,
-    GameProfile,
+    ScenarioProfile,
     UnifiedAction,
     UnifiedGameState,
 )
+from apps.ai.mcp.client import MCPClient
 from apps.ai.memory.game_memory import GameMemoryAPI, GameMemoryPolicy
 from apps.config import config
 
@@ -25,7 +25,7 @@ class SlayTheSpireConfig(BaseModel):
     default_character: str = Field(default="IRONCLAD", min_length=1, max_length=120)
 
 
-class SlayTheSpireProfile(GameProfile):
+class SlayTheSpireScenarioProfile(ScenarioProfile):
     config_model = SlayTheSpireConfig
     profile_id = "slay_the_spire"
     catalog_name = "杀戮尖塔"
@@ -68,7 +68,7 @@ class SlayTheSpireProfile(GameProfile):
         return """【杀戮尖塔决策原则】
 - 能在本回合击杀敌人时优先斩杀；否则根据敌人意图平衡格挡和输出。
 - 敌人 target_index 从 0 开始；击杀会导致后续索引移动，多目标行动应从高索引向低索引处理。
-- 每次决策可返回多个动作，系统会按真人节奏逐步执行。
+- 每轮只调用一个有副作用的能力；需要连续出牌时可使用 execute_actions 批处理。
 - 不清楚卡牌、遗物或药水效果时，先调用对应 info 工具，禁止猜测。
 - 主菜单可用 start_game 开局；默认角色由当前游戏配置决定。
 - start_game 成功后，Profile 会自动采集初始牌组与遗物并写入重要工作记忆。"""
@@ -76,9 +76,9 @@ class SlayTheSpireProfile(GameProfile):
     @property
     def prompt_examples(self) -> str:
         return """选择或操作时：
-{"actions":[
-  {"function":{"name":"request_host_commentary","arguments":{"key_points":["说明当前局势和选择"],"mood":"confident"}}},
-  {"function":{"name":"execute_actions","arguments":{"actions":[{"action":"play_card","card_name":"防御","target_index":0},{"action":"end_turn"}]}}}
+{"tool_calls":[
+  {"function":{"name":"request_commentary","arguments":{"event_summary":"准备防御后结束回合","reason":"这是本回合关键选择","sync":"on_speech_start"}}},
+  {"function":{"name":"mcp__execute_actions","arguments":{"actions":[{"action":"play_card","card_name":"防御","target_index":0},{"action":"end_turn"}]}}}
 ]}"""
 
     @property
@@ -90,9 +90,9 @@ class SlayTheSpireProfile(GameProfile):
                 "important": "reset",
                 "recent": "reset",
             },
-            summary_threshold=config.game_memory_threshold,
-            idle_summary_seconds=config.game_memory_idle_seconds,
-            context_max_chars=config.game_memory_context_max_chars,
+            summary_threshold=config.agent_memory_threshold,
+            idle_summary_seconds=config.agent_memory_idle_seconds,
+            context_max_chars=config.agent_memory_context_max_chars,
         )
 
     def is_session_finished(self, state: UnifiedGameState) -> bool:
@@ -145,7 +145,7 @@ class SlayTheSpireProfile(GameProfile):
             s = str(val)
             upper = s.upper()
             # 仅当大写后命中原生 4 角色时才统一大写；mod class 名（PascalCase）保持原样
-            return upper if upper in SlayTheSpireProfile.CHARACTERS else s
+            return upper if upper in SlayTheSpireScenarioProfile.CHARACTERS else s
 
         if "character" in params:
             params["character"] = _normalize(params["character"])
@@ -155,7 +155,7 @@ class SlayTheSpireProfile(GameProfile):
                 val = params[alias]
                 if isinstance(val, int):
                     idx = val
-                    chars = SlayTheSpireProfile.CHARACTERS
+                    chars = SlayTheSpireScenarioProfile.CHARACTERS
                     params["character"] = chars[idx] if 0 <= idx < len(chars) else chars[0]
                 else:
                     params["character"] = _normalize(val)

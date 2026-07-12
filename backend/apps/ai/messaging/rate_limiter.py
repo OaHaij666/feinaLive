@@ -22,7 +22,6 @@ class RateLimiter:
     @staticmethod
     def _get_default_rules() -> dict[str, RateLimitRule]:
         return {
-            "game:commentary_request": RateLimitRule(min_interval=config.messaging_rate_limit_commentary),
             "danmaku:danmaku": RateLimitRule(min_interval=config.messaging_rate_limit_danmaku),
             "gift:gift_thanks": RateLimitRule(min_interval=config.messaging_rate_limit_gift),
         }

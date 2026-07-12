@@ -1,423 +1,76 @@
-"""共享存储层 - 游戏 Graph 与主播 Graph 之间的共享状态
+"""Legacy Host conversation window.
 
-包含:
-- 主播回答历史 (FIFO): 主播LLM读写，游戏LLM只读
-- 游戏LLM历史 (FIFO): 游戏LLM读写
-- 总记忆 (异步总结): 专用LLM定时更新
+Cross-runtime awareness now lives in ``apps.agent.mutual_context.MutualContext``;
+long-term and game memory live in MemoryEngine. This module retains only the
+recent viewer/host exchanges required by Host prompt assembly.
 """
 
+from __future__ import annotations
+
 import asyncio
-import logging
-import re
 import time
 from collections import deque
-from dataclasses import dataclass, field
-from typing import Any
+from dataclasses import asdict, dataclass
 
 from apps.config import config
 
-logger = logging.getLogger(__name__)
 
-
-@dataclass
+@dataclass(frozen=True, slots=True)
 class HostHistoryEntry:
     danmaku: str
     reply: str
     user: str = ""
     timestamp: float = 0.0
 
-    def __post_init__(self):
-        if not self.timestamp:
-            self.timestamp = time.time()
-
     def to_dict(self) -> dict:
-        return {
-            "danmaku": self.danmaku,
-            "reply": self.reply,
-            "user": self.user,
-            "timestamp": self.timestamp,
-        }
-
-
-@dataclass
-class GameHistoryEntry:
-    action: str
-    params: dict
-    game_id: str = ""
-    result: str = ""
-    timestamp: float = 0.0
-
-    def __post_init__(self):
-        if not self.timestamp:
-            self.timestamp = time.time()
-
-    def to_dict(self) -> dict:
-        return {
-            "action": self.action,
-            "params": self.params,
-            "game_id": self.game_id,
-            "result": self.result,
-            "timestamp": self.timestamp,
-        }
-
-
-@dataclass
-class LongTermMemory:
-    core: str = ""
-    important: str = ""
-    recent: str = ""
-    key_events: list[str] = field(default_factory=list)
-    last_updated: float = 0.0
-
-    def to_dict(self) -> dict:
-        return {
-            "core": self.core,
-            "important": self.important,
-            "recent": self.recent,
-            "key_events": self.key_events,
-            "last_updated": self.last_updated,
-        }
-
-
-@dataclass
-class CommentaryAck:
-    request_id: str
-    status: str = "queued"
-    game_step_id: int = 0
-    spoken_text: str = ""
-    error: str = ""
-    created_at: float = 0.0
-    updated_at: float = 0.0
-    event: asyncio.Event | None = field(default=None, repr=False)
-
-    def __post_init__(self):
-        now = time.time()
-        if not self.created_at:
-            self.created_at = now
-        if not self.updated_at:
-            self.updated_at = now
-        if self.event is None:
-            self.event = asyncio.Event()
-
-    @property
-    def is_terminal(self) -> bool:
-        return self.status in {"spoken", "llm_failed", "failed", "dropped", "timeout", "cancelled"}
-
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "request_id": self.request_id,
-            "status": self.status,
-            "game_step_id": self.game_step_id,
-            "spoken_text": self.spoken_text,
-            "error": self.error,
-            "created_at": self.created_at,
-            "updated_at": self.updated_at,
-        }
+        return asdict(self)
 
 
 class SharedContext:
+    """Deprecated name for the Host-only recent conversation FIFO."""
+
     def __init__(
         self,
         host_history_maxlen: int | None = None,
         game_history_maxlen: int | None = None,
-    ):
-        _host_maxlen = (
-            host_history_maxlen
-            if host_history_maxlen is not None
-            else config.game_host_history_maxlen
-        )
-        _game_maxlen = (
-            game_history_maxlen
-            if game_history_maxlen is not None
-            else config.game_game_history_maxlen
-        )
-        self._host_history: deque[HostHistoryEntry] = deque(maxlen=_host_maxlen)
-        self._game_history: deque[GameHistoryEntry] = deque(maxlen=_game_maxlen)
-        self._memory = LongTermMemory()
-        self._game_step_id: int = 0
-        self._last_commentary_time: float = 0
-        self._last_commentary_step: int = 0
-        self._commentary_acks: dict[str, CommentaryAck] = {}
+    ) -> None:
+        del game_history_maxlen
+        maxlen = host_history_maxlen or config.agent_host_history_maxlen
+        self._host_history: deque[HostHistoryEntry] = deque(maxlen=maxlen)
         self._lock = asyncio.Lock()
 
-    async def add_host_entry(self, danmaku: str, reply: str, user: str = ""):
+    async def add_host_entry(self, danmaku: str, reply: str, user: str = "") -> None:
         async with self._lock:
-            self._host_history.append(HostHistoryEntry(danmaku=danmaku, reply=reply, user=user))
-            logger.debug(f"主播历史更新: [{user or '观众'}] {danmaku[:20]} -> [{reply[:20]}]")
-
-    async def add_game_entry(self, action: str, params: dict, result: str = "", game_id: str = ""):
-        async with self._lock:
-            self._game_history.append(
-                GameHistoryEntry(action=action, params=params, result=result, game_id=game_id)
+            self._host_history.append(
+                HostHistoryEntry(
+                    danmaku=danmaku,
+                    reply=reply,
+                    user=user,
+                    timestamp=time.time(),
+                )
             )
-            logger.debug(f"游戏历史更新: {action}({params})")
-
-    async def advance_game_step(self):
-        async with self._lock:
-            self._game_step_id += 1
-
-    async def get_game_step_id(self) -> int:
-        async with self._lock:
-            return self._game_step_id
-
-    async def record_commentary_request(self):
-        async with self._lock:
-            self._last_commentary_step = self._game_step_id
-
-    async def get_commentary_info(self) -> tuple[float, int]:
-        async with self._lock:
-            return self._last_commentary_time, self._last_commentary_step
-
-    async def get_last_commentary_time(self) -> float:
-        async with self._lock:
-            return self._last_commentary_time
-
-    async def register_commentary_request(
-        self,
-        request_id: str,
-        game_step_id: int | None = None,
-    ) -> CommentaryAck:
-        async with self._lock:
-            step_id = self._game_step_id if game_step_id is None else game_step_id
-            ack = CommentaryAck(request_id=request_id, game_step_id=step_id)
-            self._commentary_acks[request_id] = ack
-            self._last_commentary_step = step_id
-            return ack
-
-    async def signal_commentary_status(
-        self,
-        request_id: str,
-        status: str,
-        spoken_text: str = "",
-        error: str = "",
-    ) -> CommentaryAck:
-        async with self._lock:
-            ack = self._commentary_acks.get(request_id)
-            if not ack:
-                # A coordinator may already have timed out and released this
-                # request. Return a transient acknowledgement instead of
-                # recreating an entry that nobody will ever consume.
-                ack = CommentaryAck(request_id=request_id, game_step_id=self._game_step_id)
-            ack.status = status
-            ack.spoken_text = spoken_text
-            ack.error = error
-            ack.updated_at = time.time()
-            if status == "spoken":
-                self._last_commentary_time = ack.updated_at
-                self._last_commentary_step = ack.game_step_id
-            if ack.event:
-                ack.event.set()
-            return ack
-
-    async def release_commentary_request(self, request_id: str) -> None:
-        """Forget a terminal request after its waiting coordinator observed it."""
-
-        async with self._lock:
-            self._commentary_acks.pop(request_id, None)
-
-    async def wait_commentary_status(self, request_id: str, timeout: float) -> CommentaryAck:
-        async with self._lock:
-            ack = self._commentary_acks.get(request_id)
-            if not ack:
-                ack = CommentaryAck(request_id=request_id, game_step_id=self._game_step_id)
-                self._commentary_acks[request_id] = ack
-            if ack.is_terminal:
-                return ack
-            event = ack.event
-
-        try:
-            if event:
-                await asyncio.wait_for(event.wait(), timeout=timeout)
-        except asyncio.TimeoutError:
-            await self.signal_commentary_status(request_id, "timeout", error="等待主播消费超时")
-        except asyncio.CancelledError:
-            await self.signal_commentary_status(request_id, "cancelled", error="等待主播消费被取消")
-            raise
-
-        async with self._lock:
-            return self._commentary_acks[request_id]
-
-    async def signal_commentary_consumed(self):
-        async with self._lock:
-            self._last_commentary_time = time.time()
-            self._last_commentary_step = self._game_step_id
-
-    async def wait_commentary_consumed(self, timeout: float) -> bool:
-        request_id = f"legacy_{int(time.time() * 1000)}"
-        await self.register_commentary_request(request_id)
-        ack = await self.wait_commentary_status(request_id, timeout)
-        return ack.status == "spoken"
 
     async def get_host_history(self, limit: int = 20) -> list[HostHistoryEntry]:
         async with self._lock:
-            entries = list(self._host_history)
-            return entries[-limit:]
+            return list(self._host_history)[-limit:]
 
     async def get_host_history_text(self, limit: int = 20) -> str:
         entries = await self.get_host_history(limit)
         if not entries:
             return "（暂无互动）"
-        lines = []
-        for e in entries:
-            user_label = e.user or "观众"
-            lines.append(f"{user_label}: {e.danmaku} | 主播: {e.reply}")
-        return "\n".join(lines)
+        return "\n".join(
+            f"{item.user or '观众'}: {item.danmaku} | 主播: {item.reply}" for item in entries
+        )
 
-    async def get_game_history(
-        self, limit: int = 15, game_id: str | None = None
-    ) -> list[GameHistoryEntry]:
-        async with self._lock:
-            entries = list(self._game_history)
-            if game_id:
-                entries = [entry for entry in entries if entry.game_id == game_id]
-            return entries[-limit:]
-
-    async def get_game_history_text(self, limit: int = 15, game_id: str | None = None) -> str:
-        entries = await self.get_game_history(limit, game_id)
-        if not entries:
-            return "（暂无操作）"
-        lines = []
-        for e in entries:
-            lines.append(f"{e.action}({e.params}) -> {e.result}")
-        return "\n".join(lines)
-
-    async def get_memory(self) -> LongTermMemory:
-        async with self._lock:
-            return LongTermMemory(
-                core=self._memory.core,
-                important=self._memory.important,
-                recent=self._memory.recent,
-                key_events=list(self._memory.key_events),
-                last_updated=self._memory.last_updated,
-            )
-
-    async def update_memory(
-        self,
-        core: str | None = None,
-        important: str | None = None,
-        recent: str | None = None,
-        key_events: list[str] | None = None,
-    ):
-        async with self._lock:
-            if core is not None:
-                self._memory.core = core
-            if important is not None:
-                self._memory.important = important
-            if recent is not None:
-                self._memory.recent = recent
-            if key_events is not None:
-                self._memory.key_events = key_events
-            self._memory.last_updated = time.time()
-            logger.info(
-                f"记忆更新: core={len(self._memory.core)} chars, important={len(self._memory.important)} chars, recent={len(self._memory.recent)} chars"
-            )
-
-    async def clear_all_memory(self):
-        async with self._lock:
-            self._memory.core = ""
-            self._memory.important = ""
-            self._memory.recent = ""
-            self._memory.key_events = []
-            self._memory.last_updated = time.time()
-        logger.info("记忆已清空（新游戏开始）")
-
-    async def search_replace_memory(
-        self,
-        memory_type: str,
-        mode: str,
-        search: str,
-        replace: str,
-        end: str = "",
-    ):
-        async with self._lock:
-            content = self._get_memory_content(memory_type)
-            if content is None:
-                raise ValueError(f"Unknown memory type: {memory_type}")
-
-            new_content = self._do_search_replace(
-                content=content,
-                mode=mode,
-                search=search,
-                replace=replace,
-                end=end,
-            )
-
-            self._set_memory_content(memory_type, new_content)
-            logger.info(f"记忆搜索替换: {memory_type}, mode={mode}")
-
-    def _get_memory_content(self, memory_type: str) -> str | None:
-        if memory_type == "core":
-            return self._memory.core
-        elif memory_type == "important":
-            return self._memory.important
-        elif memory_type == "recent":
-            return self._memory.recent
-        return None
-
-    def _set_memory_content(self, memory_type: str, content: str):
-        if memory_type == "core":
-            self._memory.core = content
-        elif memory_type == "important":
-            self._memory.important = content
-        elif memory_type == "recent":
-            self._memory.recent = content
-
-    def _do_search_replace(
-        self,
-        content: str,
-        mode: str,
-        search: str,
-        replace: str,
-        end: str,
-    ) -> str:
-        if mode == "exact":
-            return content.replace(search, replace)
-
-        elif mode == "fuzzy":
-            pattern = re.escape(search)
-            pattern = re.sub(r"\s+", r"\\s+", pattern)
-            return re.sub(pattern, replace, content, flags=re.IGNORECASE)
-
-        elif mode == "range":
-            if not end:
-                raise ValueError("range mode requires 'end' parameter")
-            start_idx = content.find(search)
-            end_idx = content.find(end, start_idx + len(search) if start_idx != -1 else 0)
-            if start_idx == -1 or end_idx == -1:
-                return content
-            return content[:start_idx] + replace + content[end_idx + len(end) :]
-
-        else:
-            raise ValueError(f"Unknown mode: {mode}")
-
-    async def rewrite_memory(self, memory_type: str, content: str):
-        async with self._lock:
-            if memory_type == "core":
-                self._memory.core = content
-            elif memory_type == "important":
-                self._memory.important = content
-            elif memory_type == "recent":
-                self._memory.recent = content
-            else:
-                raise ValueError(f"Unknown memory type: {memory_type}")
-            logger.info(f"记忆重写: {memory_type} -> {len(content)} chars")
-
-    async def trim_histories(self, keep_seconds: float = 300):
+    async def trim_histories(self, keep_seconds: float = 300) -> None:
         now = time.time()
         async with self._lock:
-            while self._host_history and (now - self._host_history[0].timestamp) > keep_seconds:
+            while self._host_history and now - self._host_history[0].timestamp > keep_seconds:
                 self._host_history.popleft()
-            while self._game_history and (now - self._game_history[0].timestamp) > keep_seconds:
-                self._game_history.popleft()
 
     async def get_context_summary(self) -> dict:
-        host_entries = await self.get_host_history(limit=10)
-        game_entries = await self.get_game_history(limit=10)
-        memory = await self.get_memory()
         return {
-            "host_history": [e.to_dict() for e in host_entries],
-            "game_history": [e.to_dict() for e in game_entries],
-            "memory": memory.to_dict(),
+            "host_history": [item.to_dict() for item in await self.get_host_history(limit=10)]
         }
 
 

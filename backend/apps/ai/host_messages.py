@@ -2,39 +2,28 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any
 
+from apps.agent.mutual_context import MutualContext, get_mutual_context
 from apps.ai.memory.engine import get_memory_engine
 from apps.ai.messaging.queue import Message
 from apps.ai.prompt import get_host_system_prompt
 from apps.ai.shared_context import SharedContext, get_shared_context
+from apps.ai.speech_jobs import (
+    SpeechJobCoordinator,
+    SpeechJobStatus,
+    get_speech_job_coordinator,
+)
 from apps.ai.speech_pipeline import SpeechPipeline
 from apps.live.room_session import RoomSessionContext, get_room_session_manager
 
 logger = logging.getLogger(__name__)
 
 ReplyCallback = Callable[[str], Awaitable[None]]
-
-COMMENTARY_SYSTEM_PROMPT = """{host_personality}
-
-【解说要点】
-{key_points}
-
-【建议情绪】
-{mood}
-
-【你刚才的互动】
-{host_history}
-
-请根据以上要点生成一段风格化解说:
-- 用第一人称
-- 口语化、自然
-- 可以加入口癖和情感词
-- 长度控制在20-50字
-- 不要重复要点原文，用自己的风格重新表达"""
 
 DANMAKU_REPLY_PROMPT = """{host_personality}
 
@@ -76,18 +65,18 @@ class DanmakuReplyPlan:
 class HostPromptPlanner:
     """Build host prompts without owning queue or output lifecycle."""
 
-    def __init__(self, shared_context: SharedContext | None = None) -> None:
+    def __init__(
+        self,
+        shared_context: SharedContext | None = None,
+        mutual_context: MutualContext | None = None,
+    ) -> None:
         self._shared_context = shared_context or get_shared_context()
+        self._mutual_context = mutual_context or get_mutual_context()
 
-    async def commentary(self, message: Message) -> str:
-        data = message.data
-        host_history = await self._shared_context.get_host_history_text(limit=10)
-        return COMMENTARY_SYSTEM_PROMPT.format(
-            host_personality=get_host_system_prompt(),
-            key_points="\n".join(f"- {point}" for point in data.get("key_points", [])),
-            mood=data.get("mood", "neutral"),
-            host_history=host_history or "（暂无）",
-        )
+    async def _recent_context(self, legacy_limit: int) -> str:
+        legacy = await self._shared_context.get_host_history_text(limit=legacy_limit)
+        mutual = await self._mutual_context.to_prompt_text(limit=10)
+        return f"{legacy}\n{mutual}" if legacy else mutual
 
     async def danmaku(self, message: Message) -> DanmakuReplyPlan:
         user = message.data.get("user", "unknown")
@@ -116,7 +105,7 @@ class HostPromptPlanner:
         except Exception as exc:
             logger.debug("观众记忆注入失败: %s", exc)
 
-        host_history = await self._shared_context.get_host_history_text(limit=10)
+        host_history = await self._recent_context(10)
         system_content = DANMAKU_REPLY_PROMPT.format(
             host_personality=get_host_system_prompt(),
             viewer_memory="\n\n".join(memory_sections) or "（暂无观众记忆）",
@@ -130,7 +119,7 @@ class HostPromptPlanner:
         )
 
     async def gift(self, message: Message) -> str:
-        host_history = await self._shared_context.get_host_history_text(limit=5)
+        host_history = await self._recent_context(5)
         return GIFT_THANKS_PROMPT.format(
             host_personality=get_host_system_prompt(),
             host_history=host_history or "（暂无）",
@@ -147,71 +136,63 @@ class HostMessageProcessor:
         planner: HostPromptPlanner | None = None,
         speech: SpeechPipeline | None = None,
         on_reply: ReplyCallback | None = None,
+        mutual_context: MutualContext | None = None,
+        speech_jobs: SpeechJobCoordinator | None = None,
     ) -> None:
         self._shared_context = shared_context or get_shared_context()
-        self._planner = planner or HostPromptPlanner(self._shared_context)
+        self._mutual_context = mutual_context or get_mutual_context()
+        self._planner = planner or HostPromptPlanner(self._shared_context, self._mutual_context)
         self._speech = speech or SpeechPipeline()
         self._on_reply = on_reply
+        self._speech_jobs = speech_jobs or get_speech_job_coordinator()
 
-    async def handle_commentary(self, message: Message) -> None:
-        request_id = str(message.data.get("commentary_request_id", ""))
-        mood = message.data.get("mood", "neutral")
+    async def handle_prepared_speech(self, message: Message) -> None:
+        """Play Agent-authored final text without invoking another LLM."""
+
+        job_id = str(message.data.get("speech_job_id", ""))
+        jobs = self._speech_jobs
+
+        async def on_started(reply_id: str) -> None:
+            await jobs.started(job_id, reply_id)
+
         try:
-            result = await self._speech.stream_reply(
-                await self._planner.commentary(message),
-                "请生成解说。",
+            result = await self._speech.speak_text(
+                message.content,
                 self.context_for(message),
+                on_playback_started=on_started,
             )
+        except asyncio.CancelledError:
+            await jobs.finish(
+                job_id,
+                SpeechJobStatus.CANCELLED,
+                error="HostRuntime stopped during prepared speech",
+            )
+            raise
         except Exception as exc:
-            logger.error("解说生成失败: %s", exc, exc_info=True)
-            if request_id:
-                await self._shared_context.signal_commentary_status(
-                    request_id,
-                    "llm_failed",
-                    error=str(exc),
-                )
-            return
+            await jobs.finish(job_id, SpeechJobStatus.FAILED, error=str(exc))
+            raise
 
-        if not result:
-            if request_id:
-                await self._shared_context.signal_commentary_status(
-                    request_id,
-                    "llm_failed",
-                    error="主播解说生成为空或房间会话已失效",
-                )
-            return
-
-        if not result.played:
-            logger.warning(
-                "解说未完成真实播放: reply=%s status=%s error=%s",
-                result.reply_id,
-                result.playback_status,
-                result.playback_error,
+        if result and result.played:
+            await jobs.finish(
+                job_id,
+                SpeechJobStatus.FINISHED,
+                reply_id=result.reply_id,
             )
-            if request_id:
-                await self._shared_context.signal_commentary_status(
-                    request_id,
-                    "failed",
-                    error=result.playback_error or result.playback_status,
-                )
-            return
-
-        spoken = result.text
-
-        logger.info("主播解说: %s", spoken)
-        await self._shared_context.add_host_entry(
-            danmaku=f"[游戏解说-{mood}]",
-            reply=spoken,
-        )
-        if request_id:
-            await self._shared_context.signal_commentary_status(
-                request_id,
+            await self._mutual_context.record(
+                "host",
                 "spoken",
-                spoken_text=spoken,
+                result.text,
+                {"reply_id": result.reply_id, "source": "agent_commentary"},
             )
-        else:
-            await self._shared_context.signal_commentary_consumed()
-        await self._notify(spoken)
+            await self._notify(result.text)
+            return
+
+        await jobs.finish(
+            job_id,
+            SpeechJobStatus.FAILED,
+            reply_id=result.reply_id if result else "",
+            error=(result.playback_error or result.playback_status) if result else "invalid room",
+        )
 
     async def handle_danmaku(self, message: Message) -> None:
         user = message.data.get("user", "unknown")
@@ -238,6 +219,12 @@ class HostMessageProcessor:
             danmaku=message.content,
             reply=spoken,
             user=user,
+        )
+        await self._mutual_context.record(
+            "host",
+            "spoken",
+            spoken,
+            {"source": "danmaku", "viewer_message": message.content[:300], "user": user},
         )
 
         try:
@@ -277,18 +264,22 @@ class HostMessageProcessor:
             reply=spoken,
             user=user,
         )
+        await self._mutual_context.record(
+            "host",
+            "spoken",
+            spoken,
+            {"source": "gift", "user": user},
+        )
         await self._notify(spoken)
 
     async def fail(self, message: Message, error: Exception) -> None:
-        if message.msg_type != "commentary_request":
-            return
-        request_id = str(message.data.get("commentary_request_id", ""))
-        if request_id:
-            await self._shared_context.signal_commentary_status(
-                request_id,
-                "failed",
+        if message.msg_type == "prepared_speech":
+            await self._speech_jobs.finish(
+                str(message.data.get("speech_job_id", "")),
+                SpeechJobStatus.FAILED,
                 error=str(error),
             )
+        logger.debug("Host message failed: type=%s error=%s", message.msg_type, error)
 
     @staticmethod
     def context_for(message: Message) -> RoomSessionContext | None:

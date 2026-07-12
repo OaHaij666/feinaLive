@@ -156,6 +156,26 @@ class TestStateDict:
         assert state_dict["is_hide_admin"] is False
 
 
+class TestAgentCommand:
+    def test_agent_command_updates_runtime_state(self, handler, monkeypatch):
+        from apps.config import config
+
+        changes = []
+        monkeypatch.setattr(type(config), "agent_enabled", property(lambda self: True))
+        handler.register_agent_change_callback(changes.append)
+
+        result = handler.sync_handle(
+            uid=378810242,
+            username="RongR0Ng",
+            content="/agent 1",
+        )
+
+        assert result is not None and result.success
+        assert handler.get_state().is_agent_running is True
+        assert changes == [True]
+        assert result.new_state["is_agent_running"] is True
+
+
 class TestShouldFilterAdminDanmaku:
     def test_hide_enabled_filters_admin(self, handler):
         handler._state.is_hide_admin = True

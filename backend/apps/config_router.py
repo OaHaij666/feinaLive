@@ -5,7 +5,7 @@ import os
 from pathlib import Path
 
 import yaml
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Response
 from pydantic import BaseModel, Field
 
 from apps.config import config
@@ -64,9 +64,9 @@ class VolcanoConfig(BaseModel):
     speaker_id: str = ""
 
 
-class GameConfig(BaseModel):
+class AgentConfig(BaseModel):
     enabled: bool = False
-    game_id: str = "slay_the_spire"
+    scenario_id: str = "slay_the_spire"
     mcp_url: str = "http://127.0.0.1:8080"
     api_url: str = ""
     api_key: str = ""
@@ -87,8 +87,8 @@ class GameConfig(BaseModel):
     memory_eagerness: int = 3
     queue_max_size: int = 20
     host_history_maxlen: int = 50
-    game_history_maxlen: int = 30
-    game_config: dict[str, object] = Field(default_factory=dict)
+    action_history_maxlen: int = 30
+    scenario_config: dict[str, object] = Field(default_factory=dict)
 
 
 class EasyVtuberInputConfig(BaseModel):
@@ -198,7 +198,7 @@ class FullConfig(BaseModel):
     llm: LLMConfig = LLMConfig()
     tts: TTSConfig = TTSConfig()
     volcano: VolcanoConfig = VolcanoConfig()
-    game: GameConfig = GameConfig()
+    agent: AgentConfig = AgentConfig()
     easyvtuber: EasyVtuberConfig = EasyVtuberConfig()
     ai: AIConfig = AIConfig()
     messaging: MessagingConfig = MessagingConfig()
@@ -207,6 +207,7 @@ class FullConfig(BaseModel):
     announcement: str = ""
     admin: AdminConfig = AdminConfig()
     embedding: EmbeddingConfig = EmbeddingConfig()
+    restart_required: bool = False
 
 
 # ---- 辅助: masked 返回 ----
@@ -222,7 +223,10 @@ def _mask_sensitive(value: str) -> str:
 
 @router.get("", response_model=FullConfig)
 async def get_full_config():
+    from apps.agent.manager import get_agent_manager
+
     return FullConfig(
+        restart_required=get_agent_manager().needs_restart,
         bilibili=BilibiliConfig(
             room_id=config.bilibili_room_id,
             sessdata=_mask_sensitive(config.bilibili_sessdata or ""),
@@ -262,31 +266,31 @@ async def get_full_config():
             access_token=_mask_sensitive(config.volcano_access_token or ""),
             speaker_id=config.volcano_speaker_id,
         ),
-        game=GameConfig(
-            enabled=config.game_enabled,
-            game_id=config.game_id,
-            mcp_url=config.game_mcp_url,
-            api_url=config.game_api_url,
-            api_key=_mask_sensitive(config.game_api_key or ""),
-            model=config.game_model,
-            temperature=config.game_temperature,
-            max_tokens=config.game_max_tokens,
-            disable_thinking=config.game_disable_thinking,
-            poll_interval=config.game_poll_interval,
-            memory_threshold=config.game_memory_threshold,
-            memory_idle_seconds=config.game_memory_idle_seconds,
-            memory_scan_interval_seconds=config.game_memory_scan_interval_seconds,
-            memory_context_max_chars=config.game_memory_context_max_chars,
-            min_step_interval=config.game_min_step_interval,
-            step_jitter=config.game_step_jitter,
-            commentary_interval=config.game_commentary_interval,
-            min_commentary_interval=config.game_min_commentary_interval,
-            commentary_hold_timeout=config.game_commentary_hold_timeout,
-            memory_eagerness=config.game_memory_eagerness,
-            queue_max_size=config.game_queue_max_size,
-            host_history_maxlen=config.game_host_history_maxlen,
-            game_history_maxlen=config.game_game_history_maxlen,
-            game_config=config.game_config,
+        agent=AgentConfig(
+            enabled=config.agent_enabled,
+            scenario_id=config.agent_scenario_id,
+            mcp_url=config.agent_mcp_url,
+            api_url=config.agent_api_url,
+            api_key=_mask_sensitive(config.agent_api_key or ""),
+            model=config.agent_model,
+            temperature=config.agent_temperature,
+            max_tokens=config.agent_max_tokens,
+            disable_thinking=config.agent_disable_thinking,
+            poll_interval=config.agent_poll_interval,
+            memory_threshold=config.agent_memory_threshold,
+            memory_idle_seconds=config.agent_memory_idle_seconds,
+            memory_scan_interval_seconds=config.agent_memory_scan_interval_seconds,
+            memory_context_max_chars=config.agent_memory_context_max_chars,
+            min_step_interval=config.agent_min_step_interval,
+            step_jitter=config.agent_step_jitter,
+            commentary_interval=config.agent_commentary_interval,
+            min_commentary_interval=config.agent_min_commentary_interval,
+            commentary_hold_timeout=config.agent_commentary_hold_timeout,
+            memory_eagerness=config.agent_memory_eagerness,
+            queue_max_size=config.agent_queue_max_size,
+            host_history_maxlen=config.agent_host_history_maxlen,
+            action_history_maxlen=config.agent_action_history_maxlen,
+            scenario_config=config.agent_scenario_config,
         ),
         easyvtuber=EasyVtuberConfig(
             enabled=config.easyvtuber_enabled,
@@ -375,7 +379,7 @@ async def get_full_config():
 SENSITIVE_KEYS = {
     "bilibili.sessdata",
     "llm.api_key",
-    "game.api_key",
+    "agent.api_key",
     "volcano.access_token",
     "host.api_key",
     "embedding.api_key",
@@ -426,7 +430,7 @@ def _atomic_write_yaml(data: dict) -> None:
 
 
 @router.put("", response_model=FullConfig)
-async def update_full_config(config_data: FullConfig):
+async def update_full_config(config_data: FullConfig, response: Response):
     try:
         old_bilibili_room_id = config.bilibili_room_id
         with open(CONFIG_FILE, "r", encoding="utf-8") as f:
@@ -482,38 +486,41 @@ async def update_full_config(config_data: FullConfig):
         _store_secret(data, "volcano.access_token", v.access_token)
         flat["volcano.speaker_id"] = v.speaker_id
 
-        # game
-        g = config_data.game
-        from apps.ai.mcp.games.registry import validate_game_config
+        # agent
+        agent = config_data.agent
+        from apps.agent.scenarios.registry import validate_scenario_config
 
         try:
-            validated_game_config = validate_game_config(g.game_id, g.game_config)
+            validated_scenario_config = validate_scenario_config(
+                agent.scenario_id,
+                agent.scenario_config,
+            )
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
-        flat["game.enabled"] = g.enabled
-        flat["game.game_id"] = g.game_id
-        flat["game.mcp_url"] = g.mcp_url
-        flat["game.api_url"] = g.api_url
-        _store_secret(data, "game.api_key", g.api_key)
-        flat["game.model"] = g.model
-        flat["game.temperature"] = g.temperature
-        flat["game.max_tokens"] = g.max_tokens
-        flat["game.disable_thinking"] = g.disable_thinking
-        flat["game.poll_interval"] = g.poll_interval
-        flat["game.memory_threshold"] = g.memory_threshold
-        flat["game.memory_idle_seconds"] = g.memory_idle_seconds
-        flat["game.memory_scan_interval_seconds"] = g.memory_scan_interval_seconds
-        flat["game.memory_context_max_chars"] = g.memory_context_max_chars
-        flat["game.min_step_interval"] = g.min_step_interval
-        flat["game.step_jitter"] = g.step_jitter
-        flat["game.commentary_interval"] = g.commentary_interval
-        flat["game.min_commentary_interval"] = g.min_commentary_interval
-        flat["game.commentary_hold_timeout"] = g.commentary_hold_timeout
-        flat["game.memory_eagerness"] = g.memory_eagerness
-        flat["game.queue_max_size"] = g.queue_max_size
-        flat["game.host_history_maxlen"] = g.host_history_maxlen
-        flat["game.game_history_maxlen"] = g.game_history_maxlen
-        flat["game.game_config"] = validated_game_config
+        flat["agent.enabled"] = agent.enabled
+        flat["agent.scenario_id"] = agent.scenario_id
+        flat["agent.mcp_url"] = agent.mcp_url
+        flat["agent.api_url"] = agent.api_url
+        _store_secret(data, "agent.api_key", agent.api_key)
+        flat["agent.model"] = agent.model
+        flat["agent.temperature"] = agent.temperature
+        flat["agent.max_tokens"] = agent.max_tokens
+        flat["agent.disable_thinking"] = agent.disable_thinking
+        flat["agent.poll_interval"] = agent.poll_interval
+        flat["agent.memory_threshold"] = agent.memory_threshold
+        flat["agent.memory_idle_seconds"] = agent.memory_idle_seconds
+        flat["agent.memory_scan_interval_seconds"] = agent.memory_scan_interval_seconds
+        flat["agent.memory_context_max_chars"] = agent.memory_context_max_chars
+        flat["agent.min_step_interval"] = agent.min_step_interval
+        flat["agent.step_jitter"] = agent.step_jitter
+        flat["agent.commentary_interval"] = agent.commentary_interval
+        flat["agent.min_commentary_interval"] = agent.min_commentary_interval
+        flat["agent.commentary_hold_timeout"] = agent.commentary_hold_timeout
+        flat["agent.memory_eagerness"] = agent.memory_eagerness
+        flat["agent.queue_max_size"] = agent.queue_max_size
+        flat["agent.host_history_maxlen"] = agent.host_history_maxlen
+        flat["agent.action_history_maxlen"] = agent.action_history_maxlen
+        flat["agent.scenario_config"] = validated_scenario_config
 
         # easyvtuber
         ev = config_data.easyvtuber
@@ -598,6 +605,11 @@ async def update_full_config(config_data: FullConfig):
 
         config._load()
 
+        from apps.agent.manager import get_agent_manager
+
+        restart_required = get_agent_manager().needs_restart
+        response.headers["X-Restart-Required"] = "true" if restart_required else "false"
+
         from apps.live.room_session import get_room_session_manager
 
         room_sessions = get_room_session_manager()
@@ -635,7 +647,7 @@ async def list_sections():
             {"key": "llm", "label": "通用LLM", "description": "通用大语言模型配置"},
             {"key": "tts", "label": "语音合成", "description": "TTS 语音输出配置"},
             {"key": "volcano", "label": "火山引擎", "description": "火山引擎 TTS 凭证"},
-            {"key": "game", "label": "游戏AI", "description": "游戏 AI 行为参数"},
+            {"key": "agent", "label": "Agent", "description": "场景、能力与 Agent 行为参数"},
             {"key": "easyvtuber", "label": "数字人", "description": "Live2D 渲染和输入配置"},
             {"key": "ai", "label": "AI行为", "description": "记忆、历史、轮询间隔"},
             {"key": "messaging", "label": "消息调度", "description": "优先级、队列、频率限制"},

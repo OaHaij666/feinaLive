@@ -13,7 +13,7 @@ interface AdminCommandResult {
     face_mode: string
     is_voice_mode: boolean
     is_hide_admin: boolean
-    is_mcp_running: boolean
+    is_agent_running: boolean
     is_test_room_enabled: boolean
   }
 }
@@ -28,7 +28,7 @@ export function useAdminCommands() {
       faceMode: state.face_mode,
       isVoiceMode: state.is_voice_mode,
       isHideAdmin: state.is_hide_admin,
-      isMCPRunning: state.is_mcp_running,
+      isAgentRunning: state.is_agent_running,
       isTestRoomEnabled: state.is_test_room_enabled,
     }
   }
@@ -42,7 +42,7 @@ export function useAdminCommands() {
         face_mode: state.face_mode || 'wandering',
         is_voice_mode: !!state.is_voice_mode,
         is_hide_admin: !!state.is_hide_admin,
-        is_mcp_running: !!state.is_mcp_running,
+        is_agent_running: !!state.is_agent_running,
         is_test_room_enabled: !!state.is_test_room_enabled,
       })
     } catch (error) {
@@ -64,10 +64,10 @@ export function useAdminCommands() {
     }
   }
 
-  async function toggleMCP(): Promise<boolean> {
+  async function toggleAgent(): Promise<boolean> {
     try {
-      const newState = !adminState.value.isMCPRunning
-      const cmd = newState ? '/mcp 1' : '/mcp 0'
+      const newState = !adminState.value.isAgentRunning
+      const cmd = newState ? '/agent 1' : '/agent 0'
       const res = await fetch('/test/admin/command', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -87,7 +87,7 @@ export function useAdminCommands() {
     } catch (e) {
       const { error } = useNotification()
       error('网络请求失败', 3000)
-      console.error('MCP toggle failed:', e)
+      console.error('Agent toggle failed:', e)
       return false
     }
   }
@@ -135,7 +135,7 @@ export function useAdminCommands() {
     updateAdminState,
     shouldHideDanmaku,
     refreshAdminState,
-    toggleMCP,
+    toggleAgent,
     toggleTestRoom,
   }
 }
@@ -145,7 +145,7 @@ const _adminState = ref({
   faceMode: 'wandering',
   isVoiceMode: false,
   isHideAdmin: false,
-  isMCPRunning: false,
+  isAgentRunning: false,
   isTestRoomEnabled: false,
 })
 

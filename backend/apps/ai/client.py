@@ -201,16 +201,16 @@ def get_ai_client() -> AIClient:
     return _ai_client
 
 
-_game_ai_client: AIClient | None = None
+_agent_ai_client: AIClient | None = None
 
 
-def get_game_ai_client() -> AIClient:
-    global _game_ai_client
-    if _game_ai_client is None:
-        _game_ai_client = AIClient(
-            api_url=config.game_api_url,
-            api_key=config.game_api_key or "",
-            default_model=config.game_model,
-            disable_thinking=config.game_disable_thinking,
+def get_agent_ai_client() -> AIClient:
+    global _agent_ai_client
+    if _agent_ai_client is None:
+        _agent_ai_client = AIClient(
+            api_url=config.agent_api_url,
+            api_key=config.agent_api_key or "",
+            default_model=config.agent_model,
+            disable_thinking=config.agent_disable_thinking,
         )
-    return _game_ai_client
+    return _agent_ai_client

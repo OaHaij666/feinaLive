@@ -1,6 +1,6 @@
 """记忆注入器 — 按 Agent 角色差异化注入记忆到 prompt
 
-GameGraph: SessionMemory (全量) + LongTermMemory (游戏知识) + KnowledgeGraph (协同/克制)
+AgentGraph: SessionMemory (全量) + LongTermMemory (游戏知识) + KnowledgeGraph (协同/克制)
 HostRuntime: LongTermMemory (观众记忆 + 主播人设 + 互动事件)
 """
 
@@ -30,7 +30,7 @@ class MemoryInjector:
         graph: GameKnowledgeGraph | None = None,
         context_max_chars: int | None = None,
     ) -> str:
-        """为 GameGraph 构建完整记忆上下文
+        """为 AgentGraph 构建完整游戏场景记忆上下文
 
         包含:
         1. SessionMemory (单局记忆，全量)
@@ -41,7 +41,7 @@ class MemoryInjector:
 
         # 1. 单局记忆 — 全量拼接
         context_pending = session.pending_context_to_prompt_text(
-            context_max_chars or config.game_memory_context_max_chars
+            context_max_chars or config.agent_memory_context_max_chars
         )
         sections = []
         for title, content in (

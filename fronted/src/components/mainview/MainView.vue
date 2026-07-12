@@ -18,15 +18,15 @@
             <span class="ratio-label">{{ videoRatio }}</span>
           </button>
         </div>
-        <div class="mcp-toggle-center">
+        <div class="agent-toggle-center">
           <button
-            class="mcp-toggle-btn"
-            :class="{ active: adminState.isMCPRunning }"
-            @click="handleToggleMCP"
-            :disabled="mcpToggling"
-            :title="adminState.isMCPRunning ? '停止 GameGraph 游戏AI' : '启动 GameGraph 游戏AI'"
+            class="agent-toggle-btn"
+            :class="{ active: adminState.isAgentRunning }"
+            @click="handleToggleAgent"
+            :disabled="agentToggling"
+            :title="adminState.isAgentRunning ? '停止 AgentRuntime' : '启动 AgentRuntime'"
           >
-            <span class="mcp-label">{{ mcpToggling ? '...' : (adminState.isMCPRunning ? 'AI ON' : 'AI OFF') }}</span>
+            <span class="agent-label">{{ agentToggling ? '...' : (adminState.isAgentRunning ? 'AI ON' : 'AI OFF') }}</span>
           </button>
         </div>
       </div>
@@ -39,8 +39,8 @@ import { ref } from 'vue'
 import { useAdminCommands } from '@/composables/useAdminCommands'
 
 const videoRatio = ref<'16:9' | '16:10' | '4:3'>('16:9')
-const { adminState, toggleMCP } = useAdminCommands()
-const mcpToggling = ref(false)
+const { adminState, toggleAgent } = useAdminCommands()
+const agentToggling = ref(false)
 
 function toggleRatio() {
   if (videoRatio.value === '16:9') {
@@ -52,12 +52,12 @@ function toggleRatio() {
   }
 }
 
-async function handleToggleMCP() {
-  mcpToggling.value = true
+async function handleToggleAgent() {
+  agentToggling.value = true
   try {
-    await toggleMCP()
+    await toggleAgent()
   } finally {
-    mcpToggling.value = false
+    agentToggling.value = false
   }
 }
 </script>
@@ -233,14 +233,14 @@ async function handleToggleMCP() {
   letter-spacing: 3px;
 }
 
-.mcp-toggle-center {
+.agent-toggle-center {
   position: absolute;
   bottom: 20px;
   z-index: 100;
   pointer-events: none;
 }
 
-.mcp-toggle-btn {
+.agent-toggle-btn {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -258,30 +258,30 @@ async function handleToggleMCP() {
   letter-spacing: 1px;
 }
 
-.mcp-toggle-btn.active {
+.agent-toggle-btn.active {
   background: rgba(34, 197, 94, 0.5);
   border-color: rgba(34, 197, 94, 0.6);
   color: #fff;
   box-shadow: 0 0 12px rgba(34, 197, 94, 0.3);
 }
 
-.mcp-toggle-btn:hover:not(:disabled) {
+.agent-toggle-btn:hover:not(:disabled) {
   background: rgba(59, 130, 246, 0.6);
   border-color: rgba(59, 130, 246, 0.5);
   color: #fff;
 }
 
-.mcp-toggle-btn.active:hover:not(:disabled) {
+.agent-toggle-btn.active:hover:not(:disabled) {
   background: rgba(239, 68, 68, 0.6);
   border-color: rgba(239, 68, 68, 0.5);
 }
 
-.mcp-toggle-btn:disabled {
+.agent-toggle-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
 
-.mcp-label {
+.agent-label {
   font-family: 'Courier New', monospace;
   letter-spacing: 2px;
 }

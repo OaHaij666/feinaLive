@@ -10,14 +10,13 @@
 - /pause 1|0 - 暂停/恢复播放: 1=暂停, 0=恢复
 - /rm        - 移除当前歌曲并跳到下一首
 - /add_music BV号 - 发送BV号给LLM精炼后加入预备歌单
-- /mcp 1|0   - 启动/停止 GameGraph 游戏AI
+- /agent 1|0 - 启动/停止 AgentRuntime
 - /help       - 显示所有指令及当前状态
 """
 
-import asyncio
 import logging
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
 from typing import Callable, Optional
 
@@ -39,7 +38,7 @@ class AdminState:
     is_hide_admin: bool = False
     volume: float = 1.0
     is_paused: bool = False
-    is_mcp_running: bool = False
+    is_agent_running: bool = False
     is_test_room_enabled: bool = False
 
 
@@ -52,7 +51,7 @@ class CommandResult:
 
 
 class AdminCommandHandler:
-    ADMIN_COMMANDS = ["sleep", "face", "voice", "hide", "sound", "next", "pause", "rm", "add_music", "mcp", "help"]
+    ADMIN_COMMANDS = ["sleep", "face", "voice", "hide", "sound", "next", "pause", "rm", "add_music", "agent", "help"]
     COMMAND_PATTERN = re.compile(r"^/(\w+)\s*(\S*)$")
 
     def __init__(self):
@@ -64,7 +63,7 @@ class AdminCommandHandler:
         self._pause_change_callbacks: list[Callable[[bool], None]] = []
         self._next_track_callbacks: list[Callable[[], None]] = []
         self._remove_track_callbacks: list[Callable[[], None]] = []
-        self._mcp_change_callbacks: list[Callable[[bool], None]] = []
+        self._agent_change_callbacks: list[Callable[[bool], None]] = []
 
     def register_face_mode_callback(self, callback: Callable[[FaceMode], None]):
         self._face_mode_callbacks.append(callback)
@@ -127,15 +126,15 @@ class AdminCommandHandler:
             except Exception as e:
                 logger.error(f"remove_track callback error: {e}")
 
-    def register_mcp_change_callback(self, callback: Callable[[bool], None]):
-        self._mcp_change_callbacks.append(callback)
+    def register_agent_change_callback(self, callback: Callable[[bool], None]):
+        self._agent_change_callbacks.append(callback)
 
-    def notify_mcp_change(self, enabled: bool):
-        for cb in self._mcp_change_callbacks:
+    def notify_agent_change(self, enabled: bool):
+        for cb in self._agent_change_callbacks:
             try:
                 cb(enabled)
             except Exception as e:
-                logger.error(f"mcp_change callback error: {e}")
+                logger.error(f"agent_change callback error: {e}")
 
     def is_admin(self, uid: int) -> bool:
         return uid == config.admin_uid
@@ -179,8 +178,8 @@ class AdminCommandHandler:
             return self._handle_rm()
         elif cmd == "add_music":
             return None
-        elif cmd == "mcp":
-            return self._handle_mcp(value)
+        elif cmd == "agent":
+            return self._handle_agent(value)
         elif cmd == "help":
             return self._handle_help()
         else:
@@ -212,8 +211,8 @@ class AdminCommandHandler:
             return self._handle_rm()
         elif cmd == "add_music":
             return await self._handle_add_music(value)
-        elif cmd == "mcp":
-            return await self._handle_mcp_async(value)
+        elif cmd == "agent":
+            return await self._handle_agent_async(value)
         elif cmd == "help":
             return self._handle_help()
         else:
@@ -399,8 +398,8 @@ class AdminCommandHandler:
                 message="无效的BV号，BV号应以BV开头",
                 command="/add_music"
             )
-        from apps.live.music.llm_verify import get_llm_verifier
         from apps.live.music.library import get_playlist_manager
+        from apps.live.music.llm_verify import get_llm_verifier
         verifier = get_llm_verifier()
         library = get_playlist_manager()
         logger.info(f"Admin command: /add_music {bvid} - 正在发送给LLM验证")
@@ -408,7 +407,7 @@ class AdminCommandHandler:
         if not result:
             return CommandResult(
                 success=False,
-                message=f"LLM验证失败，可能是视频时长不符合要求(需60秒-8分钟)或获取视频信息失败",
+                message="LLM验证失败，可能是视频时长不符合要求(需60秒-8分钟)或获取视频信息失败",
                 command="/add_music"
             )
         if not result.is_music:
@@ -437,33 +436,33 @@ class AdminCommandHandler:
             command="/add_music"
         )
 
-    def _handle_mcp(self, value: Optional[str]) -> CommandResult:
-        if not config.game_enabled:
+    def _handle_agent(self, value: Optional[str]) -> CommandResult:
+        if not config.agent_enabled:
             return CommandResult(
                 success=False,
-                message="游戏AI未启用，请在 config.yaml 中设置 game.enabled=true",
-                command="/mcp"
+                message="Agent 未启用，请在 config.yaml 中设置 agent.enabled=true",
+                command="/agent"
             )
         if value not in ["0", "1"]:
             return CommandResult(
                 success=False,
-                message="用法: /mcp 1(启动游戏AI) 或 /mcp 0(停止游戏AI)",
-                command="/mcp"
+                message="用法: /agent 1(启动) 或 /agent 0(停止)",
+                command="/agent"
             )
         enabled = value == "1"
-        self.notify_mcp_change(enabled)
-        self._state.is_mcp_running = enabled
+        self.notify_agent_change(enabled)
+        self._state.is_agent_running = enabled
         self.notify_state_change()
-        msg = "游戏AI已启动" if enabled else "游戏AI已停止"
+        msg = "Agent 已启动" if enabled else "Agent 已停止"
         return CommandResult(
             success=True,
             message=msg,
-            command="/mcp",
+            command="/agent",
             new_state=self.get_state_dict()
         )
 
-    async def _handle_mcp_async(self, value: Optional[str]) -> CommandResult:
-        return self._handle_mcp(value)
+    async def _handle_agent_async(self, value: Optional[str]) -> CommandResult:
+        return self._handle_agent(value)
 
     def set_test_room(self, enabled: bool):
         """由配置系统调用，非管理员指令"""
@@ -483,8 +482,8 @@ class AdminCommandHandler:
 /voice 0 - AI主播模式
 /hide 1 - 隐藏管理员弹幕
 /hide 0 - 显示管理员弹幕
-/mcp 1 - 启动游戏AI
-/mcp 0 - 停止游戏AI
+/agent 1 - 启动 AgentRuntime
+/agent 0 - 停止 AgentRuntime
 
 【当前状态】
 AI回复: {}
@@ -493,14 +492,14 @@ AI回复: {}
 管理员弹幕: {}
 音乐音量: {}/10
 播放状态: {}
-游戏AI: {}""".format(
+AgentRuntime: {}""".format(
             "已暂停" if state.is_sleeping else "正常",
             "鼠标追踪" if state.face_mode == FaceMode.MOUSE_TRACKING else "漫步",
             "接管模式" if state.is_voice_mode else "AI主播",
             "隐藏" if state.is_hide_admin else "显示",
             int(state.volume * 10),
             "已暂停" if state.is_paused else "播放中",
-            "运行中" if state.is_mcp_running else "已停止",
+            "运行中" if state.is_agent_running else "已停止",
         )
         return CommandResult(
             success=True,
@@ -520,7 +519,7 @@ AI回复: {}
             "is_hide_admin": self._state.is_hide_admin,
             "volume": self._state.volume,
             "is_paused": self._state.is_paused,
-            "is_mcp_running": self._state.is_mcp_running,
+            "is_agent_running": self._state.is_agent_running,
             "is_test_room_enabled": self._state.is_test_room_enabled,
         }
 

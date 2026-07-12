@@ -42,7 +42,7 @@ class HostRuntime:
         self._task: asyncio.Task[None] | None = None
         self._lifecycle_lock = asyncio.Lock()
         self._handlers: dict[str, MessageHandler] = {
-            "commentary_request": self._processor.handle_commentary,
+            "prepared_speech": self._processor.handle_prepared_speech,
             "danmaku": self._processor.handle_danmaku,
             "gift_thanks": self._processor.handle_gift,
         }

@@ -1,5 +1,5 @@
 <template>
-  <section class="specific-card">
+  <section class="specific-card" aria-label="杀戮尖塔场景配置">
     <div class="card-heading">
       <div><span>杀戮尖塔专属</span><h3>开局与记忆边界</h3></div>
       <span class="policy-badge">每局清空三层记忆</span>
@@ -11,7 +11,7 @@
       <option value="DEFECT">机器人</option>
       <option value="WATCHER">观者</option>
     </select>
-    <p>用于自动重开或 MCP 未明确指定角色的开局。杀戮尖塔 Profile 会在开局后采集初始牌组和遗物，并写入重要工作记忆。</p>
+    <p>用于自动重开或 MCP 未明确指定角色的开局。场景 Profile 会在开局后采集初始牌组和遗物，并写入重要工作记忆。</p>
   </section>
 </template>
 

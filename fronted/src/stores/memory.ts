@@ -18,7 +18,7 @@ import type {
 } from '@/types/memory'
 
 const API_BASE = '/ai/memory'
-const GAME_MEMORY_BASE = '/game/memory'
+const GAME_MEMORY_BASE = '/agent/memory'
 
 async function requestFrom<T>(base: string, path: string, options: RequestInit = {}): Promise<T> {
   const res = await fetch(`${base}${path}`, {

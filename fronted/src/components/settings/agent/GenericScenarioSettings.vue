@@ -1,7 +1,7 @@
 <template>
   <section class="specific-card">
     <div class="card-heading">
-      <div><span>通用适配器面板</span><h3>{{ definition?.display_name || '自定义游戏' }}</h3></div>
+      <div><span>通用场景面板</span><h3>{{ definition?.display_name || '自定义场景' }}</h3></div>
       <span class="policy-badge">无内置游戏规则</span>
     </div>
     <p class="intro">通用 Profile 只相信 MCP 工具描述和下列映射。可操作字段必须可靠，否则 Agent 会保持等待。</p>
@@ -22,9 +22,9 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { RegisteredGameDefinition } from '@/types/config'
+import type { RegisteredScenarioDefinition } from '@/types/config'
 
-const props = defineProps<{ definition: RegisteredGameDefinition | null }>()
+const props = defineProps<{ definition: RegisteredScenarioDefinition | null }>()
 const model = defineModel<Record<string, unknown>>({ required: true })
 const fields = computed(() => props.definition?.config_fields || [])
 

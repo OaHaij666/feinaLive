@@ -1,4 +1,4 @@
-"""游戏集成路由 - 手动控制 GameGraph 启停"""
+"""Agent runtime, scenario catalog, and scenario-memory API."""
 
 import logging
 from typing import Any, Literal
@@ -6,24 +6,31 @@ from typing import Any, Literal
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from apps.ai.game_manager import get_game_manager
-from apps.ai.mcp.games.registry import create_mcp_game, list_registered_games
+from apps.agent.manager import get_agent_manager
+from apps.agent.mutual_context import get_mutual_context
+from apps.agent.scenarios.registry import list_scenarios
 from apps.ai.memory.engine import get_memory_engine
 from apps.ai.memory.game_memory import GameMemoryPolicy
 from apps.config import config
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/game", tags=["game"])
+router = APIRouter(prefix="/agent", tags=["agent"])
 
 
-class GameStartRequest(BaseModel):
+class AgentStartRequest(BaseModel):
     mcp_url: str = ""
-    game_id: str = ""
-    game_config: dict[str, Any] = Field(default_factory=dict)
+    scenario_id: str = ""
+    scenario_config: dict[str, Any] = Field(default_factory=dict)
 
 
-class GameScopeRequest(BaseModel):
+class AgentEventRequest(BaseModel):
+    event_type: str = Field(min_length=1, max_length=100)
+    source: str = Field(default="external", min_length=1, max_length=100)
+    payload: dict[str, Any] = Field(default_factory=dict)
+
+
+class GameMemoryScopeRequest(BaseModel):
     game_id: str
 
 
@@ -57,89 +64,103 @@ class GameSessionCloseRequest(BaseModel):
 
 
 @router.get("/status")
-async def get_game_status():
-    manager = get_game_manager()
-    return manager.get_game_status()
+async def get_agent_status():
+    return await get_agent_manager().get_status()
 
 
 @router.get("/catalog")
-async def get_game_catalog():
-    return {"selected_game_id": config.game_id, "games": list_registered_games()}
+async def get_scenario_catalog():
+    return {
+        "selected_scenario_id": config.agent_scenario_id,
+        "scenarios": list_scenarios(),
+        "restart_required": get_agent_manager().needs_restart,
+    }
 
 
 @router.get("/health")
-async def check_mcp_health():
-    url = config.game_mcp_url
+async def check_agent_health():
+    manager = get_agent_manager()
     try:
-        adapter = create_mcp_game(
-            config.game_id,
-            mcp_url=url,
-            game_config=config.game_config,
-        )
-        healthy = await adapter.health_check()
+        healthy = await manager.health_check()
         return {
-            "mcp_url": url,
+            "mcp_url": manager.startup_config.get("mcp_url", ""),
             "healthy": healthy,
+            "restart_required": manager.needs_restart,
         }
     except Exception as e:
         return {
-            "mcp_url": url,
+            "mcp_url": manager.startup_config.get("mcp_url", ""),
             "healthy": False,
             "error": str(e),
         }
 
 
 @router.post("/start")
-async def start_game(request: GameStartRequest | None = None):
-    manager = get_game_manager()
+async def start_agent(request: AgentStartRequest | None = None):
+    manager = get_agent_manager()
 
     if manager.is_running:
-        return {"success": False, "message": "游戏已在运行中", "status": manager.get_game_status()}
+        return {
+            "success": False,
+            "message": "Agent 已在运行中",
+            "status": await manager.get_status(),
+        }
 
-    mcp_url = request.mcp_url if request and request.mcp_url else config.game_mcp_url
-
-    game_id = request.game_id if request and request.game_id else config.game_id
-    game_config = (
-        request.game_config
-        if request and request.game_config
-        else config.game_config
-    )
-    try:
-        adapter = create_mcp_game(
-            game_id,
-            mcp_url=mcp_url,
-            game_config=game_config,
-        )
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    healthy = await adapter.health_check()
+    startup = manager.startup_config
+    requested = {
+        "scenario_id": request.scenario_id if request and request.scenario_id else startup.get("scenario_id"),
+        "mcp_url": request.mcp_url if request and request.mcp_url else startup.get("mcp_url"),
+        "scenario_config": (
+            request.scenario_config
+            if request and request.scenario_config
+            else startup.get("scenario_config", {})
+        ),
+    }
+    if requested != startup or manager.needs_restart:
+        return {
+            "success": False,
+            "restart_required": True,
+            "message": "场景、MCP 与能力配置只在进程启动时绑定；请重启应用后生效",
+            "status": await manager.get_status(),
+        }
+    healthy = await manager.health_check()
     if not healthy:
         return {
             "success": False,
-            "message": f"MCP 服务不可用: {mcp_url}",
-            "status": manager.get_game_status(),
+            "message": f"启动场景能力不可用: {startup.get('mcp_url', '')}",
+            "status": await manager.get_status(),
         }
 
-    manager.configure_single_game(adapter)
     await manager.start()
-    return {"success": True, "message": "游戏集成已启动", "status": manager.get_game_status()}
+    return {"success": True, "message": "Agent 已启动", "status": await manager.get_status()}
 
 
 @router.post("/stop")
-async def stop_game():
-    manager = get_game_manager()
+async def stop_agent():
+    manager = get_agent_manager()
     if not manager.is_running:
-        return {"success": False, "message": "游戏未在运行"}
+        return {"success": False, "message": "Agent 未在运行"}
     await manager.stop()
-    return {"success": True, "message": "游戏集成已停止", "status": manager.get_game_status()}
+    return {"success": True, "message": "Agent 已停止", "status": await manager.get_status()}
+
+
+@router.post("/events")
+async def publish_agent_event(request: AgentEventRequest):
+    event = await get_agent_manager().publish_event(
+        request.event_type,
+        request.source,
+        request.payload,
+    )
+    return {
+        "accepted": True,
+        "event_id": event.event_id,
+        "created_at": event.created_at,
+    }
 
 
 @router.get("/context")
 async def get_shared_context():
-    from apps.ai.shared_context import get_shared_context
-
-    ctx = get_shared_context()
-    return await ctx.get_context_summary()
+    return {"mutual_context": await get_mutual_context().snapshot()}
 
 
 @router.get("/memory/scopes")
@@ -152,7 +173,7 @@ async def list_game_memory_scopes():
 
 
 @router.post("/memory/select")
-async def select_game_memory_scope(request: GameScopeRequest):
+async def select_game_memory_scope(request: GameMemoryScopeRequest):
     return await get_memory_engine().select_game(request.game_id)
 
 
@@ -224,14 +245,14 @@ async def close_game_memory_session(game_id: str, request: GameSessionCloseReque
 
 @router.post("/mute")
 async def mute_queue():
-    manager = get_game_manager()
+    manager = get_agent_manager()
     manager.mute()
     return {"success": True, "muted": True}
 
 
 @router.post("/unmute")
 async def unmute_queue():
-    manager = get_game_manager()
+    manager = get_agent_manager()
     manager.unmute()
     return {"success": True, "muted": False}
 

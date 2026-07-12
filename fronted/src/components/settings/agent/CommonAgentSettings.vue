@@ -2,15 +2,18 @@
   <div class="common-settings">
     <section class="settings-card connection-card">
       <div class="card-heading">
-        <div><span>通用配置</span><h3>运行与 MCP 连接</h3></div>
+        <div><span>通用配置</span><h3>运行与能力连接</h3></div>
         <label class="switch-label">
           <input v-model="config.enabled" type="checkbox" />
           <span>{{ config.enabled ? '允许启动' : '保持停用' }}</span>
         </label>
       </div>
-      <label class="field-label" for="game-mcp-url">MCP 服务地址</label>
-      <input id="game-mcp-url" v-model.trim="config.mcp_url" type="url" placeholder="http://127.0.0.1:8080" />
-      <p class="field-help">适配器通过该地址发现工具、读取状态并执行动作。</p>
+      <template v-if="usesMcp">
+        <label class="field-label" for="agent-mcp-url">MCP 服务地址</label>
+        <input id="agent-mcp-url" v-model.trim="config.mcp_url" type="url" placeholder="http://127.0.0.1:8080" />
+        <p class="field-help">MCP Capability 通过该地址发现工具、读取状态并执行动作。</p>
+      </template>
+      <p v-else class="field-help">当前场景由事件驱动，不装配 MCP Capability。</p>
     </section>
 
     <section class="settings-card">
@@ -35,15 +38,16 @@
         <label>长期知识积极度 <small>1 保守—5 积极</small><input v-model.number="config.memory_eagerness" type="number" min="1" max="5" /></label>
         <label>队列最大长度 <small>条</small><input v-model.number="config.queue_max_size" type="number" min="5" max="100" /></label>
         <label>主播历史 <small>条</small><input v-model.number="config.host_history_maxlen" type="number" min="10" max="200" /></label>
-        <label>游戏历史 <small>条</small><input v-model.number="config.game_history_maxlen" type="number" min="10" max="200" /></label>
+        <label>动作历史 <small>条</small><input v-model.number="config.action_history_maxlen" type="number" min="10" max="200" /></label>
       </div>
     </section>
   </div>
 </template>
 
 <script setup lang="ts">
-import type { GameConfig } from '@/types/config'
-const config = defineModel<GameConfig>({ required: true })
+import type { AgentConfig } from '@/types/config'
+defineProps<{ usesMcp: boolean }>()
+const config = defineModel<AgentConfig>({ required: true })
 </script>
 
 <style scoped>

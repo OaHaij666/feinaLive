@@ -31,7 +31,7 @@ class MemoryEngine:
 
         self._db_path = db_path
         self._config_dict = config_dict or {}
-        threshold = max(1, int(config.game_memory_threshold))
+        threshold = max(1, int(config.agent_memory_threshold))
         self._game_summary_batch_size = threshold
         self._fallback_session = SessionMemory(
             pending_maxlen=max(40, threshold + 8),
@@ -111,9 +111,9 @@ class MemoryEngine:
         from apps.config import config
 
         policy = GameMemoryPolicy(
-            summary_threshold=config.game_memory_threshold,
-            idle_summary_seconds=config.game_memory_idle_seconds,
-            context_max_chars=config.game_memory_context_max_chars,
+            summary_threshold=config.agent_memory_threshold,
+            idle_summary_seconds=config.agent_memory_idle_seconds,
+            context_max_chars=config.agent_memory_context_max_chars,
         )
         self._policies[game_id] = policy
         return policy
@@ -543,7 +543,7 @@ class MemoryEngine:
                     recalled_atoms, recalled_facts = [], []
                 from apps.config import config
 
-                eagerness = config.game_memory_eagerness
+                eagerness = config.agent_memory_eagerness
                 if eagerness <= 2:
                     durable_policy = "非常保守：仅输出已被强证据验证的跨局事实。"
                 elif eagerness >= 4:

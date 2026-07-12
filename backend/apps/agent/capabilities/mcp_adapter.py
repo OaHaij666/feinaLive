@@ -1,19 +1,19 @@
-"""唯一的 MCP 游戏适配器。
+"""MCP transport adapter for a scenario profile.
 
-网络、工具调用与生命周期入口集中在这里；游戏差异只存在于 GameProfile。
+网络与工具调用集中在这里；场景语义只存在于 ScenarioProfile。
 """
 
 from __future__ import annotations
 
 from typing import Any
 
+from apps.agent.scenarios.profile import ScenarioProfile, UnifiedAction, UnifiedGameState
 from apps.ai.mcp.client import MCPClient
-from apps.ai.mcp.games.base import GameProfile, UnifiedAction, UnifiedGameState
 from apps.ai.memory.game_memory import GameMemoryAPI, GameMemoryPolicy
 
 
-class MCPGameAdapter:
-    def __init__(self, client: MCPClient, profile: GameProfile):
+class MCPScenarioAdapter:
+    def __init__(self, client: MCPClient, profile: ScenarioProfile):
         self._client = client
         self._profile = profile
 

@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-import shutil
+import asyncio
+import json
+import sqlite3
 import time
 from pathlib import Path
 from typing import Any
@@ -63,6 +65,7 @@ class InjectPreviewRequest(BaseModel):
     target: str = "game"
     game_id: str = "slay_the_spire"
     user_id: str | None = None
+    query: str = ""
 
 
 @router.get("/stats")
@@ -246,7 +249,9 @@ async def get_session_memory():
 async def inject_preview(request: InjectPreviewRequest):
     engine = get_memory_engine()
     if request.target == "host":
-        text = await engine.inject_for_host(user_id=request.user_id)
+        text = await engine.inject_for_host(
+            user_id=request.user_id, query=request.query
+        )
     elif request.target == "game":
         await engine.ensure_graph(request.game_id)
         text = await engine.inject_for_game(game_id=request.game_id)
@@ -280,19 +285,57 @@ async def list_backups():
     return {"backups": items}
 
 
+@router.get("/vector/status")
+async def vector_status():
+    return await get_memory_engine().store.vector_status()
+
+
+@router.post("/vector/backfill")
+async def vector_backfill(batch_size: int = 50):
+    return await get_memory_engine().store.backfill_embeddings(
+        max(1, min(batch_size, 500))
+    )
+
+
+@router.post("/vector/rebuild")
+async def vector_rebuild(batch_size: int = 100):
+    store = get_memory_engine().store
+    await store.reset_vector_index()
+    return await store.backfill_embeddings(max(1, min(batch_size, 500)))
+
+
 @router.post("/backups")
 async def create_backup():
     db_path = _db_path()
     if not db_path.exists():
-        raise HTTPException(status_code=404, detail="memory.db 不存在")
+        raise HTTPException(status_code=404, detail="SQLite 数据库不存在")
     target_dir = _backup_dir() / time.strftime("%Y%m%d-%H%M%S")
     target_dir.mkdir(parents=True, exist_ok=False)
-    copied = []
-    for source in [db_path, Path(str(db_path) + "-wal"), Path(str(db_path) + "-shm")]:
-        if source.exists():
-            target = target_dir / source.name
-            shutil.copy2(source, target)
-            copied.append({"name": source.name, "size_bytes": target.stat().st_size})
+    target = target_dir / db_path.name
+
+    def _online_backup() -> None:
+        source_db = sqlite3.connect(str(db_path))
+        target_db = sqlite3.connect(str(target))
+        try:
+            source_db.backup(target_db)
+        finally:
+            target_db.close()
+            source_db.close()
+
+    await asyncio.to_thread(_online_backup)
+    vector = await get_memory_engine().store.vector_status()
+    manifest = {
+        "created_at": time.time(),
+        "database": db_path.name,
+        "vector_index": vector,
+        "vector_index_is_rebuildable": True,
+    }
+    manifest_path = target_dir / "manifest.json"
+    manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+    copied = [
+        {"name": target.name, "size_bytes": target.stat().st_size},
+        {"name": manifest_path.name, "size_bytes": manifest_path.stat().st_size},
+    ]
     return {"success": True, "backup": {"name": target_dir.name, "path": str(target_dir), "files": copied}}
 
 

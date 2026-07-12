@@ -4,19 +4,20 @@ from __future__ import annotations
 
 import json
 import logging
-import time
+from pathlib import Path
 from typing import Any
 
 from apps.ai.client import ChatMessage, ChatRequest, get_ai_client
 from apps.ai.embedding import EmbeddingClient
 from apps.ai.memory.atom import AtomType, MemoryAtom
 from apps.ai.memory.atom_store import AtomStore
+from apps.ai.memory.extractor import MemoryExtractor
 from apps.ai.memory.graph_builder import KnowledgeGraphBuilder
 from apps.ai.memory.graph_store import GameKnowledgeGraph
 from apps.ai.memory.injector import MemoryInjector
 from apps.ai.memory.lifecycle import AtomLifecycleManager
 from apps.ai.memory.session_memory import SessionMemory
-from apps.ai.memory.extractor import MemoryExtractor
+from apps.ai.memory.vector_store import ChromaVectorStore
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +29,17 @@ class MemoryEngine:
         self._db_path = db_path
         self._config_dict = config_dict or {}
         self._session = SessionMemory()
-        self._store = AtomStore(db_path)
+        from apps.config import config
+
+        configured_db = Path(config.app_db_path).resolve()
+        current_db = Path(db_path).resolve()
+        chroma_path = (
+            config.chroma_path
+            if current_db == configured_db
+            else str(current_db.parent / "chroma")
+        )
+        self._vector_store = ChromaVectorStore(chroma_path, config.chroma_collection)
+        self._store = AtomStore(db_path, vector_store=self._vector_store)
         self._embed_client = EmbeddingClient()
         self._embed_on_write = bool(
             self._config_dict.get("embed_on_write", True)
@@ -206,8 +217,10 @@ class MemoryEngine:
             graph=graph,
         )
 
-    async def inject_for_host(self, user_id: str | None = None) -> str:
-        return await self._injector.inject_for_host(user_id=user_id)
+    async def inject_for_host(
+        self, user_id: str | None = None, query: str = ""
+    ) -> str:
+        return await self._injector.inject_for_host(user_id=user_id, query=query)
 
     # === 知识图谱 ===
 

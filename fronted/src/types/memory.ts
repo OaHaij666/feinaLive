@@ -1,6 +1,6 @@
 export interface MemoryAtom {
   id: number
-  parent_memory_id: number
+  source_group_id: string | null
   atom_type: string
   content: string
   entities: string[]

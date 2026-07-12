@@ -3,6 +3,7 @@
 import asyncio
 import logging
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -33,8 +34,19 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Application starting up...")
+    from apps.storage.secrets import migrate_legacy_secrets
+
+    migrated_secrets = migrate_legacy_secrets(Path(__file__).parent / "config.yaml")
+    if migrated_secrets:
+        config._load()
+        logger.info("Migrated %s legacy storage/security config entries", migrated_secrets)
     from apps.ai.admin_commands import get_admin_handler
-    from apps.ai.memory import init_user_profiles, save_all_profiles
+    from apps.ai.memory import (
+        init_user_profiles,
+        save_all_profiles,
+        start_summary_scheduler,
+        stop_summary_scheduler,
+    )
     from apps.ai.memory.engine import init_memory_engine
     from apps.easyvtuber import get_easyvtuber_manager
     from apps.live.music.client import BilibiliMusicClient
@@ -53,6 +65,7 @@ async def lifespan(app: FastAPI):
 
     # 初始化记忆引擎 (长期记忆 + 知识图谱)
     await init_memory_engine()
+    start_summary_scheduler()
     logger.info("MemoryEngine initialized")
 
     easyvtuber_manager = get_easyvtuber_manager()
@@ -211,6 +224,7 @@ async def lifespan(app: FastAPI):
 
     logger.info("Application shutting down...")
     await get_room_session_manager().stop()
+    await stop_summary_scheduler()
     await save_all_profiles()
 
     # 关闭记忆引擎

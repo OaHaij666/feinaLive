@@ -9,10 +9,10 @@ from datetime import datetime
 from functools import reduce
 
 import httpx
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, select
 
 from apps.config import config
-from apps.db import UpVideo, get_db_session, init_db
+from apps.db import TrustedUploaderDB, UpVideo, get_db_session, init_db
 
 logger = logging.getLogger(__name__)
 
@@ -134,24 +134,36 @@ class UpVideoManager:
         if self._initialized:
             return
         await init_db()
+        async with get_db_session() as session:
+            existing = (await session.execute(select(TrustedUploaderDB))).scalars().first()
+            if existing is None:
+                for uploader in config.trusted_uploaders_seed:
+                    session.add(
+                        TrustedUploaderDB(
+                            uid=int(uploader["uid"]),
+                            name=str(uploader.get("name", "")),
+                            enabled=True,
+                        )
+                    )
+                await session.commit()
         self._initialized = True
         asyncio.create_task(self._auto_refresh())
         logger.info("UP视频管理器初始化完成（视频拉取在后台运行）")
 
     async def _auto_refresh(self):
-        for up in config.trusted_ups:
+        async with get_db_session() as session:
+            rows = (
+                await session.execute(
+                    select(TrustedUploaderDB).where(TrustedUploaderDB.enabled.is_(True))
+                )
+            ).scalars().all()
+        for row in rows:
+            up = {"uid": row.uid, "name": row.name}
             try:
                 logger.info(f"开始增量拉取 UP主 {up['name']} 的新视频")
                 await self._incremental_refresh(up)
             except Exception as e:
                 logger.error(f"刷新UP主视频失败 {up['name']}: {e}")
-
-    async def _get_last_fetch_time(self, up_uid: int) -> datetime | None:
-        async with get_db_session() as session:
-            result = await session.execute(
-                select(func.max(UpVideo.fetched_at)).where(UpVideo.up_uid == up_uid)
-            )
-            return result.scalar_one_or_none()
 
     async def _full_refresh(self, up: dict):
         vlist = await _fetch_videos(up["uid"])
@@ -188,7 +200,7 @@ class UpVideoManager:
 
             if rate_limited:
                 if first_page:
-                    logger.warning(f"第 1 页触发限流，跳过该UP主")
+                    logger.warning("第 1 页触发限流，跳过该UP主")
                     break
                 if max_retries > 0:
                     logger.warning(f"触发限流，等待 {retry_delay} 秒后重试 (剩余重试次数: {max_retries})")
@@ -197,7 +209,7 @@ class UpVideoManager:
                     retry_delay *= 1.5
                     continue
                 else:
-                    logger.warning(f"重试次数用尽，停止拉取")
+                    logger.warning("重试次数用尽，停止拉取")
                     break
 
             if not vlist:

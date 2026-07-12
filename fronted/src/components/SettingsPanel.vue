@@ -189,6 +189,22 @@
                   <label>向量维度 <span class="hint">(留空自动)</span></label>
                   <input type="number" v-model.number="cfg.embedding.dimensions" placeholder="1536" />
                 </div>
+                <div class="form-row-2">
+                  <div class="form-group">
+                    <label>用户知识图使用 Embedding</label>
+                    <select v-model="cfg.embedding.user_graph_enabled">
+                      <option :value="true">启用</option>
+                      <option :value="false">关闭（关键词兜底）</option>
+                    </select>
+                  </div>
+                  <div class="form-group">
+                    <label>游戏知识图使用 Embedding</label>
+                    <select v-model="cfg.embedding.game_graph_enabled">
+                      <option :value="true">启用</option>
+                      <option :value="false">关闭（关键词兜底）</option>
+                    </select>
+                  </div>
+                </div>
               </div>
 
               <!-- Tab: 语音 -->
@@ -390,13 +406,12 @@
                 </div>
                 <div class="section-title">公告</div>
                 <div class="form-group"><textarea v-model="cfg.announcement" rows="3" class="textarea-field" /></div>
-                <div class="section-title">视频采集</div>
-                <div class="form-row-2">
-                  <div class="form-group"><label>增量刷新天数</label><input type="number" v-model.number="cfg.up_videos.incremental_days" min="1" max="90" /></div>
-                  <div class="form-group"><label>全量刷新天数</label><input type="number" v-model.number="cfg.up_videos.full_refresh_days" min="1" max="365" /></div>
-                </div>
-                <div class="section-title">数据库</div>
-                <div class="form-group"><label>URL <span class="hint">(只读)</span></label><input type="text" :value="cfg.database.url" readonly class="readonly-field" /></div>
+                <div class="section-title">数据存储</div>
+                <div class="form-group"><label>SQLite <span class="hint">(重启后生效)</span></label><input type="text" v-model="cfg.storage.sqlite_path" /></div>
+                <div class="form-group"><label>ChromaDB 目录 <span class="hint">(重启后生效)</span></label><input type="text" v-model="cfg.storage.chroma_path" /></div>
+                <div class="form-group"><label>向量集合</label><input type="text" v-model="cfg.storage.chroma_collection" /></div>
+                <p class="section-desc">ChromaDB：{{ vectorStatus.available ? '可用' : '不可用' }} · {{ vectorStatus.vector_count }} 条向量</p>
+                <button type="button" class="small-btn" @click="backfillVectors">补齐一批向量</button>
               </div>
 
               <!-- Tab: 直播状况 -->
@@ -514,6 +529,7 @@ const activeTab = ref('host')
 const characters = ref<{ name: string }[]>([])
 const saveStatus = ref('')
 const saveStatusText = ref('')
+const vectorStatus = reactive({ available: false, vector_count: 0 })
 
 // ---- 配置（仅用于绑定 UI，不持久化存储） ----
 const cfg = reactive<FullConfig>({} as FullConfig)
@@ -528,16 +544,13 @@ function initCfgShape() {
     volcano: { appid: '', access_token: '', speaker_id: '' },
     game: { enabled: false, adapter: 'slay_the_spire', mcp_url: 'http://127.0.0.1:8080', api_url: '', api_key: '', model: '', temperature: 0.4, max_tokens: 500, disable_thinking: true, poll_interval: 1.0, memory_threshold: 30, min_step_interval: 3.0, step_jitter: 0.5, commentary_interval: 30.0, min_commentary_interval: 15.0, commentary_hold_timeout: 20.0, memory_eagerness: 3, default_character: 'IRONCLAD', queue_max_size: 20, host_history_maxlen: 50, game_history_maxlen: 30 },
     easyvtuber: { enabled: true, character: 'feina00', input: { type: 'debug', osf_address: '127.0.0.1:11573', mouse_range: '0,0,1920,1080' }, model: { version: 'v3', precision: 'half', separable: true, use_tensorrt: true, use_eyebrow: true }, performance: { frame_rate: 30, interpolation: 'x2', super_resolution: 'off', ram_cache: '2gb', vram_cache: '2gb' }, output: { websocket: { enabled: true, port: 8765, host: 'localhost' } } },
-    ai: { max_history_per_session: 16, summary_interval: 10, max_recent_messages: 16, poll_interval_seconds: 10.0 },
+    ai: { max_history_per_session: 16, summary_interval: 10, summary_idle_seconds: 300.0, summary_scan_interval_seconds: 60.0, max_recent_messages: 16, poll_interval_seconds: 10.0 },
     messaging: { danmaku_starvation_seconds: 30.0, danmaku_flood_threshold: 5, danmaku_flood_window: 20.0, gift_starvation_seconds: 60.0, gift_flood_threshold: 3, gift_flood_window: 30.0, gift_value_highest: 10000, gift_value_high: 5000, gift_value_normal: 1000, gift_value_low: 100, user_cooldown_seconds: 3.0, default_ttl_seconds: 30.0, rate_limit_commentary: 4.0, rate_limit_danmaku: 3.0, rate_limit_gift: 10.0 },
     music_config: { verify_min_duration: 60, verify_max_duration: 480, verify_max_comments: 3 },
-    database: { url: '' },
-    up_videos: { incremental_days: 5, full_refresh_days: 30 },
-    trusted_ups: [],
-    default_playlist: [],
+    storage: { sqlite_path: 'data/feinalive.db', chroma_path: 'data/chroma', chroma_collection: 'memory_atoms' },
     announcement: '',
     admin: { uid: 378810242, username: '' },
-    embedding: { provider: 'openai', model: '', api_url: '', api_key: '', dimensions: null },
+    embedding: { provider: 'openai', model: '', api_url: '', api_key: '', dimensions: null, user_graph_enabled: true, game_graph_enabled: true },
   }
   Object.assign(cfg, s)
 }
@@ -571,6 +584,21 @@ async function loadCharacters() {
     const data = await res.json()
     characters.value = data.characters || []
   } catch { /* ignore */ }
+}
+
+async function refreshVectorStatus() {
+  try {
+    const response = await fetch('/ai/memory/vector/status')
+    Object.assign(vectorStatus, await response.json())
+  } catch { vectorStatus.available = false }
+}
+
+async function backfillVectors() {
+  try {
+    await fetch('/ai/memory/vector/backfill?batch_size=50', { method: 'POST' })
+    await refreshVectorStatus()
+    useNotification().success('向量补齐任务已执行')
+  } catch { useNotification().error('向量补齐失败') }
 }
 
 async function openImagesFolder() {
@@ -702,6 +730,7 @@ watch(() => props.visible, (visible) => {
     loadConfig()
     loadCharacters()
     refreshStatus()
+    refreshVectorStatus()
   }
 })
 
@@ -709,6 +738,7 @@ onMounted(() => {
   window.addEventListener('keydown', handleKeydown)
   connectWebSocket()
   refreshStatus()
+  refreshVectorStatus()
 })
 
 onUnmounted(() => {

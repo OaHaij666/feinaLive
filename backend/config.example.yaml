@@ -4,8 +4,10 @@
 # ============================================================
 
 # 数据库配置
-database:
-  url: "mysql+aiomysql://root:password@localhost:3306/feinalive?charset=utf8mb4"
+storage:
+  sqlite_path: "data/feinalive.db"
+  chroma_path: "data/chroma"
+  chroma_collection: "memory_atoms"
 
 # B站直播配置
 bilibili:
@@ -16,17 +18,13 @@ bilibili:
 announcement: "AI主播是小笨蛋不要欺负她喵。输入 点歌 歌名 进行点歌。输入/clear 清除AI对你的记忆。"
 
 # 信任的UP主列表（用于视频采集，会自动采集这些UP主的视频）
-trusted_ups:
+trusted_uploaders_seed:
   - uid: 0
     name: "UP主名称"
 
 # UP主视频采集配置
-up_videos:
-  incremental_days: 5      # 增量刷新天数
-  full_refresh_days: 30    # 全量刷新天数
-
 # 默认播放列表（无点歌时播放）
-default_playlist:
+playlist_seed:
   - bvid: "BVxxxxxxxxx"
     title: "歌曲名称"
     artist: "歌手"
@@ -48,6 +46,13 @@ llm:
   auto_collect_min_views: 20000  # 自动采集视频的最小播放量
   disable_thinking: true         # 禁用模型的思考过程输出
 
+# 用户对话批量总结配置
+ai:
+  summary_interval: 10              # 累计多少轮已回复对话后立即总结
+  summary_idle_seconds: 300          # 未达到数量时，用户空闲多久后补总结
+  summary_scan_interval_seconds: 60  # 定时总结扫描间隔
+  max_recent_messages: 16            # 仅控制回复上下文，不限制待总结队列
+
 # Embedding 配置（LiteLLM embeddings）
 embedding:
   provider: "openai"
@@ -55,6 +60,8 @@ embedding:
   api_key: ""       # 留空则复用 llm.api_key
   model: ""         # 例如 text-embedding-3-small / doubao-embedding 等
   dimensions: null
+  user_graph_enabled: true  # 用户图入口是否使用向量召回；关闭后使用 FTS5/LIKE
+  game_graph_enabled: true  # 游戏图入口是否使用向量召回；关闭后使用 FTS5/LIKE
 
 # 主播大脑 LLM 配置
 # 用途：AI 主播对话、弹幕回复、风格化解说

@@ -24,7 +24,11 @@ from apps.ai.memory.user_profile import (
     init_user_profiles,
     save_all_profiles,
 )
-from apps.ai.memory.summarizer import trigger_summary_if_needed
+from apps.ai.memory.summarizer import (
+    start_summary_scheduler,
+    stop_summary_scheduler,
+    trigger_summary_if_needed,
+)
 
 __all__ = [
     "AtomType",
@@ -50,5 +54,7 @@ __all__ = [
     "clear_user_profile",
     "init_user_profiles",
     "save_all_profiles",
+    "start_summary_scheduler",
+    "stop_summary_scheduler",
     "trigger_summary_if_needed",
 ]

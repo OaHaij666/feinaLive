@@ -4,10 +4,8 @@ import asyncio
 import logging
 import time
 import uuid
-from pathlib import Path
 
 import httpx
-import yaml
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 
@@ -17,6 +15,7 @@ from apps.config import config
 from apps.live.danmaku_handler import DanmakuData as ProcessDanmakuData
 from apps.live.danmaku_handler import process_danmaku
 from apps.live.room_session import RoomSessionContext, get_room_session_manager
+from apps.storage.secrets import secret_store
 from core.websocket import manager
 
 logger = logging.getLogger(__name__)
@@ -71,15 +70,9 @@ async def verify_sessdata():
 
 @router.post("/sessdata/update")
 async def update_sessdata(request: SessdataUpdateRequest):
-    config_file = Path(__file__).parent.parent.parent.parent / "config.yaml"
     try:
-        with open(config_file, "r", encoding="utf-8") as handle:
-            config_data = yaml.safe_load(handle) or {}
-        config_data.setdefault("bilibili", {})["sessdata"] = request.sessdata
-        with open(config_file, "w", encoding="utf-8") as handle:
-            yaml.dump(config_data, handle, allow_unicode=True, default_flow_style=False)
-        config._data = config_data
-        return {"success": True}
+        success = secret_store.set("bilibili.sessdata", request.sessdata)
+        return {"success": success}
     except Exception as exc:
         logger.error("SESSDATA update failed: %s", exc)
         return {"success": False, "error": str(exc)}

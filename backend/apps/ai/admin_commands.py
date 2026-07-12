@@ -146,7 +146,7 @@ class AdminCommandHandler:
     def parse_command(self, content: str) -> tuple[Optional[str], Optional[str]]:
         match = self.COMMAND_PATTERN.match(content.strip())
         if match:
-            return match.group(1), match.group(2)
+            return match.group(1), match.group(2) or None
         return None, None
 
     def is_admin_command(self, content: str) -> bool:

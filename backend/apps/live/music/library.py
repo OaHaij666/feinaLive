@@ -26,7 +26,7 @@ class PlaylistManager:
             result = await session.execute(select(PlaylistItem))
             existing = result.scalars().all()
             if not existing:
-                default_items = config.default_playlist
+                default_items = config.playlist_seed
                 for item_data in default_items:
                     item = PlaylistItem(**item_data)
                     session.add(item)

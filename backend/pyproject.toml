@@ -18,7 +18,8 @@ dependencies = [
     "aiohttp>=3.9.0",
     "sqlalchemy[asyncio]>=2.0.0",
     "aiosqlite>=0.20.0",
-    "aiomysql>=0.2.0",
+    "chromadb>=1.0.0,<2.0.0",
+    "keyring>=25.0.0",
     "cryptography>=42.0.0",
     "langgraph>=0.2.0",
     "numpy",
@@ -48,6 +49,9 @@ dev = [
 tts-edge = [
     "edge-tts>=6.1.0",
 ]
+mysql-migration = [
+    "aiomysql>=0.2.0",
+]
 
 [tool.uv.sources]
 torch = { index = "pytorch-cu124" }
@@ -70,7 +74,14 @@ allow-direct-references = true
 packages = ["apps"]
 
 [tool.uv]
-dev-dependencies = [
+override-dependencies = [
+    # Chroma's bundled default embedding function needs the CPU wheel; feinaLive
+    # always supplies embeddings itself, while EasyVtuber needs the GPU wheel.
+    "onnxruntime; sys_platform == 'never'",
+]
+
+[dependency-groups]
+dev = [
     "pytest>=8.3.0",
     "pytest-asyncio>=0.25.0",
     "ruff>=0.9.0",

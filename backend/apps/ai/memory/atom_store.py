@@ -7,7 +7,7 @@
 from __future__ import annotations
 
 import json
-import math
+import logging
 import struct
 import time
 from contextlib import asynccontextmanager
@@ -15,9 +15,13 @@ from typing import Any, Protocol
 
 import aiosqlite
 
-from apps.ai.memory.atom import AtomStatus, AtomType, MemoryAtom, compute_ttl
-
-import logging
+from apps.ai.memory.atom import AtomStatus, AtomType, DecayType, MemoryAtom, compute_ttl
+from apps.ai.memory.graph_store import (
+    attach_atom_to_graph,
+    initialize_knowledge_schema,
+    recompute_edge_strengths,
+)
+from apps.ai.memory.vector_store import ChromaVectorStore
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +30,7 @@ class EmbedProvider(Protocol):
     """embedding 客户端协议 — AtomStore 不依赖具体实现"""
 
     async def embed_text(self, text: str) -> list[float]: ...
-    async def embed_batch(self, texts: list[str]) -> list[list[float]]: ...
+    async def embed_batch(self, texts: list[str]) -> Any: ...
     @property
     def available(self) -> bool: ...
 
@@ -36,18 +40,15 @@ class AtomStore:
 
     _SQLITE_BATCH_SIZE = 500
 
-    def __init__(self, db_path: str):
+    def __init__(self, db_path: str, vector_store: ChromaVectorStore | None = None):
         self.db_path = db_path
         self._db: aiosqlite.Connection | None = None
         self._embed_client: EmbedProvider | None = None
         self._embed_on_write: bool = True
-        self._embed_cache: dict[int, list[float]] = {}
-        self._embed_cache_time: float = 0.0
-        self._embed_cache_ttl: float = 120.0  # 缓存有效期，秒
+        self._vector_store = vector_store
 
     def set_embed_client(self, client: EmbedProvider | None) -> None:
         self._embed_client = client
-        self._embed_cache.clear()
 
     def set_embed_on_write(self, enabled: bool) -> None:
         self._embed_on_write = enabled
@@ -69,9 +70,15 @@ class AtomStore:
         yield db
 
     async def close(self):
+        if self._vector_store:
+            await self._vector_store.close()
         if self._db:
             await self._db.close()
             self._db = None
+
+    async def recompute_graph_strengths(self) -> int:
+        async with self._connect() as db:
+            return await recompute_edge_strengths(db)
 
     @staticmethod
     def _to_json(payload: Any) -> str:
@@ -98,7 +105,8 @@ class AtomStore:
                 """
                 CREATE TABLE IF NOT EXISTS memory_atoms (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    parent_memory_id INTEGER NOT NULL,
+                    node_id INTEGER UNIQUE REFERENCES knowledge_nodes(id) ON DELETE CASCADE,
+                    source_group_id TEXT,
                     atom_type TEXT NOT NULL DEFAULT 'unknown',
                     content TEXT NOT NULL,
                     entities TEXT DEFAULT '[]',
@@ -120,8 +128,21 @@ class AtomStore:
                 )
                 """
             )
+            columns = {
+                str(row[1])
+                for row in await (await db.execute("PRAGMA table_info(memory_atoms)")).fetchall()
+            }
+            if "parent_memory_id" in columns and "source_group_id" not in columns:
+                await db.execute(
+                    "ALTER TABLE memory_atoms RENAME COLUMN parent_memory_id TO source_group_id"
+                )
+                await db.execute("DROP INDEX IF EXISTS idx_atoms_parent")
+                columns.remove("parent_memory_id")
+                columns.add("source_group_id")
+            if "node_id" not in columns:
+                await db.execute("ALTER TABLE memory_atoms ADD COLUMN node_id INTEGER")
             await db.execute(
-                "CREATE INDEX IF NOT EXISTS idx_atoms_parent ON memory_atoms(parent_memory_id)"
+                "CREATE INDEX IF NOT EXISTS idx_atoms_source_group ON memory_atoms(source_group_id)"
             )
             await db.execute(
                 "CREATE INDEX IF NOT EXISTS idx_atoms_status ON memory_atoms(status)"
@@ -147,20 +168,35 @@ class AtomStore:
                 USING fts5(content, atom_id UNINDEXED, tokenize='unicode61')
                 """
             )
-            await db.execute(
-                """
-                CREATE TABLE IF NOT EXISTS memory_atom_embeddings (
-                    atom_id INTEGER PRIMARY KEY REFERENCES memory_atoms(id) ON DELETE CASCADE,
-                    embedding BLOB NOT NULL,
-                    dims INTEGER NOT NULL DEFAULT 0
-                )
-                """
-            )
-            await db.execute(
-                "CREATE INDEX IF NOT EXISTS idx_emb_atom ON memory_atom_embeddings(atom_id)"
-            )
+            await initialize_knowledge_schema(db)
             await db.commit()
+        await self._migrate_legacy_atom_nodes()
+        if self._vector_store:
+            try:
+                await self._vector_store.initialize()
+                await self._migrate_legacy_embeddings()
+            except Exception:
+                logger.exception("ChromaDB 初始化失败，向量检索暂时停用")
         logger.info(f"AtomStore 初始化完成: {self.db_path}")
+
+    async def _migrate_legacy_atom_nodes(self) -> int:
+        async with self._connect() as db:
+            rows = await (
+                await db.execute(
+                    "SELECT id FROM memory_atoms WHERE node_id IS NULL ORDER BY id"
+                )
+            ).fetchall()
+        migrated = 0
+        for row in rows:
+            atom_id = int(row[0])
+            atom = await self.get(atom_id)
+            if atom is None:
+                continue
+            async with self._connect() as db:
+                await attach_atom_to_graph(db, atom_id, atom)
+                await db.commit()
+            migrated += 1
+        return migrated
 
     async def insert(self, atom: MemoryAtom) -> int:
         self._prepare_atom_for_insert(atom)
@@ -214,7 +250,7 @@ class AtomStore:
         cursor = await db.execute(
             """
             INSERT INTO memory_atoms (
-                parent_memory_id, atom_type, content, entities,
+                source_group_id, atom_type, content, entities,
                 importance, confidence, created_at, last_accessed_at,
                 last_reinforced_at, event_time, ttl_days, expires_at,
                 status, reinforcement_count, decay_type,
@@ -222,7 +258,7 @@ class AtomStore:
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
-                atom.parent_memory_id,
+                atom.source_group_id,
                 atom.atom_type.value,
                 atom.content,
                 json.dumps(atom.entities, ensure_ascii=False),
@@ -245,6 +281,7 @@ class AtomStore:
         )
         atom_id = int(cursor.lastrowid)
         atom.atom_id = atom_id
+        await attach_atom_to_graph(db, atom_id, atom)
         await db.execute(
             "INSERT INTO memory_atoms_fts(atom_id, content) VALUES (?, ?)",
             (atom_id, atom.content),
@@ -258,7 +295,22 @@ class AtomStore:
                 "SELECT * FROM memory_atoms WHERE id = ?", (atom_id,)
             )
             row = await cursor.fetchone()
-        return self._row_to_atom(row) if row else None
+            return self._row_to_atom(row) if row else None
+
+    async def source_group_contents(
+        self, user_id: str, source_group_id: str
+    ) -> set[str]:
+        """Return already committed contents for an idempotent summary batch."""
+
+        async with self._connect() as db:
+            rows = await (
+                await db.execute(
+                    "SELECT content FROM memory_atoms "
+                    "WHERE user_id=? AND source_group_id=?",
+                    (user_id, source_group_id),
+                )
+            ).fetchall()
+        return {str(row[0]) for row in rows}
 
     async def list_atoms(
         self,
@@ -468,7 +520,21 @@ class AtomStore:
                     (atom_id, str(fields["content"])),
                 )
             await db.commit()
-        return await self.get(atom_id)
+        atom = await self.get(atom_id)
+        if atom is not None:
+            async with self._connect() as db:
+                await attach_atom_to_graph(db, atom_id, atom)
+                await db.commit()
+            if self._vector_store and self._vector_store.available:
+                if "content" in updates:
+                    await self._vector_store.delete([atom_id])
+                    if self.has_embed:
+                        await self._embed_atom(atom_id, atom.content)
+                else:
+                    await self._vector_store.update_metadata(
+                        atom_id, self._vector_metadata(atom)
+                    )
+        return atom
 
     async def batch_update_status(self, atom_ids: list[int], status: AtomStatus) -> int:
         if not atom_ids:
@@ -479,8 +545,20 @@ class AtomStore:
                 f"UPDATE memory_atoms SET status = ? WHERE id IN ({placeholders})",
                 (status.value, *atom_ids),
             )
+            await db.execute(
+                f"UPDATE knowledge_nodes SET status=? WHERE id IN (SELECT node_id FROM memory_atoms WHERE id IN ({placeholders}))",
+                (status.value, *atom_ids),
+            )
             await db.commit()
-            return int(cursor.rowcount or 0)
+            updated = int(cursor.rowcount or 0)
+        if self._vector_store and self._vector_store.available:
+            for atom_id in atom_ids:
+                atom = await self.get(atom_id)
+                if atom:
+                    await self._vector_store.update_metadata(
+                        atom_id, self._vector_metadata(atom)
+                    )
+        return updated
 
     async def batch_update_fields(self, atom_ids: list[int], fields: dict[str, Any]) -> int:
         if not atom_ids or not fields:
@@ -492,6 +570,33 @@ class AtomStore:
                 updated += 1
         return updated
 
+    async def delete_user_memories(self, user_id: str) -> int:
+        """Privacy erase: atoms, graph nodes/edges/evidence and vector index."""
+        async with self._connect() as db:
+            rows = await (
+                await db.execute(
+                    "SELECT id FROM memory_atoms WHERE user_id=?", (user_id,)
+                )
+            ).fetchall()
+            atom_ids = [int(row[0]) for row in rows]
+            if atom_ids:
+                placeholders = ",".join("?" * len(atom_ids))
+                await db.execute(
+                    f"DELETE FROM memory_atoms_fts WHERE atom_id IN ({placeholders})",
+                    atom_ids,
+                )
+                await db.execute(
+                    f"DELETE FROM memory_atoms WHERE id IN ({placeholders})", atom_ids
+                )
+            await db.execute(
+                "DELETE FROM knowledge_nodes WHERE owner_type='user' AND owner_id=?",
+                (user_id,),
+            )
+            await db.commit()
+        if self._vector_store and self._vector_store.available:
+            await self._vector_store.delete(atom_ids)
+        return len(atom_ids)
+
     async def search_fts(
         self,
         query: str,
@@ -501,6 +606,7 @@ class AtomStore:
         atom_types: list[AtomType] | None = None,
         session_id: str | None = None,
         include_expired: bool = False,
+        use_vector: bool = True,
     ) -> list[MemoryAtom]:
         """混合检索：FTS5 + 向量相似度（embedding 可用时），否则退化到纯 FTS5"""
         filters = ["ma.status = 'active'"] if not include_expired else []
@@ -576,23 +682,27 @@ class AtomStore:
                             bm25_by_id[int(row["id"])] = float(row["bm25_score"])
 
             # ---- 2. 向量检索（如可用）----
-            if self.has_embed and query and query.strip():
+            if (
+                use_vector
+                and self.has_embed
+                and self._vector_store
+                and self._vector_store.available
+                and query
+                and query.strip()
+            ):
                 try:
                     query_vec = await self._embed_client.embed_text(query)
                     if query_vec:
-                        await self._load_embedding_cache()
-                        # 查询过滤条件匹配的候选 atom ID
-                        cursor = await db.execute(
-                            f"SELECT id FROM memory_atoms ma WHERE 1=1 {where_clause}",
-                            params,
+                        vector_by_id = await self._vector_store.query(
+                            query_vec,
+                            limit * 2,
+                            game_id=game_id,
+                            user_id=user_id,
+                            session_id=session_id,
+                            atom_types=[item.value for item in atom_types] if atom_types else None,
+                            include_inactive=include_expired,
                         )
-                        candidate_set = {int(r[0]) for r in await cursor.fetchall()}
-                        for atom_id, vec in self._embed_cache.items():
-                            if atom_id not in candidate_set:
-                                continue
-                            sim = self._cosine_similarity(query_vec, vec)
-                            if sim > 0.15:
-                                vector_by_id[atom_id] = sim
+                        # 查询过滤条件匹配的候选 atom ID
                 except Exception as e:
                     logger.debug(f"向量检索失败，退化到纯 FTS5: {e}")
 
@@ -609,7 +719,12 @@ class AtomStore:
 
             for atom_id in all_ids:
                 bm25_raw = bm25_by_id.get(atom_id, 0.0)
-                bm25_norm = (bm25_max - bm25_raw) / bm25_range if bm25_by_id else 0.5
+                if len(bm25_by_id) == 1 and atom_id in bm25_by_id:
+                    bm25_norm = 1.0
+                elif bm25_by_id and atom_id in bm25_by_id:
+                    bm25_norm = (bm25_max - bm25_raw) / bm25_range
+                else:
+                    bm25_norm = 0.0
                 vec_score = vector_by_id.get(atom_id, 0.0)
                 if vector_by_id:
                     merged[atom_id] = alpha * vec_score + (1.0 - alpha) * bm25_norm
@@ -621,8 +736,8 @@ class AtomStore:
                 sorted_ids = sorted(merged.keys(), key=lambda x: merged[x], reverse=True)[:limit * 2]
                 placeholders = ",".join("?" * len(sorted_ids))
                 cursor = await db.execute(
-                    f"SELECT ma.* FROM memory_atoms ma WHERE ma.id IN ({placeholders})",
-                    sorted_ids,
+                    f"SELECT ma.* FROM memory_atoms ma WHERE ma.id IN ({placeholders}) {where_clause}",
+                    (*sorted_ids, *params),
                 )
                 rows = await cursor.fetchall()
             elif query and query.strip():
@@ -683,7 +798,8 @@ class AtomStore:
             return
         try:
             client = self._embed_client
-            embeddings = await client.embed_batch(contents)
+            result = await client.embed_batch(contents)
+            embeddings = getattr(result, "embeddings", result)
             if not embeddings:
                 return
             for atom_id, vec in zip(atom_ids, embeddings):
@@ -693,76 +809,105 @@ class AtomStore:
             logger.debug(f"批量 Embedding 生成失败: {e}")
 
     async def _store_embedding(self, atom_id: int, embedding: list[float]) -> None:
-        blob = self._pack_embedding(embedding)
-        async with self._connect() as db:
-            await db.execute(
-                """
-                INSERT OR REPLACE INTO memory_atom_embeddings (atom_id, embedding, dims)
-                VALUES (?, ?, ?)
-                """,
-                (atom_id, blob, len(embedding)),
-            )
-            await db.commit()
-        # 更新内存缓存
-        self._embed_cache[atom_id] = embedding
-
-    async def _load_embedding_cache(self) -> None:
-        """加载所有活跃原子的 embedding 到内存缓存（带 TTL）"""
-        now = time.time()
-        if self._embed_cache and (now - self._embed_cache_time) < self._embed_cache_ttl:
+        if not self._vector_store or not self._vector_store.available:
             return
-        async with self._connect() as db:
-            cursor = await db.execute(
-                """
-                SELECT me.atom_id, me.embedding
-                FROM memory_atom_embeddings me
-                JOIN memory_atoms ma ON ma.id = me.atom_id
-                WHERE ma.status = 'active'
-                """
-            )
-            rows = await cursor.fetchall()
-        self._embed_cache = {int(r[0]): self._unpack_embedding(r[1]) for r in rows}
-        self._embed_cache_time = now
-
-    async def backfill_embeddings(self, batch_size: int = 50) -> dict[str, int]:
-        """为没有 embedding 的活跃原子批量生成向量"""
-        if not self.has_embed:
-            return {"skipped": 0, "success": 0, "failed": 0}
-        async with self._connect() as db:
-            cursor = await db.execute(
-                """
-                SELECT ma.id, ma.content FROM memory_atoms ma
-                WHERE ma.status = 'active'
-                AND ma.id NOT IN (SELECT atom_id FROM memory_atom_embeddings)
-                LIMIT ?
-                """,
-                (batch_size,),
-            )
-            rows = await cursor.fetchall()
-        if not rows:
-            return {"skipped": 0, "success": 0, "failed": 0}
-
-        ids = [int(r[0]) for r in rows]
-        contents = [str(r[1]) for r in rows]
-        await self._embed_atoms_batch(ids, contents)
-        return {"skipped": 0, "success": len(ids), "failed": 0}
+        atom = await self.get(atom_id)
+        if atom is None:
+            return
+        await self._vector_store.upsert(
+            atom_id, embedding, atom.content, self._vector_metadata(atom)
+        )
 
     @staticmethod
-    def _pack_embedding(embedding: list[float]) -> bytes:
-        return struct.pack(f"<{len(embedding)}f", *embedding)
+    def _vector_metadata(atom: MemoryAtom) -> dict[str, Any]:
+        return {
+            "atom_id": atom.atom_id,
+            "node_id": int(atom.metadata.get("node_id", 0) or 0),
+            "atom_type": atom.atom_type.value,
+            "status": atom.status.value,
+            "game_id": atom.game_id,
+            "user_id": atom.user_id,
+            "session_id": atom.session_id,
+        }
+
+    async def _migrate_legacy_embeddings(self) -> int:
+        if not self._vector_store or not self._vector_store.available:
+            return 0
+        async with self._connect() as db:
+            exists = await (
+                await db.execute(
+                    "SELECT 1 FROM sqlite_master WHERE type='table' AND name='memory_atom_embeddings'"
+                )
+            ).fetchone()
+            if not exists:
+                return 0
+            rows = await (
+                await db.execute(
+                    "SELECT atom_id,embedding FROM memory_atom_embeddings ORDER BY atom_id"
+                )
+            ).fetchall()
+        migrated = 0
+        for atom_id, blob in rows:
+            atom = await self.get(int(atom_id))
+            if atom is None:
+                continue
+            await self._vector_store.upsert(
+                int(atom_id), self._unpack_embedding(blob), atom.content, self._vector_metadata(atom)
+            )
+            migrated += 1
+        async with self._connect() as db:
+            await db.execute("DROP INDEX IF EXISTS idx_emb_atom")
+            await db.execute("DROP TABLE memory_atom_embeddings")
+            await db.commit()
+        return migrated
+
+    async def vector_status(self) -> dict[str, Any]:
+        if not self._vector_store:
+            return {"engine": "chromadb", "available": False, "vector_count": 0}
+        return await self._vector_store.status()
+
+    async def reconcile_vector_metadata(self) -> int:
+        if not self._vector_store or not self._vector_store.available:
+            return 0
+        existing = await self._vector_store.existing_ids()
+        synced = 0
+        for atom_id in existing:
+            atom = await self.get(atom_id)
+            if atom is None:
+                await self._vector_store.delete([atom_id])
+            else:
+                await self._vector_store.update_metadata(
+                    atom_id, self._vector_metadata(atom)
+                )
+            synced += 1
+        return synced
+
+    async def reset_vector_index(self) -> None:
+        if self._vector_store and self._vector_store.available:
+            await self._vector_store.reset()
+
+    async def backfill_embeddings(self, batch_size: int = 50) -> dict[str, int]:
+        if not self.has_embed or not self._vector_store or not self._vector_store.available:
+            return {"skipped": 0, "success": 0, "failed": 0}
+        existing = await self._vector_store.existing_ids()
+        async with self._connect() as db:
+            rows = await (
+                await db.execute(
+                    "SELECT id,content FROM memory_atoms WHERE status='active' ORDER BY id LIMIT ?",
+                    (max(batch_size * 4, batch_size),),
+                )
+            ).fetchall()
+        missing = [(int(row[0]), str(row[1])) for row in rows if int(row[0]) not in existing][:batch_size]
+        if not missing:
+            return {"skipped": len(rows), "success": 0, "failed": 0}
+        await self._embed_atoms_batch(
+            [item[0] for item in missing], [item[1] for item in missing]
+        )
+        return {"skipped": len(rows) - len(missing), "success": len(missing), "failed": 0}
 
     @staticmethod
     def _unpack_embedding(blob: bytes) -> list[float]:
         return list(struct.unpack(f"<{len(blob) // 4}f", blob))
-
-    @staticmethod
-    def _cosine_similarity(v1: list[float], v2: list[float]) -> float:
-        dot = sum(a * b for a, b in zip(v1, v2))
-        norm1 = math.sqrt(sum(a * a for a in v1))
-        norm2 = math.sqrt(sum(b * b for b in v2))
-        if norm1 == 0.0 or norm2 == 0.0:
-            return 0.0
-        return dot / (norm1 * norm2)
 
     # ---- 生命周期 ----
 
@@ -824,7 +969,10 @@ class AtomStore:
         async with self._connect() as db:
             cursor = await db.execute(
                 "UPDATE memory_atoms SET status = ? WHERE status = 'active' AND expires_at < ?",
-                (AtomStatus.EXPIRED.value, now),
+                (AtomStatus.DORMANT.value, now),
+            )
+            await db.execute(
+                "UPDATE knowledge_nodes SET status='dormant' WHERE id IN (SELECT node_id FROM memory_atoms WHERE status='dormant')"
             )
             await db.commit()
             return cursor.rowcount
@@ -833,7 +981,7 @@ class AtomStore:
         cutoff = time.time() - older_than_days * 86400.0
         async with self._connect() as db:
             cursor = await db.execute(
-                "SELECT id FROM memory_atoms WHERE status = 'expired' AND expires_at < ?",
+                "SELECT id FROM memory_atoms WHERE status IN ('expired','dormant') AND expires_at < ?",
                 (cutoff,),
             )
             rows = await cursor.fetchall()
@@ -846,7 +994,11 @@ class AtomStore:
                 )
                 await db.execute(
                     f"UPDATE memory_atoms SET status = ? WHERE id IN ({placeholders})",
-                    (AtomStatus.FORGOTTEN.value, *atom_ids),
+                    (AtomStatus.ARCHIVED.value, *atom_ids),
+                )
+                await db.execute(
+                    f"UPDATE knowledge_nodes SET status='archived' WHERE id IN (SELECT node_id FROM memory_atoms WHERE id IN ({placeholders}))",
+                    atom_ids,
                 )
                 await db.commit()
             return len(atom_ids)
@@ -855,7 +1007,7 @@ class AtomStore:
         cutoff = time.time() - older_than_days * 86400.0
         async with self._connect() as db:
             cursor = await db.execute(
-                "SELECT id FROM memory_atoms WHERE status = 'forgotten' AND expires_at < ?",
+                "SELECT id FROM memory_atoms WHERE status IN ('forgotten','archived') AND expires_at < ?",
                 (cutoff,),
             )
             rows = await cursor.fetchall()
@@ -867,6 +1019,10 @@ class AtomStore:
                     atom_ids,
                 )
                 await db.execute(
+                    f"DELETE FROM knowledge_nodes WHERE id IN (SELECT node_id FROM memory_atoms WHERE id IN ({placeholders}))",
+                    atom_ids,
+                )
+                await db.execute(
                     f"DELETE FROM memory_atoms WHERE id IN ({placeholders})",
                     atom_ids,
                 )
@@ -874,9 +1030,12 @@ class AtomStore:
             return len(atom_ids)
 
     def _row_to_atom(self, row: aiosqlite.Row) -> MemoryAtom:
+        metadata = self._from_json(row["metadata"])
+        if "node_id" in row.keys() and row["node_id"] is not None:
+            metadata["node_id"] = int(row["node_id"])
         return MemoryAtom(
             atom_id=int(row["id"]),
-            parent_memory_id=int(row["parent_memory_id"]),
+            source_group_id=str(row["source_group_id"]) if row["source_group_id"] else None,
             atom_type=AtomType(row["atom_type"]),
             content=str(row["content"]),
             entities=json.loads(row["entities"]) if row["entities"] else [],
@@ -894,14 +1053,14 @@ class AtomStore:
             game_id=str(row["game_id"]) if row["game_id"] else None,
             user_id=str(row["user_id"]) if row["user_id"] else None,
             session_id=str(row["session_id"]) if row["session_id"] else None,
-            metadata=self._from_json(row["metadata"]),
+            metadata=metadata,
         )
 
     @staticmethod
     def _atom_to_dict(atom: MemoryAtom) -> dict[str, Any]:
         return {
             "id": atom.atom_id,
-            "parent_memory_id": atom.parent_memory_id,
+            "source_group_id": atom.source_group_id,
             "atom_type": atom.atom_type.value,
             "content": atom.content,
             "entities": atom.entities,
@@ -923,8 +1082,7 @@ class AtomStore:
         }
 
 
-def _parse_decay(value: str) -> "DecayType":
-    from apps.ai.memory.atom import DecayType
+def _parse_decay(value: str) -> DecayType:
     try:
         return DecayType(value)
     except ValueError:

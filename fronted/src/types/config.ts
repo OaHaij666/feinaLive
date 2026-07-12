@@ -112,6 +112,8 @@ export interface EasyVtuberConfig {
 export interface AIConfig {
   max_history_per_session: number
   summary_interval: number
+  summary_idle_seconds: number
+  summary_scan_interval_seconds: number
   max_recent_messages: number
   poll_interval_seconds: number
 }
@@ -140,13 +142,10 @@ export interface MusicConfigModel {
   verify_max_comments: number
 }
 
-export interface DatabaseConfig {
-  url: string
-}
-
-export interface UpVideosConfig {
-  incremental_days: number
-  full_refresh_days: number
+export interface StorageConfig {
+  sqlite_path: string
+  chroma_path: string
+  chroma_collection: string
 }
 
 export interface AdminConfig {
@@ -160,6 +159,8 @@ export interface EmbeddingConfig {
   api_url: string
   api_key: string
   dimensions: number | null
+  user_graph_enabled: boolean
+  game_graph_enabled: boolean
 }
 
 export interface FullConfig {
@@ -173,10 +174,7 @@ export interface FullConfig {
   ai: AIConfig
   messaging: MessagingConfig
   music_config: MusicConfigModel
-  database: DatabaseConfig
-  up_videos: UpVideosConfig
-  trusted_ups: Array<{ uid: number | string; name: string; bvid?: string }>
-  default_playlist: Array<{ bvid: string; title: string; artist?: string }>
+  storage: StorageConfig
   announcement: string
   admin: AdminConfig
   embedding: EmbeddingConfig

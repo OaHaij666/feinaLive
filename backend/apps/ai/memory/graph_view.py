@@ -24,20 +24,23 @@ class MemoryGraphViewBuilder:
         if game_id:
             filters.append("game_id = ?")
             params.append(game_id)
-        where_clause = f"WHERE {' AND '.join(filters)}" if filters else ""
-
         try:
             async with aiosqlite.connect(self._db_path) as db:
                 node_row = await (
                     await db.execute(
-                        f"SELECT COUNT(*) FROM graph_nodes {where_clause}",
-                        params,
+                        "SELECT COUNT(*) FROM knowledge_nodes WHERE owner_type='game'"
+                        + (" AND owner_id=?" if game_id else ""),
+                        [game_id] if game_id else [],
                     )
                 ).fetchone()
                 edge_row = await (
                     await db.execute(
-                        f"SELECT COUNT(*) FROM graph_edges {where_clause}",
-                        params,
+                        """
+                        SELECT COUNT(*) FROM knowledge_edges e
+                        JOIN knowledge_nodes n ON n.id=e.source_node_id
+                        WHERE n.owner_type='game'
+                        """ + (" AND n.owner_id=?" if game_id else ""),
+                        [game_id] if game_id else [],
                     )
                 ).fetchone()
         except Exception:
@@ -70,6 +73,7 @@ class MemoryGraphViewBuilder:
         )
         game = await self._load_game_graph(
             game_id=game_id,
+            user_id=user_id,
             query="",
             limit_nodes=limit_game_nodes,
             limit_edges=limit_edges,
@@ -119,6 +123,7 @@ class MemoryGraphViewBuilder:
 
         game = await self._load_game_graph(
             game_id=game_id,
+            user_id=user_id,
             query=query,
             limit_nodes=limit_game_nodes,
             limit_edges=limit_edges,
@@ -142,6 +147,7 @@ class MemoryGraphViewBuilder:
         self,
         *,
         game_id: str | None,
+        user_id: str | None,
         query: str,
         limit_nodes: int,
         limit_edges: int,
@@ -149,23 +155,31 @@ class MemoryGraphViewBuilder:
         filters = []
         params: list[Any] = []
         if game_id:
-            filters.append("game_id = ?")
+            filters.append("owner_type = 'game'")
+            filters.append("owner_id = ?")
             params.append(game_id)
+        elif user_id:
+            filters.append("owner_type = 'user'")
+            filters.append("owner_id = ?")
+            params.append(user_id)
+        else:
+            filters.append("node_type != 'memory_atom'")
         if query:
-            filters.append("(name LIKE ? OR properties LIKE ?)")
+            filters.append("(label LIKE ? OR properties LIKE ?)")
             like = f"%{query}%"
             params.extend([like, like])
-        where_clause = f"WHERE {' AND '.join(filters)}" if filters else ""
-
         try:
             async with aiosqlite.connect(self._db_path) as db:
                 db.row_factory = aiosqlite.Row
                 node_rows = await (
                     await db.execute(
                         f"""
-                        SELECT *
-                        FROM graph_nodes
-                        {where_clause}
+                        SELECT id, owner_type, owner_id AS game_id, node_type,
+                               label AS name, canonical_key AS canonical_name,
+                               properties, created_at, updated_at
+                        FROM knowledge_nodes
+                        WHERE node_type!='memory_atom'
+                        {('AND ' + ' AND '.join(filters)) if filters else ''}
                         ORDER BY updated_at DESC, id DESC
                         LIMIT ?
                         """,
@@ -178,20 +192,23 @@ class MemoryGraphViewBuilder:
 
                 node_placeholders = ",".join("?" * len(node_ids))
                 edge_filters = [
-                    f"source_id IN ({node_placeholders})",
-                    f"target_id IN ({node_placeholders})",
+                    f"source_node_id IN ({node_placeholders})",
+                    f"target_node_id IN ({node_placeholders})",
                 ]
                 edge_params: list[Any] = [*node_ids, *node_ids]
-                if game_id:
-                    edge_filters.append("game_id = ?")
-                    edge_params.append(game_id)
                 edge_rows = await (
                     await db.execute(
                         f"""
-                        SELECT *
-                        FROM graph_edges
-                        WHERE {' AND '.join(edge_filters)}
-                        ORDER BY confidence DESC, id DESC
+                        SELECT e.id, owner.owner_type, owner.owner_id AS game_id,
+                               e.source_node_id AS source_id,
+                               e.target_node_id AS target_id, e.relation,
+                               e.effective_strength AS confidence,
+                               '' AS evidence,
+                               e.first_observed_at AS created_at
+                        FROM knowledge_edges e
+                        JOIN knowledge_nodes owner ON owner.id=e.source_node_id
+                        WHERE {' AND '.join('e.' + item for item in edge_filters)}
+                        ORDER BY e.effective_strength DESC, e.id DESC
                         LIMIT ?
                         """,
                         (*edge_params, max(1, min(limit_edges, 500))),
@@ -223,12 +240,13 @@ class MemoryGraphViewBuilder:
         game_canonical_to_id: dict[str, str] = {}
 
         for node in game_nodes:
-            node_id = f"game:{node['id']}"
+            prefix = "game" if node.get("owner_type") == "game" else "usergraph"
+            node_id = f"{prefix}:{node['id']}"
             canonical = self._canonicalize(node["name"])
             game_canonical_to_id[canonical] = node_id
             nodes[node_id] = {
                 "id": node_id,
-                "type": f"game_{node['node_type']}",
+                "type": f"knowledge_{node['node_type']}",
                 "label": node["name"],
                 "weight": 2.0,
                 "degree": 0,
@@ -237,8 +255,9 @@ class MemoryGraphViewBuilder:
 
         for edge in game_edges:
             edge_id = f"gameedge:{edge['id']}"
-            source = f"game:{edge['source_id']}"
-            target = f"game:{edge['target_id']}"
+            prefix = "game" if edge.get("owner_type") == "game" else "usergraph"
+            source = f"{prefix}:{edge['source_id']}"
+            target = f"{prefix}:{edge['target_id']}"
             if source not in nodes or target not in nodes:
                 continue
             edges[edge_id] = {
@@ -364,6 +383,7 @@ class MemoryGraphViewBuilder:
     def _game_node_to_dict(row: aiosqlite.Row) -> dict[str, Any]:
         return {
             "id": int(row["id"]),
+            "owner_type": row["owner_type"],
             "game_id": row["game_id"],
             "node_type": row["node_type"],
             "name": row["name"],
@@ -377,6 +397,7 @@ class MemoryGraphViewBuilder:
     def _game_edge_to_dict(row: aiosqlite.Row) -> dict[str, Any]:
         return {
             "id": int(row["id"]),
+            "owner_type": row["owner_type"],
             "game_id": row["game_id"],
             "source_id": int(row["source_id"]),
             "target_id": int(row["target_id"]),

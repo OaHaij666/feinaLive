@@ -16,12 +16,15 @@
 """
 
 import asyncio
+import base64
 import logging
+import re
 from collections.abc import Coroutine
+from dataclasses import dataclass
 from typing import Callable
 
 from apps.ai.client import ChatMessage, ChatRequest, get_ai_client
-from apps.ai.host_brain import SentenceBuffer, StreamReplyChunk, get_host_brain
+from apps.ai.host_brain import get_host_brain
 from apps.ai.memory.engine import get_memory_engine
 from apps.ai.messaging.queue import Message, get_message_queue
 from apps.ai.prompt import get_host_system_prompt
@@ -32,6 +35,51 @@ from apps.easyvtuber import get_easyvtuber_manager
 from apps.live.room_session import RoomSessionContext, get_room_session_manager
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class _StreamReplyChunk:
+    type: str
+    text: str = ""
+    audio_data: bytes | None = None
+    sentence_index: int = 0
+    char_offset: int = 0
+    is_final: bool = False
+
+    def to_dict(self) -> dict:
+        result = {"type": self.type, "is_final": self.is_final}
+        if self.text:
+            result["text"] = self.text
+        if self.audio_data:
+            result["audio"] = base64.b64encode(self.audio_data).decode("utf-8")
+            result["sentence_index"] = self.sentence_index
+            result["char_offset"] = self.char_offset
+            result["char_length"] = len(self.text)
+        return result
+
+
+class _SentenceBuffer:
+    """Split streamed model output into complete spoken sentences."""
+
+    _END_PATTERN = re.compile(r"[。！？.!?~]+")
+
+    def __init__(self) -> None:
+        self.buffer = ""
+
+    def add(self, text: str) -> list[str]:
+        self.buffer += text
+        sentences: list[str] = []
+        while match := self._END_PATTERN.search(self.buffer):
+            sentence = self.buffer[: match.end()].strip()
+            if sentence:
+                sentences.append(sentence)
+            self.buffer = self.buffer[match.end() :]
+        return sentences
+
+    def flush(self) -> str:
+        remaining = self.buffer.strip()
+        self.buffer = ""
+        return remaining
 
 COMMENTARY_SYSTEM_PROMPT = """{host_personality}
 
@@ -223,15 +271,30 @@ class HostGraph:
         host_personality = get_host_system_prompt()
         host_history = await self._shared_context.get_host_history_text(limit=10)
 
-        # 注入观众记忆
-        viewer_memory = ""
+        # 用户画像、近期上下文和与当前弹幕相关的长期记忆统一在此组装。
+        memory_sections: list[str] = []
+        profile = None
+        try:
+            from apps.ai.memory.user_profile import get_user_profile
+
+            profile = get_user_profile(memory_user_id, user)
+            profile_context = profile.get_memory_context()
+            if profile_context:
+                memory_sections.append(
+                    "【用户概况与近期上下文】\n" + profile_context
+                )
+        except Exception as e:
+            logger.debug(f"用户画像加载失败: {e}")
         try:
             engine = get_memory_engine()
-            viewer_memory = await engine.inject_for_host(user_id=memory_user_id)
-            if viewer_memory:
-                viewer_memory = f"【关于这位观众】\n{viewer_memory}"
+            recalled = await engine.inject_for_host(
+                user_id=memory_user_id, query=danmaku
+            )
+            if recalled:
+                memory_sections.append(recalled)
         except Exception as e:
             logger.debug(f"观众记忆注入失败: {e}")
+        viewer_memory = "\n\n".join(memory_sections)
 
         system_content = DANMAKU_REPLY_PROMPT.format(
             host_personality=host_personality,
@@ -258,14 +321,10 @@ class HostGraph:
 
         # 只记忆主播真正回复过的弹幕互动；未回复弹幕不进入长期用户记忆。
         try:
-            engine = get_memory_engine()
-            asyncio.create_task(engine.extract_and_store(
-                source="interaction",
-                content=danmaku,
-                context={"user_id": memory_user_id, "username": user, "danmaku": danmaku, "reply": spoken},
-            ))
-            from apps.ai.memory import get_user_profile, trigger_summary_if_needed
-            profile = get_user_profile(memory_user_id, user)
+            from apps.ai.memory import trigger_summary_if_needed
+            from apps.ai.memory.user_profile import get_user_profile
+            if profile is None:
+                profile = get_user_profile(memory_user_id, user)
             profile.add_conversation(danmaku, spoken)
             trigger_summary_if_needed(profile)
         except Exception as e:
@@ -313,11 +372,7 @@ class HostGraph:
         user_content: str,
         context: RoomSessionContext | None,
     ) -> str | None:
-        """流式 LLM → 分句 TTS → WebSocket 广播 → EasyVtuber 口型
-
-        复用与 HostBrain._stream_reply_impl 完全相同的流式管线，
-        唯一的区别是输出通过 WebSocket 广播而非 HTTP SSE yield。
-        """
+        """流式 LLM → 分句 TTS → WebSocket 广播 → EasyVtuber 口型。"""
         if context is None or not get_room_session_manager().is_current(context):
             logger.debug("Skipped reply generation without a current room session")
             return None
@@ -341,7 +396,7 @@ class HostGraph:
             stream=True,
         )
 
-        sentence_buffer = SentenceBuffer()
+        sentence_buffer = _SentenceBuffer()
         full_response = ""
         sentence_index = 0
         char_offset = 0
@@ -352,7 +407,7 @@ class HostGraph:
         async def process_sentence(sentence: str, idx: int, offset: int):
             result = await tts.synthesize(sentence)
             if result:
-                return StreamReplyChunk(
+                return _StreamReplyChunk(
                     type="audio",
                     text=sentence,
                     audio_data=result.audio_data,

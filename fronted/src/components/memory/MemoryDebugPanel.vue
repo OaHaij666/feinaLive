@@ -48,7 +48,7 @@
       <section class="memory-section">
         <div class="filter-row">
           <input v-model="atomFilters.keyword" placeholder="关键词 / ID" @keyup.enter="loadAtoms(1)" />
-          <select v-model="atomFilters.status"><option value="all">全部状态</option><option value="active">active</option><option value="expired">expired</option><option value="forgotten">forgotten</option></select>
+          <select v-model="atomFilters.status"><option value="all">全部状态</option><option value="active">active</option><option value="dormant">dormant</option><option value="archived">archived</option><option value="forgotten">forgotten</option></select>
           <select v-model="atomFilters.atom_type"><option value="">全部类型</option><option v-for="item in atomTypes" :key="item" :value="item">{{ typeLabel(item) }}</option></select>
           <input v-model="atomFilters.game_id" placeholder="game_id" />
           <input v-model="atomFilters.user_id" placeholder="user_id" />
@@ -91,7 +91,7 @@
           <label>实体<input v-model="editEntities" placeholder="用逗号分隔" /></label>
           <div class="form-grid">
             <label>类型<select v-model="editAtom.atom_type"><option v-for="item in atomTypes" :key="item" :value="item">{{ typeLabel(item) }}</option></select></label>
-            <label>状态<select v-model="editAtom.status"><option value="active">active</option><option value="expired">expired</option><option value="forgotten">forgotten</option></select></label>
+            <label>状态<select v-model="editAtom.status"><option value="active">active</option><option value="dormant">dormant</option><option value="archived">archived</option><option value="forgotten">forgotten</option></select></label>
             <label>重要性<input v-model.number="editAtom.importance" type="number" min="0" max="1" step="0.05" /></label>
             <label>置信度<input v-model.number="editAtom.confidence" type="number" min="0" max="1" step="0.05" /></label>
             <label>game_id<input v-model="editAtom.game_id" /></label>
@@ -583,6 +583,8 @@ tr.selected { background: rgba(59,130,246,0.12); }
 .pill { border-radius: 999px; padding: 2px 7px; background: rgba(148,163,184,0.18); }
 .pill.active { color: #86efac; }
 .pill.expired { color: #fbbf24; }
+.pill.dormant { color: #fbbf24; }
+.pill.archived { color: #c4b5fd; }
 .pill.forgotten { color: #fca5a5; }
 .detail-form { display: flex; flex-direction: column; gap: 10px; }
 .detail-form label { display: flex; flex-direction: column; gap: 5px; color: #94a3b8; font-size: 12px; }

@@ -1,6 +1,7 @@
 """配置管理 API"""
 
 import logging
+import os
 from pathlib import Path
 
 import yaml
@@ -8,6 +9,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from apps.config import config
+from apps.storage.secrets import secret_store
 
 logger = logging.getLogger(__name__)
 
@@ -130,6 +132,8 @@ class EasyVtuberConfig(BaseModel):
 class AIConfig(BaseModel):
     max_history_per_session: int = 16
     summary_interval: int = 10
+    summary_idle_seconds: float = 300.0
+    summary_scan_interval_seconds: float = 60.0
     max_recent_messages: int = 16
     poll_interval_seconds: float = 10.0
 
@@ -164,13 +168,10 @@ class MusicConfigModel(BaseModel):
     verify_max_comments: int = 3
 
 
-class DatabaseConfig(BaseModel):
-    url: str = ""
-
-
-class UpVideosConfig(BaseModel):
-    incremental_days: int = 5
-    full_refresh_days: int = 30
+class StorageConfig(BaseModel):
+    sqlite_path: str = "data/feinalive.db"
+    chroma_path: str = "data/chroma"
+    chroma_collection: str = "memory_atoms"
 
 
 class AdminConfig(BaseModel):
@@ -184,6 +185,8 @@ class EmbeddingConfig(BaseModel):
     api_url: str = ""
     api_key: str = ""
     dimensions: int | None = None
+    user_graph_enabled: bool = True
+    game_graph_enabled: bool = True
 
 
 class FullConfig(BaseModel):
@@ -197,10 +200,7 @@ class FullConfig(BaseModel):
     ai: AIConfig = AIConfig()
     messaging: MessagingConfig = MessagingConfig()
     music_config: MusicConfigModel = MusicConfigModel()
-    database: DatabaseConfig = DatabaseConfig()
-    up_videos: UpVideosConfig = UpVideosConfig()
-    trusted_ups: list[dict] = []
-    default_playlist: list[dict] = []
+    storage: StorageConfig = StorageConfig()
     announcement: str = ""
     admin: AdminConfig = AdminConfig()
     embedding: EmbeddingConfig = EmbeddingConfig()
@@ -315,6 +315,8 @@ async def get_full_config():
         ai=AIConfig(
             max_history_per_session=config.ai_max_history_per_session,
             summary_interval=config.ai_summary_interval,
+            summary_idle_seconds=config.ai_summary_idle_seconds,
+            summary_scan_interval_seconds=config.ai_summary_scan_interval_seconds,
             max_recent_messages=config.ai_max_recent_messages,
             poll_interval_seconds=config.ai_poll_interval_seconds,
         ),
@@ -340,13 +342,11 @@ async def get_full_config():
             verify_max_duration=config.music_verify_max_duration,
             verify_max_comments=config.music_verify_max_comments,
         ),
-        database=DatabaseConfig(url=config.database_url),
-        up_videos=UpVideosConfig(
-            incremental_days=config.incremental_days,
-            full_refresh_days=config.full_refresh_days,
+        storage=StorageConfig(
+            sqlite_path=config.app_db_path,
+            chroma_path=config.chroma_path,
+            chroma_collection=config.chroma_collection,
         ),
-        trusted_ups=config.trusted_ups,
-        default_playlist=config.default_playlist,
         announcement=config.announcement,
         admin=AdminConfig(
             uid=config.admin_uid,
@@ -358,6 +358,8 @@ async def get_full_config():
             api_url=config.embedding_api_url,
             api_key=_mask_sensitive(config.embedding_api_key or ""),
             dimensions=config.embedding_dimensions,
+            user_graph_enabled=config.embedding_user_graph_enabled,
+            game_graph_enabled=config.embedding_game_graph_enabled,
         ),
     )
 
@@ -391,6 +393,32 @@ def _deep_set(data: dict, keys: list[str], value):
     current[keys[-1]] = value
 
 
+def _deep_delete(data: dict, keys: list[str]) -> None:
+    current = data
+    for key in keys[:-1]:
+        value = current.get(key)
+        if not isinstance(value, dict):
+            return
+        current = value
+    current.pop(keys[-1], None)
+
+
+def _store_secret(data: dict, path: str, value: str) -> None:
+    if value and MASKED_PATTERN not in value and not secret_store.set(path, value):
+        raise RuntimeError(f"无法写入系统密钥库: {path}")
+    if not value or MASKED_PATTERN in value or secret_store.get(path):
+        _deep_delete(data, path.split("."))
+
+
+def _atomic_write_yaml(data: dict) -> None:
+    temporary = CONFIG_FILE.with_suffix(".yaml.tmp")
+    with open(temporary, "w", encoding="utf-8") as handle:
+        yaml.safe_dump(data, handle, allow_unicode=True, default_flow_style=False)
+        handle.flush()
+        os.fsync(handle.fileno())
+    os.replace(temporary, CONFIG_FILE)
+
+
 @router.put("", response_model=FullConfig)
 async def update_full_config(config_data: FullConfig):
     try:
@@ -404,8 +432,7 @@ async def update_full_config(config_data: FullConfig):
         if config_data.bilibili:
             flat["bilibili.room_id"] = config_data.bilibili.room_id
             flat["bilibili.uid"] = config_data.bilibili.uid
-            if not _should_skip_sensitive("bilibili.sessdata", config_data.bilibili.sessdata):
-                flat["bilibili.sessdata"] = config_data.bilibili.sessdata
+            _store_secret(data, "bilibili.sessdata", config_data.bilibili.sessdata)
             flat["bilibili.use_test_room"] = config_data.bilibili.use_test_room
 
             from apps.ai.admin_commands import get_admin_handler
@@ -418,8 +445,7 @@ async def update_full_config(config_data: FullConfig):
         flat["host.reply_interval"] = h.reply_interval
         flat["host.max_reply_length"] = h.max_reply_length
         flat["host.api_url"] = h.api_url
-        if not _should_skip_sensitive("host.api_key", h.api_key):
-            flat["host.api_key"] = h.api_key
+        _store_secret(data, "host.api_key", h.api_key)
         flat["host.model"] = h.model
         flat["host.temperature"] = h.temperature
         flat["host.top_p"] = h.top_p
@@ -429,8 +455,7 @@ async def update_full_config(config_data: FullConfig):
         # llm
         llm_config = config_data.llm
         flat["llm.api_url"] = llm_config.api_url
-        if not _should_skip_sensitive("llm.api_key", llm_config.api_key):
-            flat["llm.api_key"] = llm_config.api_key
+        _store_secret(data, "llm.api_key", llm_config.api_key)
         flat["llm.model"] = llm_config.model
         flat["llm.temperature"] = llm_config.temperature
         flat["llm.top_p"] = llm_config.top_p
@@ -448,8 +473,7 @@ async def update_full_config(config_data: FullConfig):
         # volcano
         v = config_data.volcano
         flat["volcano.appid"] = v.appid
-        if not _should_skip_sensitive("volcano.access_token", v.access_token):
-            flat["volcano.access_token"] = v.access_token
+        _store_secret(data, "volcano.access_token", v.access_token)
         flat["volcano.speaker_id"] = v.speaker_id
 
         # game
@@ -458,8 +482,7 @@ async def update_full_config(config_data: FullConfig):
         flat["game.adapter"] = g.adapter
         flat["game.mcp_url"] = g.mcp_url
         flat["game.api_url"] = g.api_url
-        if not _should_skip_sensitive("game.api_key", g.api_key):
-            flat["game.api_key"] = g.api_key
+        _store_secret(data, "game.api_key", g.api_key)
         flat["game.model"] = g.model
         flat["game.temperature"] = g.temperature
         flat["game.max_tokens"] = g.max_tokens
@@ -502,6 +525,8 @@ async def update_full_config(config_data: FullConfig):
         a = config_data.ai
         flat["ai.max_history_per_session"] = a.max_history_per_session
         flat["ai.summary_interval"] = a.summary_interval
+        flat["ai.summary_idle_seconds"] = a.summary_idle_seconds
+        flat["ai.summary_scan_interval_seconds"] = a.summary_scan_interval_seconds
         flat["ai.max_recent_messages"] = a.max_recent_messages
         flat["ai.poll_interval_seconds"] = a.poll_interval_seconds
 
@@ -529,20 +554,12 @@ async def update_full_config(config_data: FullConfig):
         flat["music_config.verify_max_duration"] = mc.verify_max_duration
         flat["music_config.verify_max_comments"] = mc.verify_max_comments
 
-        # database (read-only in UI but save if present)
-        if config_data.database.url:
-            flat["database.url"] = config_data.database.url
-
-        # up_videos
-        uv = config_data.up_videos
-        flat["up_videos.incremental_days"] = uv.incremental_days
-        flat["up_videos.full_refresh_days"] = uv.full_refresh_days
+        storage = config_data.storage
+        flat["storage.sqlite_path"] = storage.sqlite_path
+        flat["storage.chroma_path"] = storage.chroma_path
+        flat["storage.chroma_collection"] = storage.chroma_collection
 
         # top-level lists
-        if config_data.trusted_ups is not None:
-            data["trusted_ups"] = config_data.trusted_ups
-        if config_data.default_playlist is not None:
-            data["default_playlist"] = config_data.default_playlist
         data["announcement"] = config_data.announcement
         data["admin"] = config_data.admin.model_dump()
 
@@ -551,8 +568,9 @@ async def update_full_config(config_data: FullConfig):
         flat["embedding.provider"] = e.provider
         flat["embedding.model"] = e.model
         flat["embedding.api_url"] = e.api_url
-        if e.api_key and MASKED_PATTERN not in (e.api_key or ""):
-            flat["embedding.api_key"] = e.api_key
+        flat["embedding.user_graph_enabled"] = e.user_graph_enabled
+        flat["embedding.game_graph_enabled"] = e.game_graph_enabled
+        _store_secret(data, "embedding.api_key", e.api_key)
         if e.dimensions is not None:
             flat["embedding.dimensions"] = e.dimensions
 
@@ -561,8 +579,7 @@ async def update_full_config(config_data: FullConfig):
             parts = key.split(".")
             _deep_set(data, parts, value)
 
-        with open(CONFIG_FILE, "w", encoding="utf-8") as f:
-            yaml.dump(data, f, allow_unicode=True, default_flow_style=False)
+        _atomic_write_yaml(data)
 
         config._load()
 
@@ -609,8 +626,6 @@ async def list_sections():
             {"key": "messaging", "label": "消息调度", "description": "优先级、队列、频率限制"},
             {"key": "music_config", "label": "音乐验证", "description": "点歌验证参数"},
             {"key": "up_videos", "label": "视频采集", "description": "UP主视频采集频率"},
-            {"key": "trusted_ups", "label": "信任UP主", "description": "自动采集的UP主列表"},
-            {"key": "default_playlist", "label": "默认播放列表", "description": "无人点歌时的默认歌单"},
             {"key": "announcement", "label": "公告", "description": "直播间跑马灯公告"},
             {"key": "admin", "label": "管理员", "description": "管理员身份标识"},
             {"key": "embedding", "label": "向量模型", "description": "Embedding / 向量检索模型配置"},
@@ -662,8 +677,7 @@ async def update_easyvtuber_config(config_data: EasyVtuberConfig):
 
         data["easyvtuber"] = config_data.model_dump()
 
-        with open(CONFIG_FILE, "w", encoding="utf-8") as f:
-            yaml.dump(data, f, allow_unicode=True, default_flow_style=False)
+        _atomic_write_yaml(data)
 
         config._load()
 

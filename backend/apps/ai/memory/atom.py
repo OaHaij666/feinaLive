@@ -40,6 +40,8 @@ class DecayType(str, Enum):
 
 class AtomStatus(str, Enum):
     ACTIVE = "active"
+    DORMANT = "dormant"
+    ARCHIVED = "archived"
     EXPIRED = "expired"
     FORGOTTEN = "forgotten"
 
@@ -83,7 +85,7 @@ class MemoryAtom:
     """细粒度、时间感知的长期记忆原子"""
 
     # 身份
-    parent_memory_id: int = 0
+    source_group_id: str | None = None
     atom_type: AtomType = AtomType.UNKNOWN
 
     # 内容
@@ -119,7 +121,10 @@ class MemoryAtom:
         """计算时间衰减分数 (0-1)"""
         if reference_time is None:
             reference_time = time.time()
-        days_since = max(0.0, (reference_time - self.last_accessed_at) / 86400.0)
+        # Retrieval must not make a memory immortal. Only new supporting
+        # evidence or an explicit reinforcement resets the decay anchor.
+        anchor = self.last_reinforced_at or self.created_at
+        days_since = max(0.0, (reference_time - anchor) / 86400.0)
         return compute_decay_score(self.decay_type, self.ttl_days, days_since)
 
     def is_expired(self, reference_time: float | None = None) -> bool:

@@ -108,7 +108,6 @@ async def get_ai_status():
     from apps.ai.host_brain import get_host_brain
     brain = get_host_brain(config.default_room_id)
     return {
-        "is_replying": brain.is_replying,
         "buffer_size": brain.buffer_size,
         "unanswered_count": brain.unanswered_count,
     }

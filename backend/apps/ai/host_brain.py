@@ -1,43 +1,14 @@
-"""AI主播大脑 - 弹幕缓冲与轮询
-
-支持两种回复模式:
-1. 完整回复 - 等待LLM完成后一次性返回
-2. 流式同步回复 - 按句子同步发送文字和音频
-
-记忆架构:
-- 短期记忆: SessionHistory (当前会话, 50条)
-- 中期记忆: UserProfile (用户画像 + 近期对话)
-- 长期记忆: RAG (全局知识库)
-- 定期摘要: LLM 生成印象 + 长期记忆
-"""
+"""Danmaku admission, buffering, selection and queueing for HostGraph."""
 
 import asyncio
 import logging
-import re
 import time
-from dataclasses import dataclass
-from typing import AsyncIterator, Callable, Optional
 
-from apps.ai.admin_commands import (
-    CommandResult,
-    get_admin_handler,
-)
-from apps.ai.client import ChatMessage, ChatRequest, get_ai_client
+from apps.ai.admin_commands import get_admin_handler
 from apps.ai.history import get_session
-from apps.ai.memory import (
-    get_user_profile,
-    trigger_summary_if_needed,
-)
 from apps.ai.messaging.dynamic_priority import get_priority_manager
 from apps.ai.messaging.queue import Message, get_message_queue
-from apps.ai.prompt import build_chat_prompt, get_host_system_prompt
-from apps.ai.shared_context import get_shared_context
-from apps.ai.tts import (
-    TTSResult,
-    get_tts_client,
-)
 from apps.config import config
-from apps.easyvtuber import get_easyvtuber_manager
 from apps.live.room_session import RoomSessionContext, get_room_session_manager
 
 logger = logging.getLogger(__name__)
@@ -71,103 +42,15 @@ class DanmakuInput:
         }
 
 
-@dataclass
-class HostReply:
-    text: str
-    audio: TTSResult | None = None
-    source_danmaku: DanmakuInput | None = None
-
-    def to_dict(self) -> dict:
-        return {
-            "text": self.text,
-            "has_audio": self.audio is not None,
-            "source_user": self.source_danmaku.user if self.source_danmaku else None,
-        }
-
-
-@dataclass
-class StreamReplyChunk:
-    type: str
-    text: str = ""
-    audio_data: bytes | None = None
-    sentence_index: int = 0
-    char_offset: int = 0
-    is_final: bool = False
-
-    def to_dict(self) -> dict:
-        result = {"type": self.type, "is_final": self.is_final}
-        if self.text:
-            result["text"] = self.text
-        if self.audio_data:
-            import base64
-            result["audio"] = base64.b64encode(self.audio_data).decode("utf-8")
-            result["sentence_index"] = self.sentence_index
-            result["char_offset"] = self.char_offset
-            result["char_length"] = len(self.text)
-        return result
-
-
-class SentenceBuffer:
-    """句子缓冲区，用于流式输出时按句子切分"""
-
-    SENTENCE_END_PATTERN = re.compile(r'[。！？.!?~]+')
-
-    def __init__(self):
-        self.buffer = ""
-        self.sentences: list[str] = []
-
-    def add(self, text: str) -> list[str]:
-        """添加文本，返回完整的句子"""
-        self.buffer += text
-        sentences = []
-
-        while True:
-            match = self.SENTENCE_END_PATTERN.search(self.buffer)
-            if not match:
-                break
-
-            end_pos = match.end()
-            sentence = self.buffer[:end_pos].strip()
-            if sentence:
-                sentences.append(sentence)
-                self.sentences.append(sentence)
-            self.buffer = self.buffer[end_pos:]
-
-        return sentences
-
-    def flush(self) -> str:
-        """返回剩余的文本"""
-        remaining = self.buffer.strip()
-        self.buffer = ""
-        if remaining:
-            self.sentences.append(remaining)
-        return remaining
-
-
 class AIHostBrain:
     POLL_INTERVAL_SECONDS = config.ai_poll_interval_seconds
 
     def __init__(self, room_id: int | str):
         self.room_id = str(room_id)
-        self._shared_context = get_shared_context()
         self._danmaku_buffer: list[DanmakuInput] = []
-        self._last_reply_time: float = 0
-        self._is_replying: bool = False
-        self._on_reply_callback = None
-        self._on_stream_callback = None
         self._admin_handler = get_admin_handler()
-        self._admin_result_callback: Optional[Callable[[CommandResult], None]] = None
         self._poll_running: bool = False
         self._poll_task: asyncio.Task | None = None
-
-    def set_on_reply(self, callback):
-        self._on_reply_callback = callback
-
-    def set_on_stream(self, callback):
-        self._on_stream_callback = callback
-
-    def set_on_admin_command_result(self, callback: Callable[[CommandResult], None]):
-        self._admin_result_callback = callback
 
     def push_danmaku(
         self,
@@ -189,8 +72,6 @@ class AIHostBrain:
         cmd_result = self._admin_handler.sync_handle(uid, user, content)
         if cmd_result:
             logger.info(f"Admin command executed: {cmd_result.message}")
-            if self._admin_result_callback:
-                self._admin_result_callback(cmd_result)
             return False
 
         if not self._admin_handler.should_process_danmaku(uid, user):
@@ -320,174 +201,10 @@ class AIHostBrain:
         if enqueued:
             logger.debug(f"弹幕入队: [{user}] {combined_text[:30]} (优先级={priority})")
 
-        if self._on_reply_callback:
-            await self._on_reply_callback(True)
-
         return enqueued
-
-    async def stream_reply(self, user: str, content: str) -> AsyncIterator[StreamReplyChunk]:
-        """流式同步回复 - 按句子同步发送文字和音频
-
-        流程:
-        1. LLM 流式输出文字
-        2. 按句子切分
-        3. 每个句子单独调用 TTS
-        4. 返回音频时同时发送对应的文字
-        """
-        if self._is_replying:
-            yield StreamReplyChunk(type="error", text="正在回复中，请稍候")
-            return
-
-        self._is_replying = True
-        try:
-            async for chunk in self._stream_reply_impl(user, content):
-                yield chunk
-        finally:
-            self._is_replying = False
-            self._last_reply_time = time.time()
-
-    async def _stream_reply_impl(
-        self, user: str, content: str
-    ) -> AsyncIterator[StreamReplyChunk]:
-        ai = get_ai_client()
-        if not ai.available:
-            yield StreamReplyChunk(type="error", text="AI配置不完整")
-            return
-
-        history = get_session(self.room_id)
-        msg_id = f"stream_{int(time.time() * 1000)}"
-
-        history.add_user_message(content=content, sender=user, msg_id=msg_id)
-
-        user_profile = get_user_profile(user)
-        user_memory_context = user_profile.get_memory_context()
-
-        history_entries = history.get_recent_dicts(10)
-        system_prompt = get_host_system_prompt()
-
-        if user_memory_context:
-            system_prompt += f"\n\n{user_memory_context}"
-
-        prompt = build_chat_prompt(
-            user_text=content,
-            history_entries=history_entries,
-            system_prompt=system_prompt,
-        )
-
-        messages = [
-            ChatMessage(role=m["role"], content=m["content"])
-            for m in prompt
-        ]
-        request = ChatRequest(
-            messages=messages,
-            model=config.host_model,
-            temperature=config.host_temperature,
-            top_p=config.host_top_p,
-            max_tokens=config.host_max_tokens,
-            disable_thinking=config.llm_disable_thinking,
-            stream=True,
-        )
-
-        sentence_buffer = SentenceBuffer()
-        full_response = ""
-        sentence_index = 0
-        char_offset = 0
-        sentence_offsets: list[tuple[int, str]] = []
-
-        tts = get_tts_client()
-        tts_tasks: list[asyncio.Task] = []
-
-        async def process_sentence(sentence: str, idx: int, offset: int):
-            """处理单个句子的 TTS"""
-            result = await tts.synthesize(sentence)
-            if result:
-                return StreamReplyChunk(
-                    type="audio",
-                    text=sentence,
-                    audio_data=result.audio_data,
-                    sentence_index=idx,
-                    char_offset=offset,
-                )
-            return None
-
-        yield StreamReplyChunk(type="start")
-
-        try:
-            manager = get_easyvtuber_manager()
-            manager.set_speaking(True)
-        except Exception as e:
-            logger.warning(f"设置 speaking 状态失败: {e}")
-
-        async for chunk in ai.chat_stream(request):
-            full_response += chunk
-
-            new_sentences = sentence_buffer.add(chunk)
-            for sentence in new_sentences:
-                sentence_offsets.append((char_offset, sentence))
-                yield StreamReplyChunk(type="text", text=sentence)
-
-                task = asyncio.create_task(
-                    process_sentence(sentence, sentence_index, char_offset)
-                )
-                tts_tasks.append(task)
-                sentence_index += 1
-
-                char_offset += len(sentence)
-
-        remaining = sentence_buffer.flush()
-        if remaining:
-            sentence_offsets.append((char_offset, remaining))
-            yield StreamReplyChunk(type="text", text=remaining)
-
-            task = asyncio.create_task(
-                process_sentence(remaining, sentence_index, char_offset)
-            )
-            tts_tasks.append(task)
-
-        for task in tts_tasks:
-            result = await task
-            if result:
-                yield result
-
-        history.add_assistant_message(full_response)
-
-        user_profile.add_conversation(content, full_response)
-
-        trigger_summary_if_needed(user_profile)
-
-        if len(full_response) > config.host_max_reply_length:
-            full_response = full_response[:config.host_max_reply_length]
-
-        await self._shared_context.add_host_entry(
-            danmaku=content,
-            reply=full_response,
-        )
-
-        yield StreamReplyChunk(type="end", text=full_response, is_final=True)
-
-        try:
-            manager = get_easyvtuber_manager()
-            manager.set_speaking(False)
-        except Exception as e:
-            logger.warning(f"设置 speaking 状态失败: {e}")
-
-        logger.info(f"AI主播流式回复 [{user}]: {full_response}")
-
-    async def reply_to_text(self, user: str, content: str) -> bool:
-        context = get_room_session_manager().active_context
-        if context is None:
-            logger.warning("Cannot enqueue manual reply without an active room session")
-            return False
-        msg_id = f"manual_{int(time.time() * 1000)}"
-        self.push_danmaku(context=context, msg_id=msg_id, user=user, content=content)
-        return await self.try_reply()
 
     def clear_buffer(self):
         self._danmaku_buffer.clear()
-
-    @property
-    def is_replying(self) -> bool:
-        return self._is_replying
 
     @property
     def buffer_size(self) -> int:

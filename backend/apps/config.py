@@ -5,6 +5,8 @@ from pathlib import Path
 
 import yaml
 
+from apps.storage.secrets import secret_store
+
 _CONFIG_DIR = Path(__file__).parent.parent
 _CONFIG_FILE = _CONFIG_DIR / "config.yaml"
 
@@ -28,11 +30,40 @@ class Config:
 
     @property
     def database_url(self) -> str:
-        return os.getenv("DATABASE_URL") or self._data.get("database", {}).get("url", "")
+        # feinaLive is a single-process desktop service.  Keep one authoritative
+        # SQLite database instead of requiring a separately managed MySQL server.
+        path = Path(self.app_db_path).resolve().as_posix()
+        return f"sqlite+aiosqlite:///{path}"
+
+    @property
+    def app_db_path(self) -> str:
+        configured = (
+            os.getenv("FEINALIVE_DB_PATH")
+            or self._data.get("storage", {}).get("sqlite_path")
+            or self._data.get("memory", {}).get("db_path")
+            or "data/feinalive.db"
+        )
+        path = Path(str(configured))
+        return str(path if path.is_absolute() else (_CONFIG_DIR / path))
+
+    @property
+    def chroma_path(self) -> str:
+        configured = os.getenv("CHROMA_PATH") or self._data.get("storage", {}).get(
+            "chroma_path", "data/chroma"
+        )
+        path = Path(str(configured))
+        return str(path if path.is_absolute() else (_CONFIG_DIR / path))
+
+    @property
+    def chroma_collection(self) -> str:
+        return str(
+            os.getenv("CHROMA_COLLECTION")
+            or self._data.get("storage", {}).get("chroma_collection", "memory_atoms")
+        )
 
     @property
     def bilibili_sessdata(self) -> str | None:
-        return os.getenv("BILIBILI_SESSDATA") or self._data.get("bilibili", {}).get("sessdata")
+        return os.getenv("BILIBILI_SESSDATA") or secret_store.get("bilibili.sessdata") or self._data.get("bilibili", {}).get("sessdata")
 
     @property
     def bilibili_room_id(self) -> int:
@@ -47,20 +78,12 @@ class Config:
         return bool(self._data.get("bilibili", {}).get("use_test_room", False))
 
     @property
-    def trusted_ups(self) -> list[dict]:
-        return self._data.get("trusted_ups", [])
+    def trusted_uploaders_seed(self) -> list[dict]:
+        return self._data.get("trusted_uploaders_seed", self._data.get("trusted_ups", []))
 
     @property
-    def incremental_days(self) -> int:
-        return self._data.get("up_videos", {}).get("incremental_days", 5)
-
-    @property
-    def full_refresh_days(self) -> int:
-        return self._data.get("up_videos", {}).get("full_refresh_days", 30)
-
-    @property
-    def default_playlist(self) -> list[dict]:
-        return self._data.get("default_playlist", [])
+    def playlist_seed(self) -> list[dict]:
+        return self._data.get("playlist_seed", self._data.get("default_playlist", []))
 
     @property
     def llm_api_url(self) -> str:
@@ -72,7 +95,7 @@ class Config:
 
     @property
     def llm_api_key(self) -> str | None:
-        return os.getenv("LLM_API_KEY") or self._data.get("llm", {}).get("api_key")
+        return os.getenv("LLM_API_KEY") or secret_store.get("llm.api_key") or self._data.get("llm", {}).get("api_key")
 
     @property
     def llm_model(self) -> str:
@@ -116,12 +139,20 @@ class Config:
 
     @property
     def embedding_api_key(self) -> str | None:
-        return os.getenv("EMBEDDING_API_KEY") or self._data.get("embedding", {}).get("api_key") or self.llm_api_key
+        return os.getenv("EMBEDDING_API_KEY") or secret_store.get("embedding.api_key") or self._data.get("embedding", {}).get("api_key") or self.llm_api_key
 
     @property
     def embedding_dimensions(self) -> int | None:
         value = os.getenv("EMBEDDING_DIMENSIONS") or self._data.get("embedding", {}).get("dimensions")
         return int(value) if value else None
+
+    @property
+    def embedding_user_graph_enabled(self) -> bool:
+        return bool(self._data.get("embedding", {}).get("user_graph_enabled", True))
+
+    @property
+    def embedding_game_graph_enabled(self) -> bool:
+        return bool(self._data.get("embedding", {}).get("game_graph_enabled", True))
 
     @property
     def tts_voice(self) -> str:
@@ -145,7 +176,7 @@ class Config:
 
     @property
     def volcano_access_token(self) -> str:
-        return os.getenv("VOLCANO_ACCESS_TOKEN") or self._data.get("volcano", {}).get("access_token", "")
+        return os.getenv("VOLCANO_ACCESS_TOKEN") or secret_store.get("volcano.access_token") or self._data.get("volcano", {}).get("access_token", "")
 
     @property
     def volcano_speaker_id(self) -> str:
@@ -169,7 +200,7 @@ class Config:
 
     @property
     def host_api_key(self) -> str | None:
-        return os.getenv("HOST_API_KEY") or self._data.get("host", {}).get("api_key") or self.llm_api_key
+        return os.getenv("HOST_API_KEY") or secret_store.get("host.api_key") or self._data.get("host", {}).get("api_key") or self.llm_api_key
 
     @property
     def host_temperature(self) -> float:
@@ -201,7 +232,7 @@ class Config:
 
     @property
     def game_api_key(self) -> str | None:
-        return os.getenv("GAME_API_KEY") or self._data.get("game", {}).get("api_key")
+        return os.getenv("GAME_API_KEY") or secret_store.get("game.api_key") or self._data.get("game", {}).get("api_key") or self.llm_api_key
 
     @property
     def game_disable_thinking(self) -> bool:
@@ -428,6 +459,16 @@ class Config:
         return int(self._data.get("ai", {}).get("summary_interval", 10))
 
     @property
+    def ai_summary_idle_seconds(self) -> float:
+        return float(self._data.get("ai", {}).get("summary_idle_seconds", 300.0))
+
+    @property
+    def ai_summary_scan_interval_seconds(self) -> float:
+        return float(
+            self._data.get("ai", {}).get("summary_scan_interval_seconds", 60.0)
+        )
+
+    @property
     def ai_max_recent_messages(self) -> int:
         return int(self._data.get("ai", {}).get("max_recent_messages", 16))
 
@@ -453,7 +494,7 @@ class Config:
 
     @property
     def memory_db_path(self) -> str:
-        return os.getenv("MEMORY_DB_PATH") or self._data.get("memory", {}).get("db_path", "data/memory.db")
+        return os.getenv("MEMORY_DB_PATH") or self.app_db_path
 
     @property
     def memory_maintenance_interval_hours(self) -> float:

@@ -7,12 +7,12 @@ HostGraph: LongTermMemory (观众记忆 + 主播人设 + 互动事件)
 from __future__ import annotations
 
 import logging
-from typing import Any
 
 from apps.ai.memory.atom import AtomType
 from apps.ai.memory.atom_store import AtomStore
-from apps.ai.memory.graph_store import GameKnowledgeGraph
+from apps.ai.memory.graph_store import GameKnowledgeGraph, expand_graph_from_atoms
 from apps.ai.memory.session_memory import SessionMemory
+from apps.config import config
 
 logger = logging.getLogger(__name__)
 
@@ -43,68 +43,119 @@ class MemoryInjector:
         if session_text:
             sections.append(session_text)
 
-        # 2. 长期游戏知识 — top 10
+        recall_query = "\n".join(
+            part
+            for part in (
+                session.core,
+                session.important,
+                session.recent,
+                session.pending_to_prompt_text(),
+            )
+            if part
+        )[-4000:]
+
+        # 2. 当前 Session 驱动的游戏原子混合召回。
         game_knowledge = await self._store.search_fts(
-            query="",
+            query=recall_query,
             limit=10,
             game_id=game_id,
             atom_types=[AtomType.GAME_MECHANIC, AtomType.GAME_LORE],
+            use_vector=config.embedding_game_graph_enabled,
         )
+        if not game_knowledge and recall_query:
+            game_knowledge = await self._store.search_fts(
+                query="",
+                limit=6,
+                game_id=game_id,
+                atom_types=[AtomType.GAME_MECHANIC, AtomType.GAME_LORE],
+                use_vector=False,
+            )
         if game_knowledge:
             lines = [f"- {a.content}" for a in game_knowledge]
             sections.append("【游戏经验】\n" + "\n".join(lines))
 
-        # 3. 知识图谱 — 查询当前牌组/遗物的协同关系
-        if graph:
+        # 3. 以命中原子作为图入口，再扩展相关游戏事实边。
+        graph_facts = await expand_graph_from_atoms(
+            self._store.db_path,
+            "game",
+            game_id,
+            [atom.atom_id for atom in game_knowledge if atom.atom_id],
+            limit=12,
+        )
+        if graph_facts:
+            sections.append(
+                "【相关游戏关系】\n"
+                + "\n".join(
+                    f"- {fact['source_label']} --{fact['relation']}--> {fact['target_label']}"
+                    for fact in graph_facts
+                )
+            )
+        elif graph:
+            # 兼容旧图：没有原子入口时再按牌组/遗物实体名匹配。
             graph_context = await self._build_graph_context(session, graph)
             if graph_context:
                 sections.append(graph_context)
 
         return "\n\n".join(sections) if sections else ""
 
-    async def inject_for_host(self, user_id: str | None = None) -> str:
-        """为 HostGraph 构建记忆上下文
+    async def inject_for_host(
+        self, user_id: str | None = None, query: str = ""
+    ) -> str:
+        """Recall user-scoped atoms and expand their evidence-backed graph facts."""
 
-        包含:
-        1. 主播人设 (HOST_PERSONALITY)
-        2. 观众记忆 (VIEWER_FACT, VIEWER_PREFERENCE, VIEWER_RELATION)
-        3. 最近互动 (EPISODIC)
-        """
-        sections = []
-
-        # 主播人设
-        personality = await self._store.search_fts(
-            query="",
-            limit=10,
-            atom_types=[AtomType.HOST_PERSONALITY],
+        if not user_id:
+            return ""
+        viewer = await self._store.search_fts(
+            query=query,
+            limit=6,
+            user_id=user_id,
+            atom_types=[
+                AtomType.VIEWER_FACT,
+                AtomType.VIEWER_PREFERENCE,
+                AtomType.VIEWER_RELATION,
+            ],
+            use_vector=config.embedding_user_graph_enabled,
         )
-        if personality:
-            lines = [f"- {a.content}" for a in personality]
-            sections.append("【关于自己】\n" + "\n".join(lines))
-
-        # 观众记忆
-        if user_id:
+        if not viewer and query.strip():
             viewer = await self._store.search_fts(
                 query="",
-                limit=5,
+                limit=4,
                 user_id=user_id,
-                atom_types=[AtomType.VIEWER_FACT, AtomType.VIEWER_PREFERENCE, AtomType.VIEWER_RELATION],
+                atom_types=[
+                    AtomType.VIEWER_FACT,
+                    AtomType.VIEWER_PREFERENCE,
+                    AtomType.VIEWER_RELATION,
+                ],
             )
-            if viewer:
-                lines = [f"- {a.content}" for a in viewer]
-                sections.append("【关于这位观众】\n" + "\n".join(lines))
 
-        # 最近互动
-        recent = await self._store.search_fts(
-            query="",
-            limit=5,
-            atom_types=[AtomType.EPISODIC],
+        sections: list[str] = []
+        if viewer:
+            sections.append(
+                "【相关长期事实】\n" + "\n".join(f"- {atom.content}" for atom in viewer)
+            )
+
+        graph_facts = await expand_graph_from_atoms(
+            self._store.db_path,
+            "user",
+            user_id,
+            [atom.atom_id for atom in viewer if atom.atom_id],
         )
-        if recent:
-            lines = [f"- {a.content}" for a in recent]
-            sections.append("【最近互动】\n" + "\n".join(lines))
-
-        return "\n\n".join(sections) if sections else ""
+        if graph_facts:
+            lines: list[str] = []
+            for fact in graph_facts:
+                source = (
+                    "用户"
+                    if fact["source_type"] == "user"
+                    else str(fact["source_label"])
+                )
+                target = (
+                    "用户"
+                    if fact["target_type"] == "user"
+                    else str(fact["target_label"])
+                )
+                lines.append(f"- {source} --{fact['relation']}--> {target}")
+            sections.append("【相关用户关系】\n" + "\n".join(lines))
+        return "\n\n".join(sections)
 
     async def _build_graph_context(
         self,

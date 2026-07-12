@@ -140,8 +140,6 @@ class KnowledgeGraphBuilder:
             try:
                 current_count = len(await self._graph.get_all_node_names())
                 new_nodes = current_count - self._last_build_node_count
-                idle_time = time.time() - self._last_build_time
-
                 if current_count < 2:
                     await asyncio.sleep(self._check_interval_seconds)
                     continue
@@ -260,12 +258,14 @@ class KnowledgeGraphBuilder:
 
     async def _write_edges(self, edges: list[dict]) -> int:
         """将推断的边写入图谱（跳过无效/重复的）"""
-        valid_relations = {"synergizes_with", "countered_by", "belongs_to", "found_in"}
+        valid_relations = {"synergizes_with", "counters", "countered_by", "belongs_to", "found_in"}
         written = 0
         for edge in edges:
             source = str(edge.get("source", "")).strip()
             target = str(edge.get("target", "")).strip()
             relation = str(edge.get("relation", "")).strip()
+            if relation == "countered_by":
+                relation = "counters"
             evidence = str(edge.get("evidence", "")).strip()
             if not source or not target or not relation:
                 continue

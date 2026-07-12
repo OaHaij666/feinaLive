@@ -76,6 +76,9 @@ class AtomLifecycleManager:
         purged = await self.atom_store.cleanup_forgotten(self._purge_delay_days)
         result["purged"] = purged
 
+        result["graph_edges_recomputed"] = await self.atom_store.recompute_graph_strengths()
+        result["vector_metadata_synced"] = await self.atom_store.reconcile_vector_metadata()
+
         if any(v > 0 for v in result.values()):
             logger.info(f"生命周期维护完成: {result}")
 
@@ -110,6 +113,8 @@ class AtomLifecycleManager:
             existing = await self.atom_store.search_fts(
                 search_query,
                 limit=5,
+                game_id=getattr(new_atom, "game_id", None),
+                user_id=getattr(new_atom, "user_id", None),
                 include_expired=False,
             )
             for ex in existing:

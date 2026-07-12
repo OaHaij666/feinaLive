@@ -41,6 +41,7 @@ async def lifespan(app: FastAPI):
     from apps.live.music.library import get_playlist_manager
     from apps.live.music.queue import get_music_queue
     from apps.live.music.up_videos import get_up_video_manager
+    from apps.live.room_session import get_room_session_manager
 
     queue = get_music_queue()
     logger.info(f"Music queue initialized: max_history={queue._history.maxlen}, max_queue={queue._queue.maxlen}")
@@ -51,7 +52,7 @@ async def lifespan(app: FastAPI):
     await init_user_profiles()
 
     # 初始化记忆引擎 (长期记忆 + 知识图谱)
-    memory_engine = await init_memory_engine()
+    await init_memory_engine()
     logger.info("MemoryEngine initialized")
 
     easyvtuber_manager = get_easyvtuber_manager()
@@ -69,17 +70,10 @@ async def lifespan(app: FastAPI):
 
     async def broadcast_music_control(action: str, data: dict = None):
         message = {"type": "music_control", "data": {"action": action, **(data or {})}}
-        target_rooms = set()
-        target_rooms.add("test_room")
-        if config.bilibili_room_id > 0:
-            target_rooms.add(str(config.bilibili_room_id))
-        if config.default_room_id > 0:
-            target_rooms.add(str(config.default_room_id))
-        for room_id in target_rooms:
-            try:
-                await ws_manager.send_message(room_id, message)
-            except Exception:
-                pass
+        context = get_room_session_manager().active_context
+        if context is not None:
+            message["context"] = context.to_dict()
+            await ws_manager.send_message(context.room_id, message)
 
     def on_volume_change(volume: float):
         queue.set_volume(volume)
@@ -169,6 +163,12 @@ async def lifespan(app: FastAPI):
     await host_graph.start()
     logger.info("主播 Graph 启动成功（弹幕处理流水线就绪）")
 
+    if config.bilibili_room_id > 0:
+        try:
+            await get_room_session_manager().activate(config.bilibili_room_id)
+        except Exception as e:
+            logger.error("Bilibili room startup failed: %s", e, exc_info=True)
+
     await start_nginx()
 
     if config.game_enabled:
@@ -210,6 +210,7 @@ async def lifespan(app: FastAPI):
     yield
 
     logger.info("Application shutting down...")
+    await get_room_session_manager().stop()
     await save_all_profiles()
 
     # 关闭记忆引擎

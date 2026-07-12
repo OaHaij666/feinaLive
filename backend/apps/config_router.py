@@ -394,6 +394,7 @@ def _deep_set(data: dict, keys: list[str], value):
 @router.put("", response_model=FullConfig)
 async def update_full_config(config_data: FullConfig):
     try:
+        old_bilibili_room_id = config.bilibili_room_id
         with open(CONFIG_FILE, "r", encoding="utf-8") as f:
             data = yaml.safe_load(f) or {}
 
@@ -426,16 +427,16 @@ async def update_full_config(config_data: FullConfig):
         flat["llm.disable_thinking"] = h.disable_thinking
 
         # llm
-        l = config_data.llm
-        flat["llm.api_url"] = l.api_url
-        if not _should_skip_sensitive("llm.api_key", l.api_key):
-            flat["llm.api_key"] = l.api_key
-        flat["llm.model"] = l.model
-        flat["llm.temperature"] = l.temperature
-        flat["llm.top_p"] = l.top_p
-        flat["llm.max_tokens"] = l.max_tokens
-        flat["llm.auto_collect_min_views"] = l.auto_collect_min_views
-        flat["llm.disable_thinking"] = l.disable_thinking
+        llm_config = config_data.llm
+        flat["llm.api_url"] = llm_config.api_url
+        if not _should_skip_sensitive("llm.api_key", llm_config.api_key):
+            flat["llm.api_key"] = llm_config.api_key
+        flat["llm.model"] = llm_config.model
+        flat["llm.temperature"] = llm_config.temperature
+        flat["llm.top_p"] = llm_config.top_p
+        flat["llm.max_tokens"] = llm_config.max_tokens
+        flat["llm.auto_collect_min_views"] = llm_config.auto_collect_min_views
+        flat["llm.disable_thinking"] = llm_config.disable_thinking
 
         # tts
         t = config_data.tts
@@ -565,6 +566,24 @@ async def update_full_config(config_data: FullConfig):
 
         config._load()
 
+        from apps.live.room_session import get_room_session_manager
+
+        room_sessions = get_room_session_manager()
+        room_changed = config.bilibili_room_id != old_bilibili_room_id
+        room_missing = (
+            config.bilibili_room_id > 0
+            and room_sessions.active_room_id != str(config.bilibili_room_id)
+        )
+        if room_changed or room_missing:
+            from core.websocket import manager as websocket_manager
+
+            if config.bilibili_room_id > 0:
+                context = await room_sessions.activate(config.bilibili_room_id)
+                await websocket_manager.disconnect_other_rooms(context.room_id)
+            else:
+                await room_sessions.stop()
+                await websocket_manager.disconnect_other_rooms("")
+
         return await get_full_config()
 
     except Exception as e:
@@ -674,8 +693,9 @@ async def list_characters():
 @router.post("/easyvtuber/open-images")
 async def open_images_folder():
     """打开数字人图片文件夹（仅 Windows）"""
-    from apps.easyvtuber import EASYVTUBER_DIR
     import subprocess
+
+    from apps.easyvtuber import EASYVTUBER_DIR
     images_dir = EASYVTUBER_DIR / "data" / "images"
     if not images_dir.exists():
         images_dir.mkdir(parents=True, exist_ok=True)

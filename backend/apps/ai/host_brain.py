@@ -38,12 +38,22 @@ from apps.ai.tts import (
 )
 from apps.config import config
 from apps.easyvtuber import get_easyvtuber_manager
+from apps.live.room_session import RoomSessionContext, get_room_session_manager
 
 logger = logging.getLogger(__name__)
 
 
 class DanmakuInput:
-    def __init__(self, msg_id: str = "", user: str = "", content: str = "", timestamp: float = 0, uid: int = 0):
+    def __init__(
+        self,
+        context: RoomSessionContext,
+        msg_id: str = "",
+        user: str = "",
+        content: str = "",
+        timestamp: float = 0,
+        uid: int = 0,
+    ):
+        self.context = context
         self.msg_id = msg_id
         self.user = user
         self.content = content
@@ -52,6 +62,7 @@ class DanmakuInput:
 
     def to_dict(self) -> dict:
         return {
+            "context": self.context.to_dict(),
             "msg_id": self.msg_id,
             "user": self.user,
             "content": self.content,
@@ -158,7 +169,17 @@ class AIHostBrain:
     def set_on_admin_command_result(self, callback: Callable[[CommandResult], None]):
         self._admin_result_callback = callback
 
-    def push_danmaku(self, msg_id: str, user: str, content: str, uid: int = 0) -> bool:
+    def push_danmaku(
+        self,
+        context: RoomSessionContext,
+        msg_id: str,
+        user: str,
+        content: str,
+        uid: int = 0,
+    ) -> bool:
+        if not get_room_session_manager().is_current(context):
+            logger.debug("Rejected stale danmaku at HostBrain boundary: %s", context)
+            return False
         if content.strip() == "/clear":
             from apps.ai.memory import clear_user_profile
             clear_user_profile(str(uid) if uid else user)
@@ -176,7 +197,18 @@ class AIHostBrain:
             logger.debug(f"弹幕被过滤 (sleep模式): [{user}] {content}")
             return False
 
-        danmaku = DanmakuInput(msg_id=msg_id, user=user, content=content, uid=uid)
+        danmaku = DanmakuInput(
+            context=context,
+            msg_id=msg_id,
+            user=user,
+            content=content,
+            uid=uid,
+        )
+        self._danmaku_buffer = [
+            item
+            for item in self._danmaku_buffer
+            if get_room_session_manager().is_current(item.context)
+        ]
         self._danmaku_buffer.append(danmaku)
         if len(self._danmaku_buffer) > 20:
             self._danmaku_buffer = self._danmaku_buffer[-20:]
@@ -225,9 +257,11 @@ class AIHostBrain:
         await self._enqueue_danmaku(unanswered)
 
     def get_unanswered(self) -> list[DanmakuInput]:
-        history = get_session(self.room_id)
         unanswered = []
         for d in self._danmaku_buffer:
+            if not get_room_session_manager().is_current(d.context):
+                continue
+            history = get_session(d.context.session_id)
             if not history.is_answered(d.msg_id):
                 unanswered.append(d)
         return unanswered
@@ -250,19 +284,22 @@ class AIHostBrain:
             return False
 
         first = unanswered[0]
+        context = first.context
+        if not get_room_session_manager().is_current(context):
+            return False
         user = first.user
         combined_contents = [first.content]
         combined_msg_ids = [first.msg_id]
 
         for d in unanswered[1:]:
-            if d.user == user:
+            if d.user == user and d.context == context:
                 combined_contents.append(d.content)
                 combined_msg_ids.append(d.msg_id)
             else:
                 break
 
         combined_text = "\n".join(combined_contents)
-        history = get_session(self.room_id)
+        history = get_session(context.session_id)
         history.mark_answered_batch(combined_msg_ids)
 
         pm = get_priority_manager()
@@ -275,6 +312,7 @@ class AIHostBrain:
             msg_type="danmaku",
             content=combined_text,
             data={"user": user, "uid": first.uid, "msg_id": first.msg_id},
+            context=context.to_dict(),
             user_id=str(first.uid),
             expire_at=time.time() + 60,
         ))
@@ -436,8 +474,12 @@ class AIHostBrain:
         logger.info(f"AI主播流式回复 [{user}]: {full_response}")
 
     async def reply_to_text(self, user: str, content: str) -> bool:
+        context = get_room_session_manager().active_context
+        if context is None:
+            logger.warning("Cannot enqueue manual reply without an active room session")
+            return False
         msg_id = f"manual_{int(time.time() * 1000)}"
-        self.push_danmaku(msg_id=msg_id, user=user, content=content)
+        self.push_danmaku(context=context, msg_id=msg_id, user=user, content=content)
         return await self.try_reply()
 
     def clear_buffer(self):

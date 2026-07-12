@@ -27,6 +27,16 @@ export function useBilibiliDanmaku() {
   const { adminState } = useAdminCommands()
   let ws: WebSocket | null = null
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null
+  let desiredRoomId: number | null = null
+  let connectionGeneration = 0
+  let shouldReconnect = false
+
+  function clearReconnectTimer() {
+    if (reconnectTimer) {
+      clearTimeout(reconnectTimer)
+      reconnectTimer = null
+    }
+  }
 
   function parseTimestamp(raw: unknown): Date {
     if (typeof raw === 'number') {
@@ -47,23 +57,38 @@ export function useBilibiliDanmaku() {
 
   function connect(roomId: number) {
     console.log('[BilibiliDanmaku] connect called with roomId:', roomId)
-    if (ws) {
-      ws.close()
+    desiredRoomId = roomId
+    shouldReconnect = true
+    connectionGeneration += 1
+    const generation = connectionGeneration
+    clearReconnectTimer()
+
+    const previous = ws
+    ws = null
+    if (previous) {
+      previous.onopen = null
+      previous.onmessage = null
+      previous.onerror = null
+      previous.onclose = null
+      previous.close()
     }
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
     const wsUrl = `${protocol}//${window.location.host}/bilibili/ws/${roomId}`
     console.log('[BilibiliDanmaku] Connecting to', wsUrl)
 
-    ws = new WebSocket(wsUrl)
+    const socket = new WebSocket(wsUrl)
+    ws = socket
 
-    ws.onopen = () => {
+    socket.onopen = () => {
+      if (generation !== connectionGeneration || ws !== socket) return
       isConnected.value = true
       error.value = null
       console.log('[BilibiliDanmaku] Connected to room', roomId)
     }
 
-    ws.onmessage = (event) => {
+    socket.onmessage = (event) => {
+      if (generation !== connectionGeneration || ws !== socket) return
       try {
         const msg = JSON.parse(event.data)
         if (msg.type === 'danmaku') {
@@ -132,16 +157,31 @@ export function useBilibiliDanmaku() {
       }
     }
 
-    ws.onerror = () => {
+    socket.onerror = () => {
+      if (generation !== connectionGeneration || ws !== socket) return
       error.value = '连接错误'
       isConnected.value = false
     }
 
-    ws.onclose = () => {
+    socket.onclose = (event) => {
+      if (generation !== connectionGeneration || ws !== socket) return
+      ws = null
       isConnected.value = false
       console.log('[BilibiliDanmaku] Disconnected')
+      if (event.code === 1008) {
+        shouldReconnect = false
+        error.value = event.reason || '当前直播间已变更'
+        return
+      }
+      if (!shouldReconnect || desiredRoomId !== roomId) return
       reconnectTimer = setTimeout(() => {
-        if (isConnected.value === false) {
+        reconnectTimer = null
+        if (
+          shouldReconnect &&
+          desiredRoomId === roomId &&
+          generation === connectionGeneration &&
+          isConnected.value === false
+        ) {
           connect(roomId)
         }
       }, 5000)
@@ -149,13 +189,18 @@ export function useBilibiliDanmaku() {
   }
 
   function disconnect() {
-    if (reconnectTimer) {
-      clearTimeout(reconnectTimer)
-      reconnectTimer = null
-    }
-    if (ws) {
-      ws.close()
-      ws = null
+    shouldReconnect = false
+    desiredRoomId = null
+    connectionGeneration += 1
+    clearReconnectTimer()
+    const socket = ws
+    ws = null
+    if (socket) {
+      socket.onopen = null
+      socket.onmessage = null
+      socket.onerror = null
+      socket.onclose = null
+      socket.close()
     }
     isConnected.value = false
   }

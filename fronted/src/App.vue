@@ -55,7 +55,11 @@
       <InfoBar />
 
       <!-- 设置面板（含直播状况监测） -->
-      <SettingsPanel :visible="showSettings" @close="toggleSettings" />
+      <SettingsPanel
+        :visible="showSettings"
+        @close="toggleSettings"
+        @saved="handleConfigSaved"
+      />
     </div>
   </div>
 </template>
@@ -121,6 +125,14 @@ async function fetchConfig() {
 
 function toggleSettings() {
   showSettings.value = !showSettings.value
+}
+
+function handleConfigSaved(roomId: number) {
+  bilibiliRoomId.value = roomId > 0 ? roomId : null
+  danmakuStore.disconnectFromRoom()
+  if (bilibiliRoomId.value) {
+    danmakuStore.connectToRoom(bilibiliRoomId.value)
+  }
 }
 
 async function checkSessdata() {
@@ -241,6 +253,7 @@ onMounted(() => {
 onUnmounted(() => {
   window.removeEventListener('resize', updateScale)
   avatarInput.disconnect()
+  danmakuStore.disconnectFromRoom()
 })
 </script>
 

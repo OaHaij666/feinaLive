@@ -1,25 +1,26 @@
-"""B站弹幕 WebSocket 路由"""
+"""Bilibili live event and WebSocket routes."""
 
 import asyncio
 import logging
 import time
+import uuid
+from pathlib import Path
 
 import httpx
+import yaml
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 
 from apps.ai.messaging.dynamic_priority import get_priority_manager
 from apps.ai.messaging.queue import Message, get_message_queue
-from apps.live.bilibili.client import BilibiliClient
 from apps.config import config
-from apps.live.danmaku_handler import DanmakuData as ProcessDanmakuData, process_danmaku
+from apps.live.danmaku_handler import DanmakuData as ProcessDanmakuData
+from apps.live.danmaku_handler import process_danmaku
+from apps.live.room_session import RoomSessionContext, get_room_session_manager
 from core.websocket import manager
 
 logger = logging.getLogger(__name__)
-
 router = APIRouter()
-
-_bilibili_clients: dict[str, BilibiliClient] = {}
 
 
 class SessdataUpdateRequest(BaseModel):
@@ -36,145 +37,149 @@ class SessdataVerifyResponse(BaseModel):
 async def verify_sessdata():
     sessdata = config.bilibili_sessdata
     if not sessdata:
-        return SessdataVerifyResponse(valid=False, error="未配置SESSDATA")
-    
+        return SessdataVerifyResponse(valid=False, error="未配置 SESSDATA")
+
     try:
         async with httpx.AsyncClient() as client:
-            resp = await client.get(
+            response = await client.get(
                 "https://api.bilibili.com/x/web-interface/nav",
                 headers={
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+                    "User-Agent": (
+                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 "
+                        "Safari/537.36"
+                    ),
                     "Referer": "https://www.bilibili.com",
                 },
                 cookies={"SESSDATA": sessdata},
                 timeout=10.0,
             )
-            data = resp.json()
+            data = response.json()
             if data.get("code") == 0:
-                uname = data.get("data", {}).get("uname", "")
-                return SessdataVerifyResponse(valid=True, uname=uname)
-            else:
-                return SessdataVerifyResponse(valid=False, error=data.get("message", "验证失败"))
-    except Exception as e:
-        logger.error(f"SESSDATA验证失败: {e}")
-        return SessdataVerifyResponse(valid=False, error=str(e))
+                return SessdataVerifyResponse(
+                    valid=True,
+                    uname=data.get("data", {}).get("uname", ""),
+                )
+            return SessdataVerifyResponse(
+                valid=False,
+                error=data.get("message", "验证失败"),
+            )
+    except Exception as exc:
+        logger.error("SESSDATA verification failed: %s", exc)
+        return SessdataVerifyResponse(valid=False, error=str(exc))
 
 
 @router.post("/sessdata/update")
 async def update_sessdata(request: SessdataUpdateRequest):
-    import yaml
-    from pathlib import Path
-    
     config_file = Path(__file__).parent.parent.parent.parent / "config.yaml"
-    
     try:
-        with open(config_file, "r", encoding="utf-8") as f:
-            config_data = yaml.safe_load(f) or {}
-        
-        if "bilibili" not in config_data:
-            config_data["bilibili"] = {}
-        config_data["bilibili"]["sessdata"] = request.sessdata
-        
-        with open(config_file, "w", encoding="utf-8") as f:
-            yaml.dump(config_data, f, allow_unicode=True, default_flow_style=False)
-        
+        with open(config_file, "r", encoding="utf-8") as handle:
+            config_data = yaml.safe_load(handle) or {}
+        config_data.setdefault("bilibili", {})["sessdata"] = request.sessdata
+        with open(config_file, "w", encoding="utf-8") as handle:
+            yaml.dump(config_data, handle, allow_unicode=True, default_flow_style=False)
         config._data = config_data
-        
         return {"success": True}
-    except Exception as e:
-        logger.error(f"更新SESSDATA失败: {e}")
-        return {"success": False, "error": str(e)}
+    except Exception as exc:
+        logger.error("SESSDATA update failed: %s", exc)
+        return {"success": False, "error": str(exc)}
+
+
+async def _handle_room_event(context: RoomSessionContext, msg_type: str, data) -> None:
+    """Route a current-session event to the UI and downstream consumer queue."""
+
+    room_sessions = get_room_session_manager()
+    if not room_sessions.is_current(context):
+        return
+
+    message = {
+        "type": msg_type,
+        "data": data.to_dict() if hasattr(data, "to_dict") else data,
+        "context": context.to_dict(),
+    }
+    if msg_type != "danmaku":
+        await manager.send_message(context.room_id, message)
+
+    if msg_type == "danmaku" and hasattr(data, "content"):
+        await process_danmaku(
+            ProcessDanmakuData(
+                msg_id=f"bilibili_{context.session_id}_{uuid.uuid4().hex}",
+                user=data.user,
+                content=data.content,
+                uid=data.uid or 0,
+                timestamp=int(time.time()),
+            ),
+            context=context,
+        )
+    elif msg_type == "gift" and hasattr(data, "gift_name"):
+        gift_info = f"{data.uname} 赠送了 {data.gift_name}x{data.num}"
+        total_coin = getattr(data, "total_coin", 0) or 0
+        priority = get_priority_manager().get_gift_priority(total_coin)
+        await get_message_queue().put(Message(
+            priority=priority,
+            source="gift",
+            msg_type="gift_thanks",
+            content=gift_info,
+            data={
+                "gift_info": gift_info,
+                "user": data.uname,
+                "uid": data.uid,
+                "gift_name": data.gift_name,
+                "num": data.num,
+                "total_coin": total_coin,
+            },
+            context=context.to_dict(),
+            user_id=str(data.uid or ""),
+            expire_at=time.time() + 60,
+            allow_skip=True,
+        ))
+
+
+get_room_session_manager().set_event_handler(_handle_room_event)
 
 
 @router.websocket("/ws/{room_id}")
 async def danmaku_websocket(websocket: WebSocket, room_id: str):
-    await manager.connect(websocket, room_id)
+    configured_room_id = str(config.bilibili_room_id)
+    if config.bilibili_room_id <= 0 or room_id != configured_room_id:
+        await websocket.close(code=1008, reason="room is not the configured active room")
+        logger.warning(
+            "Rejected WebSocket subscription for room %s; configured room is %s",
+            room_id,
+            configured_room_id,
+        )
+        return
 
-    if room_id not in _bilibili_clients:
-        client = BilibiliClient(room_id=int(room_id))
-
-        async def on_message(msg_type: str, data):
-            message = {
-                "type": msg_type,
-                "data": data.to_dict() if hasattr(data, "to_dict") else data,
-            }
-            if msg_type != "danmaku":
-                try:
-                    await manager.send_message(room_id, message)
-                except Exception as e:
-                    logger.error(f"Failed to send {msg_type}: {e}")
-
-            if msg_type == "danmaku" and hasattr(data, "content"):
-                await process_danmaku(
-                    ProcessDanmakuData(
-                        msg_id=f"bilibili_{data.uid}_{int(time.time())}",
-                        user=data.user,
-                        content=data.content,
-                        uid=data.uid or 0,
-                        timestamp=int(time.time()),
-                    ),
-                    room_ids=[room_id],
-                )
-
-            elif msg_type == "gift" and hasattr(data, "gift_name"):
-                gift_info = f"{data.uname} 送了 {data.gift_name}x{data.num}"
-                pm = get_priority_manager()
-                total_coin = getattr(data, "total_coin", 0) or 0
-                priority = pm.get_gift_priority(total_coin)
-                queue = get_message_queue()
-                await queue.put(Message(
-                    priority=priority,
-                    source="gift",
-                    msg_type="gift_thanks",
-                    content=gift_info,
-                    data={
-                        "gift_info": gift_info,
-                        "user": data.uname,
-                        "uid": data.uid,
-                        "gift_name": data.gift_name,
-                        "num": data.num,
-                        "total_coin": total_coin,
-                    },
-                    expire_at=time.time() + 60,
-                    allow_skip=True,
-                ))
-                logger.info(f"礼物事件入队: {gift_info} (价值={total_coin}, 优先级={priority})")
-
-        client.set_callback(on_message)
-        await client.connect()
-        _bilibili_clients[room_id] = client
-        logger.info(f"Started bilibili client for room {room_id}")
-
+    connection_id = await manager.connect(websocket, room_id)
     try:
+        context = await get_room_session_manager().activate(configured_room_id)
+        await manager.disconnect_other_rooms(context.room_id)
         while True:
-            data = await websocket.receive_text()
-            logger.debug(f"Received from client: {data}")
+            await websocket.receive_text()
     except WebSocketDisconnect:
-        logger.info(f"WebSocket disconnected for room {room_id}")
-    except Exception as e:
-        logger.error(f"WebSocket error: {e}")
+        logger.info("WebSocket disconnected for room %s", room_id)
+    except Exception as exc:
+        logger.error("WebSocket error for room %s: %s", room_id, exc)
     finally:
-        await manager.disconnect(room_id)
+        await manager.disconnect(room_id, connection_id)
 
 
 @router.websocket("/ws/test/{room_id}")
 async def test_danmaku_websocket(websocket: WebSocket, room_id: str):
-    await manager.connect(websocket, room_id)
+    """Legacy test socket, isolated from real room routing."""
+
+    connection_id = await manager.connect(websocket, "test_room")
 
     async def receive_test_messages():
         try:
             while True:
-                data = await websocket.receive_text()
-                logger.debug(f"Received test message: {data}")
+                await websocket.receive_text()
         except WebSocketDisconnect:
-            logger.info(f"Test WebSocket disconnected for room {room_id}")
+            logger.info("Legacy test WebSocket disconnected")
 
-    asyncio.create_task(receive_test_messages())
-
+    receive_task = asyncio.create_task(receive_test_messages())
     try:
-        while True:
-            await asyncio.sleep(1)
-    except Exception as e:
-        logger.error(f"Test WebSocket error: {e}")
+        await receive_task
     finally:
-        await manager.disconnect(room_id)
+        receive_task.cancel()
+        await manager.disconnect("test_room", connection_id)

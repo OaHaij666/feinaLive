@@ -29,6 +29,7 @@ from apps.ai.shared_context import get_shared_context
 from apps.ai.tts import get_tts_client
 from apps.config import config
 from apps.easyvtuber import get_easyvtuber_manager
+from apps.live.room_session import RoomSessionContext, get_room_session_manager
 
 logger = logging.getLogger(__name__)
 
@@ -170,7 +171,11 @@ class HostGraph:
         )
 
         try:
-            spoken = await self._stream_reply(system_content, "请生成解说。")
+            spoken = await self._stream_reply(
+                system_content,
+                "请生成解说。",
+                self._context_for_message(msg),
+            )
         except Exception as e:
             logger.error(f"解说生成失败: {e}", exc_info=True)
             spoken = None
@@ -235,7 +240,11 @@ class HostGraph:
             host_history=host_history or "（暂无）",
         )
 
-        spoken = await self._stream_reply(system_content, "请回复弹幕。")
+        spoken = await self._stream_reply(
+            system_content,
+            "请回复弹幕。",
+            self._context_for_message(msg),
+        )
         if not spoken:
             return
 
@@ -279,7 +288,11 @@ class HostGraph:
             gift_info=gift_info,
         )
 
-        spoken = await self._stream_reply(system_content, "请生成感谢语。")
+        spoken = await self._stream_reply(
+            system_content,
+            "请生成感谢语。",
+            self._context_for_message(msg),
+        )
         if not spoken:
             return
 
@@ -294,12 +307,21 @@ class HostGraph:
         if self._on_reply:
             await self._on_reply(spoken)
 
-    async def _stream_reply(self, system_content: str, user_content: str) -> str | None:
+    async def _stream_reply(
+        self,
+        system_content: str,
+        user_content: str,
+        context: RoomSessionContext | None,
+    ) -> str | None:
         """流式 LLM → 分句 TTS → WebSocket 广播 → EasyVtuber 口型
 
         复用与 HostBrain._stream_reply_impl 完全相同的流式管线，
         唯一的区别是输出通过 WebSocket 广播而非 HTTP SSE yield。
         """
+        if context is None or not get_room_session_manager().is_current(context):
+            logger.debug("Skipped reply generation without a current room session")
+            return None
+
         ai = get_ai_client()
         if not ai.available:
             logger.warning("AI 不可用，跳过话术生成")
@@ -339,7 +361,7 @@ class HostGraph:
                 )
             return None
 
-        await self._broadcast_chunk({"type": "start", "is_final": False})
+        await self._broadcast_chunk({"type": "start", "is_final": False}, context)
 
         try:
             easyvtuber = get_easyvtuber_manager()
@@ -349,11 +371,19 @@ class HostGraph:
 
         try:
             async for chunk in ai.chat_stream(request):
+                if not get_room_session_manager().is_current(context):
+                    for task in tts_tasks:
+                        task.cancel()
+                    logger.info("Cancelled reply because the active room session changed")
+                    return None
                 full_response += chunk
 
                 new_sentences = sentence_buffer.add(chunk)
                 for sentence in new_sentences:
-                    await self._broadcast_chunk({"type": "text", "text": sentence, "is_final": False})
+                    await self._broadcast_chunk(
+                        {"type": "text", "text": sentence, "is_final": False},
+                        context,
+                    )
 
                     task = asyncio.create_task(
                         process_sentence(sentence, sentence_index, char_offset)
@@ -364,7 +394,10 @@ class HostGraph:
 
             remaining = sentence_buffer.flush()
             if remaining:
-                await self._broadcast_chunk({"type": "text", "text": remaining, "is_final": False})
+                await self._broadcast_chunk(
+                    {"type": "text", "text": remaining, "is_final": False},
+                    context,
+                )
 
                 task = asyncio.create_task(
                     process_sentence(remaining, sentence_index, char_offset)
@@ -372,14 +405,24 @@ class HostGraph:
                 tts_tasks.append(task)
 
             for task in tts_tasks:
+                if not get_room_session_manager().is_current(context):
+                    for pending in tts_tasks:
+                        pending.cancel()
+                    return None
                 result = await task
                 if result:
-                    await self._broadcast_chunk(result.to_dict())
+                    await self._broadcast_chunk(result.to_dict(), context)
 
             if len(full_response) > config.host_max_reply_length:
                 full_response = full_response[:config.host_max_reply_length]
 
-            await self._broadcast_chunk({"type": "end", "text": full_response, "is_final": True})
+            if not get_room_session_manager().is_current(context):
+                return None
+
+            await self._broadcast_chunk(
+                {"type": "end", "text": full_response, "is_final": True},
+                context,
+            )
 
         finally:
             try:
@@ -390,22 +433,24 @@ class HostGraph:
 
         return full_response
 
-    async def _broadcast_chunk(self, chunk: dict):
-        """广播到所有前端 WebSocket"""
+    def _context_for_message(self, msg: Message) -> RoomSessionContext | None:
+        context = RoomSessionContext.from_mapping(msg.context)
+        if context is not None:
+            return context
+        return get_room_session_manager().active_context
+
+    async def _broadcast_chunk(
+        self,
+        chunk: dict,
+        context: RoomSessionContext | None,
+    ) -> None:
+        """Route output only to the session that produced the consumed message."""
+
+        if context is None or not get_room_session_manager().is_current(context):
+            logger.debug("Dropped reply chunk without a current room session")
+            return
+
         from core.websocket import manager as ws_manager
 
-        target_rooms = set()
-        if config.bilibili_room_id > 0:
-            target_rooms.add(str(config.bilibili_room_id))
-        if config.default_room_id > 0:
-            target_rooms.add(str(config.default_room_id))
-
-        from apps.ai.admin_commands import get_admin_handler
-        if get_admin_handler().get_state().is_test_room_enabled:
-            target_rooms.add("test_room")
-
-        for room_id in target_rooms:
-            try:
-                await ws_manager.send_message(room_id, chunk)
-            except Exception as e:
-                logger.debug("WebSocket广播失败 room=%s chunk_type=%s: %s", room_id, chunk.get("type"), e)
+        chunk.setdefault("context", context.to_dict())
+        await ws_manager.send_message(context.room_id, chunk)

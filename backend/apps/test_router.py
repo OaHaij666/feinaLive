@@ -10,6 +10,7 @@ from pydantic import BaseModel
 from apps.ai.admin_commands import get_admin_handler
 from apps.config import config
 from apps.live.danmaku_handler import DanmakuData, process_danmaku
+from apps.live.room_session import RoomSessionContext
 from core.websocket import manager
 
 logger = logging.getLogger(__name__)
@@ -27,15 +28,6 @@ class TestDanmakuInput(BaseModel):
 
 class TestAdminCommandInput(BaseModel):
     command: str
-
-
-def _target_room_ids() -> list[str]:
-    room_ids = [TEST_ROOM]
-    if config.bilibili_room_id > 0:
-        room_ids.append(str(config.bilibili_room_id))
-    if config.default_room_id > 0:
-        room_ids.append(str(config.default_room_id))
-    return room_ids
 
 
 @router.post("/danmaku")
@@ -68,7 +60,7 @@ async def send_test_danmaku(danmaku: TestDanmakuInput):
             uid=danmaku.uid,
             timestamp=int(time.time()),
         ),
-        room_ids=_target_room_ids(),
+        context=RoomSessionContext.test_room(),
     )
 
     return {
@@ -155,7 +147,7 @@ async def test_add_music(bvid: str):
 @router.websocket("/ws/test")
 async def test_ws_danmaku(websocket: WebSocket):
     """测试用WebSocket - 接收测试弹幕和AI回复"""
-    await manager.connect(websocket, TEST_ROOM)
+    connection_id = await manager.connect(websocket, TEST_ROOM)
 
     try:
         while True:
@@ -164,4 +156,4 @@ async def test_ws_danmaku(websocket: WebSocket):
     except Exception:
         pass
     finally:
-        await manager.disconnect(TEST_ROOM)
+        await manager.disconnect(TEST_ROOM, connection_id)

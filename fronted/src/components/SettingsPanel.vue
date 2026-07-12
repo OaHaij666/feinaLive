@@ -487,7 +487,7 @@ import MemoryDebugPanel from '@/components/memory/MemoryDebugPanel.vue'
 
 interface Props { visible: boolean }
 const props = defineProps<Props>()
-const emit = defineEmits<{ close: [] }>()
+const emit = defineEmits<{ close: []; saved: [roomId: number] }>()
 
 // ---- 依赖 ----
 const llmStore = useLLMStore()
@@ -594,6 +594,7 @@ async function saveConfig() {
       Object.assign(cfg, data) // 用后端 canonical 数据覆盖
       saveStatus.value = 'ok'
       saveStatusText.value = '已保存'
+      emit('saved', cfg.bilibili.room_id)
     } else {
       const errText = await res.text()
       saveStatus.value = 'err'

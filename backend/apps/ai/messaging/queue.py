@@ -17,7 +17,6 @@ import uuid
 from dataclasses import dataclass, field
 
 from apps.ai.messaging.dynamic_priority import (
-    PRIORITY_DISPOSABLE,
     PRIORITY_HIGH,
     PRIORITY_HIGHEST,
     PRIORITY_LOW,
@@ -26,6 +25,7 @@ from apps.ai.messaging.dynamic_priority import (
 )
 from apps.ai.messaging.rate_limiter import RateLimiter, get_rate_limiter
 from apps.config import config
+from apps.live.room_session import RoomSessionContext, get_room_session_manager
 
 logger = logging.getLogger(__name__)
 
@@ -94,6 +94,13 @@ class PriorityMessageQueue:
         self._total_consumed: int = 0
 
     async def put(self, msg: Message) -> bool:
+        if msg.source in {"danmaku", "gift"}:
+            context = RoomSessionContext.from_mapping(msg.context)
+            if context is None or not get_room_session_manager().is_current(context):
+                logger.debug("Dropped message outside the active room session: %s", msg.context)
+                self._total_dropped += 1
+                return False
+
         if self._muted:
             logger.debug("队列全局静音，消息丢弃")
             self._total_dropped += 1
@@ -165,6 +172,11 @@ class PriorityMessageQueue:
                 continue
             if msg.is_expired and msg.allow_skip:
                 logger.debug(f"消息已过期，跳过: {msg.content[:20]}")
+                self._total_dropped += 1
+                continue
+            context = RoomSessionContext.from_mapping(msg.context)
+            if context is not None and not get_room_session_manager().is_current(context):
+                logger.debug("Dropped stale queued message: %s", msg.context)
                 self._total_dropped += 1
                 continue
             self._total_consumed += 1

@@ -1,11 +1,30 @@
 <template>
-  <Teleport to="body">
+  <Teleport to="body" :disabled="embedded">
     <Transition name="modal">
-      <div v-if="visible" class="settings-overlay" @click.self="close">
-        <div :class="['settings-panel', { 'settings-panel-wide': ['memory', 'agent_params', 'monitor', 'avatar'].includes(activeTab) }]">
+      <div v-if="visible || embedded" :class="['settings-overlay', { 'is-embedded': embedded }]" @click.self="close">
+        <div :class="['settings-panel', { 'settings-panel-wide': ['memory', 'agent_params', 'monitor', 'avatar'].includes(activeTab), 'is-embedded': embedded }]">
           <div class="settings-header">
-            <h2>集中配置</h2>
-            <button class="close-btn" @click="close">&times;</button>
+            <div class="console-brand">
+              <span class="brand-mark" aria-hidden="true"></span>
+              <div><span>FEINA LIVE</span><h2>运营控制台</h2></div>
+            </div>
+            <div class="header-meta">
+              <button
+                v-if="embedded"
+                class="theme-toggle"
+                type="button"
+                :aria-pressed="isLight"
+                :aria-label="isLight ? '切换到暗色主题' : '切换到亮色主题'"
+                :title="isLight ? '切换到暗色主题' : '切换到亮色主题'"
+                @click="toggleTheme"
+              >
+                <svg v-if="isLight" viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 15.2A8 8 0 0 1 8.8 3.5 8.5 8.5 0 1 0 20.5 15.2Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
+                <svg v-else viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12 2v2m0 16v2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4M2 12h2m16 0h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+                <span>{{ isLight ? '暗色' : '亮色' }}</span>
+              </button>
+              <span :class="['connection-pill', connected ? 'online' : 'offline']">{{ connected ? '后端已连接' : '后端未连接' }}</span>
+              <button v-if="!embedded" class="close-btn" aria-label="关闭控制台" @click="close">&times;</button>
+            </div>
           </div>
 
           <!-- ===== 连接状态 ===== -->
@@ -24,18 +43,74 @@
 
           <!-- ===== 配置表单（仅连接成功后显示） ===== -->
           <template v-else>
-            <div class="settings-tabs">
+            <label class="mobile-tab-picker">
+              <span>当前分区</span>
+              <select v-model="activeTab" aria-label="选择控制台分区">
+                <option v-for="tab in tabs" :key="`mobile-${tab.key}`" :value="tab.key">{{ tab.label }}</option>
+              </select>
+            </label>
+            <nav class="settings-tabs" aria-label="控制台主导航">
               <button
                 v-for="tab in tabs"
                 :key="tab.key"
                 :class="['tab-btn', { active: activeTab === tab.key }]"
+                :aria-current="activeTab === tab.key ? 'page' : undefined"
                 @click="activeTab = tab.key"
               >
+                <span class="tab-indicator" aria-hidden="true"></span>
                 {{ tab.label }}
               </button>
-            </div>
+            </nav>
 
             <div :class="['settings-content', { 'settings-content-memory': activeTab === 'memory' }]">
+              <!-- Tab: 总览 -->
+              <div v-if="activeTab === 'overview'" class="tab-content overview-content">
+                <div class="overview-heading">
+                  <div><span class="eyebrow">SYSTEM OVERVIEW</span><h1>直播运行总览</h1><p>集中查看关键服务，并执行不会改变持久配置的运行时操作。</p></div>
+                  <div class="overview-actions">
+                    <span class="last-updated">更新于 {{ runtimeUpdatedAt || '—' }}</span>
+                    <button class="btn btn-secondary" :disabled="runtimeBusy === 'refresh'" @click="refreshOverview">{{ runtimeBusy === 'refresh' ? '刷新中…' : '刷新状态' }}</button>
+                    <button class="btn btn-primary" @click="openLiveDisplay">打开直播画面</button>
+                  </div>
+                </div>
+
+                <div class="runtime-grid">
+                  <article class="runtime-card">
+                    <div class="runtime-card-head"><span :class="['runtime-dot', runtimeHealth.status === 'healthy' ? 'ok' : 'bad']"></span><span>后端</span></div>
+                    <strong>{{ runtimeHealth.status === 'healthy' ? '服务正常' : '需要检查' }}</strong>
+                    <p>消息队列 {{ runtimeHealth.message_queue?.size ?? 0 }} 条 · {{ runtimeHealth.components?.message_queue || '未知' }}</p>
+                  </article>
+                  <article class="runtime-card">
+                    <div class="runtime-card-head"><span :class="['runtime-dot', liveState.running ? 'ok' : 'idle']"></span><span>直播平台</span></div>
+                    <strong>{{ liveState.running ? liveState.platform : '未启动' }}</strong>
+                    <p>同一时刻只绑定一个标准化直播会话</p>
+                  </article>
+                  <article class="runtime-card">
+                    <div class="runtime-card-head"><span :class="['runtime-dot', agentRuntime.running ? 'ok' : 'idle']"></span><span>Agent</span></div>
+                    <strong>{{ agentRuntime.running ? '运行中' : agentRuntime.runtime_status || '已停止' }}</strong>
+                    <p>{{ agentRuntime.configured_scenario_id || '未绑定场景' }} · 待处理 {{ agentRuntime.events?.pending ?? 0 }}</p>
+                    <button class="card-action" :disabled="runtimeBusy === 'agent'" @click="toggleAgent">{{ agentRuntime.running ? '停止 Agent' : '启动 Agent' }}</button>
+                  </article>
+                  <article class="runtime-card">
+                    <div class="runtime-card-head"><span :class="['runtime-dot', avatarRuntimeState.state === 'running' ? 'ok' : avatarRuntimeState.state === 'failed' ? 'bad' : 'idle']"></span><span>FeinaAvatar</span></div>
+                    <strong>{{ avatarStatusText }}</strong>
+                    <p>{{ avatarRuntimeState.error || 'Spout2 正式输出与控制台预览' }}</p>
+                    <button class="card-action" :disabled="runtimeBusy === 'avatar'" @click="toggleAvatar">{{ avatarRuntimeState.state === 'running' ? '停止渲染' : '启动渲染' }}</button>
+                  </article>
+                  <article class="runtime-card">
+                    <div class="runtime-card-head"><span :class="['runtime-dot', aiRuntime.playback?.owner_id ? 'ok' : 'idle']"></span><span>主播消费链路</span></div>
+                    <strong>{{ aiRuntime.unanswered_count ?? 0 }} 条待回复</strong>
+                    <p>缓冲 {{ aiRuntime.buffer_size ?? 0 }} · 播放端 {{ aiRuntime.playback?.ready_clients ?? 0 }}</p>
+                  </article>
+                  <article class="runtime-card">
+                    <div class="runtime-card-head"><span :class="['runtime-dot', musicState.current ? 'ok' : 'idle']"></span><span>音乐系统</span></div>
+                    <strong>{{ musicState.current?.track.title || '等待点歌' }}</strong>
+                    <p>队列 {{ musicState.queue.length }} 首 · 音量 {{ Math.round(musicState.volume * 100) }}%</p>
+                    <div class="card-actions"><button class="card-action" @click="musicStore.togglePlay">{{ musicState.paused ? '继续' : '暂停' }}</button><button class="card-action" :disabled="!musicState.current" @click="() => musicStore.skipCurrent()">切歌</button></div>
+                  </article>
+                </div>
+              </div>
+
               <!-- Tab: AI主播 -->
               <div v-if="activeTab === 'host'" class="tab-content">
                 <div class="section-title">主播回复参数</div>
@@ -57,7 +132,7 @@
 
               <!-- Tab: AI模型 -->
               <div v-if="activeTab === 'ai_models'" class="tab-content">
-                <div class="section-title">📦 通用模型</div>
+                <div class="section-title">通用模型</div>
                 <p class="section-desc">音乐验证、上下文总结、RAG 检索等任务</p>
                 <div class="form-group">
                   <label>API URL</label>
@@ -92,7 +167,7 @@
                   </label>
                 </div>
 
-                <div class="section-title">🎙 主播模型</div>
+                <div class="section-title">主播模型</div>
                 <p class="section-desc">AI 主播对话、弹幕回复、风格化解说 (HostRuntime)</p>
                 <div class="form-group">
                   <label>API URL</label>
@@ -151,7 +226,7 @@
                     禁用思考链 <span class="hint">(模型不支持时取消勾选)</span>
                   </label>
                 </div>
-                <div class="section-title">🧠 向量模型 (Embedding)</div>
+                <div class="section-title">向量模型 (Embedding)</div>
                 <p class="section-desc">用于记忆语义检索，未配置时自动退化到纯关键词检索</p>
                 <div class="form-group">
                   <label>提供商</label>
@@ -347,6 +422,7 @@
 
               <!-- Tab: 音乐 -->
               <div v-if="activeTab === 'music'" class="tab-content">
+                <MusicManagementPanel />
                 <div class="section-title">音乐 Provider</div>
                 <p class="section-desc">音乐系统独立运行；Provider 和审核参数重启后生效。</p>
                 <div class="form-group">
@@ -418,6 +494,12 @@
                   <div class="section-title">测试平台</div>
                   <p class="section-desc">由项目内部模拟标准弹幕、礼物和直播事件，不需要房间或平台凭据。修改后需重启。</p>
                 </template>
+                <div class="connection-check">
+                  <button type="button" class="small-btn" :disabled="credentialChecking || cfg.live.platform === 'test'" @click="verifyPlatformCredentials">
+                    {{ credentialChecking ? '验证中…' : '验证平台连接' }}
+                  </button>
+                  <span v-if="credentialStatus" :class="['credential-status', credentialStatus.valid ? 'ok' : 'bad']">{{ credentialStatus.message }}</span>
+                </div>
                 <div class="section-title">平台管理员身份</div>
                 <div class="form-row-2">
                   <div class="form-group"><label>Bilibili UID</label><input type="text" v-model.trim="cfg.admin.identities.bilibili" /></div>
@@ -525,7 +607,7 @@
               </div>
             </div>
 
-            <div v-if="activeTab !== 'memory'" class="settings-footer">
+            <div v-if="!['memory', 'overview'].includes(activeTab)" class="settings-footer">
               <div class="footer-left">
                 <span v-if="saveStatus" :class="['save-status', saveStatus]">{{ saveStatusText }}</span>
               </div>
@@ -548,16 +630,19 @@ import type { FullConfig } from '../types/config'
 import { MASKED } from '../types/config'
 import { useNotification } from '@/utils/notification'
 import { useMusicStore } from '@/features/music/store'
+import { useConsoleTheme } from '@/composables/useConsoleTheme'
 import MemoryDebugPanel from '@/components/memory/MemoryDebugPanel.vue'
 import AgentSettingsPanel from '@/components/settings/agent/AgentSettingsPanel.vue'
+import MusicManagementPanel from '@/components/settings/music/MusicManagementPanel.vue'
 
-interface Props { visible: boolean }
-const props = defineProps<Props>()
+interface Props { visible?: boolean; embedded?: boolean }
+const props = withDefaults(defineProps<Props>(), { visible: false, embedded: false })
 const emit = defineEmits<{ close: []; saved: [] }>()
 
 // ---- 依赖 ----
 const musicStore = useMusicStore()
 const { state: musicState } = storeToRefs(musicStore)
+const { isLight, toggleTheme } = useConsoleTheme()
 
 // ---- 连接状态（配置仅从后端获取，前端不缓存） ----
 const connected = ref(false)
@@ -565,6 +650,7 @@ const connecting = ref(false)
 
 // ---- Tabs ----
 const tabs = [
+  { key: 'overview', label: '运行总览' },
   { key: 'host', label: 'AI主播' },
   { key: 'ai_models', label: 'AI模型' },
   { key: 'tts', label: '语音' },
@@ -576,9 +662,11 @@ const tabs = [
   { key: 'monitor', label: '直播状况' },
   { key: 'memory', label: '记忆' },
 ]
-const activeTab = ref('host')
+const activeTab = ref('overview')
 const characters = ref<{ name: string }[]>([])
 const saveStatus = ref('')
+const credentialChecking = ref(false)
+const credentialStatus = ref<{ valid: boolean; message: string } | null>(null)
 
 function setLocalDirectories(event: Event) {
   cfg.music.local_directories = (event.target as HTMLTextAreaElement).value
@@ -590,6 +678,11 @@ const saveStatusText = ref('')
 const vectorStatus = reactive({ available: false, vector_count: 0 })
 const avatarPreviewRevision = ref(Date.now())
 const avatarRuntimeState = reactive({ state: 'stopped', error: '' })
+const runtimeHealth = reactive<Record<string, any>>({ status: 'unknown', components: {}, message_queue: {} })
+const agentRuntime = reactive<Record<string, any>>({ running: false, runtime_status: 'unknown', events: {} })
+const aiRuntime = reactive<Record<string, any>>({ buffer_size: 0, unanswered_count: 0, playback: {} })
+const runtimeBusy = ref('')
+const runtimeUpdatedAt = ref('')
 const avatarPreviewUrl = computed(() => `/avatar/preview/frame?v=${avatarPreviewRevision.value}`)
 const avatarStatusText = computed(() => {
   if (avatarRuntimeState.state === 'running') return 'FeinaAvatar 运行中'
@@ -665,6 +758,69 @@ async function refreshAvatarStatus() {
   } catch {
     avatarRuntimeState.state = 'stopped'
   }
+}
+
+async function refreshOverview() {
+  if (runtimeBusy.value) return
+  runtimeBusy.value = 'refresh'
+  try {
+    const [healthResponse, agentResponse, aiResponse, liveResponse] = await Promise.all([
+      fetch('/health'),
+      fetch('/agent/status'),
+      fetch('/ai/status'),
+      fetch('/live/state'),
+    ])
+    if (healthResponse.ok) Object.assign(runtimeHealth, await healthResponse.json())
+    if (agentResponse.ok) Object.assign(agentRuntime, await agentResponse.json())
+    if (aiResponse.ok) Object.assign(aiRuntime, await aiResponse.json())
+    if (liveResponse.ok) {
+      const state = await liveResponse.json()
+      liveState.running = Boolean(state.running)
+      liveState.platform = state.context?.platform || ''
+    }
+    await Promise.all([musicStore.fetchState(), refreshAvatarStatus()])
+    runtimeUpdatedAt.value = new Date().toLocaleTimeString('zh-CN', { hour12: false })
+  } catch (error) {
+    useNotification().error(`运行状态刷新失败：${error instanceof Error ? error.message : String(error)}`)
+  } finally {
+    runtimeBusy.value = ''
+  }
+}
+
+async function toggleAgent() {
+  runtimeBusy.value = 'agent'
+  try {
+    const response = await fetch(agentRuntime.running ? '/agent/stop' : '/agent/start', { method: 'POST' })
+    const result = await response.json()
+    if (!response.ok || result.success === false) throw new Error(result.message || `HTTP ${response.status}`)
+    useNotification().success(result.message || 'Agent 状态已更新')
+  } catch (error) {
+    useNotification().error(error instanceof Error ? error.message : String(error))
+  } finally {
+    runtimeBusy.value = ''
+    await refreshOverview()
+  }
+}
+
+async function toggleAvatar() {
+  runtimeBusy.value = 'avatar'
+  try {
+    const action = avatarRuntimeState.state === 'running' ? 'stop' : 'start'
+    const response = await fetch(`/avatar/${action}`, { method: 'POST' })
+    const result = await response.json()
+    if (!response.ok || result.state === 'failed') throw new Error(result.error || `HTTP ${response.status}`)
+  } catch (error) {
+    useNotification().error(error instanceof Error ? error.message : String(error))
+  } finally {
+    runtimeBusy.value = ''
+    await refreshOverview()
+  }
+}
+
+function openLiveDisplay() {
+  const port = window.location.port === '5174' ? '5173' : window.location.port === '8089' ? '8088' : ''
+  const origin = `${window.location.protocol}//${window.location.hostname}${port ? `:${port}` : ''}`
+  window.open(origin, '_blank', 'noopener,noreferrer')
 }
 
 async function refreshVectorStatus() {
@@ -754,6 +910,7 @@ let ws: WebSocket | null = null
 let wsReconnectTimer: ReturnType<typeof setTimeout> | null = null
 let shouldReconnect = true
 let avatarPreviewTimer: ReturnType<typeof setInterval> | null = null
+let overviewTimer: ReturnType<typeof setInterval> | null = null
 
 function addLog(content: string, type: LogItem['type'] = 'system') {
   const now = new Date()
@@ -798,6 +955,26 @@ function connectWebSocket() {
   }
 }
 
+async function verifyPlatformCredentials() {
+  if (cfg.live.platform === 'test') return
+  credentialChecking.value = true
+  credentialStatus.value = null
+  try {
+    const response = await fetch(`/live/platforms/${cfg.live.platform}/verify`)
+    const result = await response.json()
+    credentialStatus.value = {
+      valid: Boolean(result.valid),
+      message: result.valid
+        ? (result.username ? `连接有效：${result.username}` : '直播间连接信息有效')
+        : (result.error || '验证失败'),
+    }
+  } catch (error) {
+    credentialStatus.value = { valid: false, message: error instanceof Error ? error.message : String(error) }
+  } finally {
+    credentialChecking.value = false
+  }
+}
+
 async function sendTestEvent() {
   if (!canSendTestEvent.value) return
   const stats = testEventType.value === 'room_stats'
@@ -832,7 +1009,7 @@ async function sendTestEvent() {
 
 async function sendCommand(command: string) {
   try {
-    const res = await fetch('/test/admin/command', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ command }) })
+    const res = await fetch('/ai/admin/command', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ command }) })
     const result = await res.json()
     if (result.success) {
       if (result.state) adminState.value = { isSleeping: result.state.is_sleeping, faceMode: result.state.face_mode, isVoiceMode: result.state.is_voice_mode, isHideAdmin: result.state.is_hide_admin, volume: result.state.volume ?? 1.0, isPaused: result.state.is_paused ?? false }
@@ -844,7 +1021,7 @@ async function sendCommand(command: string) {
 async function refreshStatus() {
   try {
     const [adminResponse, liveResponse] = await Promise.all([
-      fetch('/test/admin/state'),
+      fetch('/ai/admin/state'),
       fetch('/live/state'),
     ])
     const data = await adminResponse.json()
@@ -861,11 +1038,11 @@ async function addMusic() { if (bvidInput.value) { await sendCommand(`/add_music
 
 // ---- 生命周期 ----
 function handleKeydown(e: KeyboardEvent) {
-  if (e.key === 'Escape' && props.visible) close()
+  if (e.key === 'Escape' && props.visible && !props.embedded) close()
 }
 
 watch(() => props.visible, (visible) => {
-  if (visible) {
+  if (visible || props.embedded) {
     loadConfig()
     loadCharacters()
     refreshStatus()
@@ -880,17 +1057,28 @@ onMounted(() => {
   refreshStatus()
   refreshVectorStatus()
   refreshAvatarStatus()
+  if (props.visible || props.embedded) {
+    void loadConfig().then(() => {
+      if (connected.value) void refreshOverview()
+    })
+    loadCharacters()
+  }
   avatarPreviewTimer = setInterval(() => {
     if (!props.visible || activeTab.value !== 'avatar') return
     avatarPreviewRevision.value = Date.now()
     void refreshAvatarStatus()
   }, 1000)
+  overviewTimer = setInterval(() => {
+    if ((!props.visible && !props.embedded) || !connected.value) return
+    void refreshOverview()
+  }, 5000)
 })
 
 onUnmounted(() => {
   shouldReconnect = false
   if (wsReconnectTimer) clearTimeout(wsReconnectTimer)
   if (avatarPreviewTimer) clearInterval(avatarPreviewTimer)
+  if (overviewTimer) clearInterval(overviewTimer)
   window.removeEventListener('keydown', handleKeydown)
   if (ws) ws.close()
 })
@@ -1143,6 +1331,10 @@ select option {
 .flex-input:focus { outline: none; border-color: #3b82f6; }
 
 .small-btn { padding: 6px 14px; background: #64748b; border: none; border-radius: 6px; color: white; font-size: 12px; cursor: pointer; align-self: flex-start; }
+.connection-check { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.credential-status { font-size: 12px; line-height: 1.5; }
+.credential-status.ok { color: #86efac; }
+.credential-status.bad { color: #fca5a5; }
 
 .log-area { max-height: 140px; overflow-y: auto; background: rgba(0,0,0,0.4); border-radius: 8px; padding: 8px; font-family: monospace; font-size: 11px; }
 .log-item { display: flex; gap: 8px; padding: 2px 0; }
@@ -1181,4 +1373,167 @@ select option {
 .settings-content::-webkit-scrollbar { width: 5px; }
 .settings-content::-webkit-scrollbar-track { background: transparent; }
 .settings-content::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 3px; }
+.mobile-tab-picker { display: none; }
+
+/* ---- Standalone operations console ---- */
+.settings-overlay.is-embedded {
+  position: relative;
+  inset: auto;
+  min-height: 100dvh;
+  padding: 24px;
+  display: block;
+  background: transparent;
+  backdrop-filter: none;
+  z-index: auto;
+}
+
+.settings-panel.is-embedded {
+  width: min(1680px, 100%);
+  height: calc(100dvh - 48px);
+  min-height: 680px;
+  max-height: none;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: 232px minmax(0, 1fr);
+  grid-template-rows: 76px minmax(0, 1fr) auto;
+  overflow: hidden;
+  border: 1px solid rgba(167, 139, 250, 0.16);
+  border-radius: 20px;
+  background: linear-gradient(145deg, rgba(19, 25, 40, 0.98), rgba(10, 15, 27, 0.99));
+  box-shadow: 0 28px 90px rgba(0, 0, 0, 0.42);
+}
+
+.is-embedded .settings-header {
+  grid-column: 1 / -1;
+  grid-row: 1;
+  padding: 14px 20px;
+  background: rgba(10, 15, 27, 0.72);
+}
+
+.console-brand,
+.header-meta,
+.runtime-card-head,
+.overview-actions,
+.card-actions {
+  display: flex;
+  align-items: center;
+}
+
+.console-brand { gap: 12px; }
+.console-brand > div { display: flex; flex-direction: column; gap: 2px; }
+.console-brand span { color: #a78bfa; font-size: 10px; font-weight: 700; letter-spacing: .16em; }
+.console-brand h2 { margin: 0; font-size: 17px; letter-spacing: .02em; }
+.brand-mark { width: 34px; height: 34px; border-radius: 11px; background: linear-gradient(135deg, #7c3aed, #ec4899); box-shadow: 0 8px 24px rgba(124, 58, 237, .28); }
+.brand-mark::after { content: ''; display: block; width: 10px; height: 10px; margin: 12px; border: 2px solid white; border-radius: 50%; }
+.header-meta { gap: 12px; }
+.theme-toggle { min-width: 82px; min-height: 40px; padding: 7px 11px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; border: 1px solid rgba(167, 139, 250, .2); border-radius: 10px; color: #ddd6fe; background: rgba(124, 58, 237, .08); cursor: pointer; transition: color .18s ease, border-color .18s ease, background-color .18s ease; }
+.theme-toggle:hover { border-color: rgba(167, 139, 250, .48); background: rgba(124, 58, 237, .16); }
+.theme-toggle:focus-visible { outline: 2px solid #a78bfa; outline-offset: 2px; }
+.theme-toggle svg { width: 17px; height: 17px; }
+.theme-toggle span { color: inherit; font-size: 11px; font-weight: 600; letter-spacing: 0; }
+.connection-pill { min-height: 28px; padding: 5px 10px; border: 1px solid; border-radius: 999px; font-size: 11px; font-weight: 600; }
+.connection-pill.online { color: #86efac; border-color: rgba(74, 222, 128, .28); background: rgba(34, 197, 94, .09); }
+.connection-pill.offline { color: #fca5a5; border-color: rgba(248, 113, 113, .28); background: rgba(239, 68, 68, .09); }
+
+.is-embedded .settings-tabs {
+  grid-column: 1;
+  grid-row: 2 / 4;
+  min-width: 0;
+  padding: 18px 12px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  overflow: auto;
+  border-right: 1px solid rgba(255, 255, 255, .07);
+  border-bottom: 0;
+  background: rgba(7, 11, 21, .4);
+}
+
+.is-embedded .tab-btn {
+  position: relative;
+  min-height: 44px;
+  padding: 10px 14px 10px 24px;
+  border-radius: 10px;
+  text-align: left;
+  color: #9ca3af;
+  font-size: 13px;
+  transition: color .18s ease, background-color .18s ease;
+}
+.is-embedded .tab-btn:hover { color: #f3f4f6; background: rgba(255, 255, 255, .045); }
+.is-embedded .tab-btn.active { color: #ede9fe; background: linear-gradient(90deg, rgba(124, 58, 237, .22), rgba(124, 58, 237, .06)); }
+.tab-indicator { position: absolute; left: 10px; width: 5px; height: 5px; border-radius: 50%; background: #4b5563; }
+.tab-btn.active .tab-indicator { background: #c4b5fd; box-shadow: 0 0 10px rgba(167, 139, 250, .8); }
+
+.is-embedded .settings-content {
+  grid-column: 2;
+  grid-row: 2;
+  min-width: 0;
+  padding: 28px 32px;
+  background: rgba(15, 21, 35, .36);
+}
+.is-embedded .connect-state { grid-column: 1 / -1; grid-row: 2 / 4; }
+.is-embedded .settings-footer { grid-column: 2; grid-row: 3; min-height: 68px; padding: 12px 32px; background: rgba(10, 15, 27, .82); }
+.is-embedded .form-group input[type='text'],
+.is-embedded .form-group input[type='number'],
+.is-embedded .form-group input[type='password'],
+.is-embedded .form-group select,
+.is-embedded .textarea-field,
+.is-embedded .small-input,
+.is-embedded .flex-input { min-height: 44px; border-color: rgba(255, 255, 255, .12); background: rgba(255, 255, 255, .045); }
+.is-embedded .btn,
+.is-embedded .small-btn,
+.is-embedded .cmd-btn { min-height: 44px; }
+.is-embedded .btn-primary { background: linear-gradient(135deg, #7c3aed, #6d28d9); box-shadow: 0 8px 22px rgba(124, 58, 237, .22); }
+.is-embedded .btn-primary:hover { background: linear-gradient(135deg, #8b5cf6, #7c3aed); }
+
+.overview-content { gap: 24px; }
+.overview-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; }
+.overview-heading .eyebrow { color: #a78bfa; font-size: 10px; font-weight: 700; letter-spacing: .14em; }
+.overview-heading h1 { margin: 6px 0 6px; color: #f8fafc; font-size: clamp(22px, 2.4vw, 32px); line-height: 1.2; }
+.overview-heading p { max-width: 620px; margin: 0; color: #94a3b8; font-size: 13px; line-height: 1.65; }
+.overview-actions { justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
+.last-updated { width: 100%; color: #64748b; font-size: 11px; text-align: right; font-variant-numeric: tabular-nums; }
+.runtime-grid { display: grid; grid-template-columns: repeat(3, minmax(220px, 1fr)); gap: 14px; }
+.runtime-card { min-height: 166px; padding: 18px; display: flex; flex-direction: column; gap: 10px; border: 1px solid rgba(255, 255, 255, .08); border-radius: 14px; background: linear-gradient(145deg, rgba(255, 255, 255, .045), rgba(255, 255, 255, .018)); box-shadow: inset 0 1px rgba(255, 255, 255, .025); }
+.runtime-card-head { gap: 8px; color: #9ca3af; font-size: 11px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; }
+.runtime-dot { width: 8px; height: 8px; border-radius: 50%; background: #64748b; }
+.runtime-dot.ok { background: #4ade80; box-shadow: 0 0 12px rgba(74, 222, 128, .55); }
+.runtime-dot.bad { background: #fb7185; box-shadow: 0 0 12px rgba(251, 113, 133, .45); }
+.runtime-dot.idle { background: #fbbf24; }
+.runtime-card strong { overflow: hidden; color: #f8fafc; font-size: 17px; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
+.runtime-card p { min-height: 38px; margin: 0; color: #94a3b8; font-size: 12px; line-height: 1.6; }
+.card-action { min-height: 38px; padding: 7px 12px; align-self: flex-start; border: 1px solid rgba(167, 139, 250, .2); border-radius: 8px; color: #ddd6fe; background: rgba(124, 58, 237, .09); cursor: pointer; transition: background-color .18s ease, border-color .18s ease; }
+.card-action:hover { border-color: rgba(167, 139, 250, .45); background: rgba(124, 58, 237, .18); }
+.card-action:disabled { opacity: .42; cursor: not-allowed; }
+.card-actions { gap: 8px; }
+
+@media (max-width: 1180px) {
+  .runtime-grid { grid-template-columns: repeat(2, minmax(220px, 1fr)); }
+  .overview-heading { flex-direction: column; }
+  .overview-actions { justify-content: flex-start; }
+  .last-updated { text-align: left; }
+}
+
+@media (max-width: 860px) {
+  .settings-overlay.is-embedded { padding: 0; }
+  .settings-panel.is-embedded { width: 100%; height: 100dvh; min-height: 620px; border: 0; border-radius: 0; grid-template-columns: minmax(0, 1fr); grid-template-rows: 68px auto minmax(0, 1fr) auto; }
+  .is-embedded .settings-header { grid-column: 1; grid-row: 1; padding: 10px 16px; }
+  .is-embedded .settings-tabs { display: none; }
+  .is-embedded .mobile-tab-picker { grid-column: 1; grid-row: 2; min-height: 64px; padding: 10px 16px; display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 12px; border-bottom: 1px solid rgba(255, 255, 255, .07); background: rgba(7, 11, 21, .56); }
+  .mobile-tab-picker span { color: #94a3b8; font-size: 12px; font-weight: 600; }
+  .mobile-tab-picker select { width: 100%; min-height: 44px; padding: 8px 12px; border: 1px solid rgba(167, 139, 250, .24); border-radius: 10px; color: #ede9fe; background: #171426; color-scheme: dark; }
+  .is-embedded .settings-content { grid-column: 1; grid-row: 3; padding: 20px 16px; }
+  .is-embedded .settings-footer { grid-column: 1; grid-row: 4; padding: 10px 16px; }
+  .runtime-grid, .form-row-2 { grid-template-columns: 1fr; }
+  .overview-heading { gap: 16px; }
+  .avatar-preview { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 520px) {
+  .console-brand > div > span, .connection-pill { display: none; }
+  .runtime-grid { grid-template-columns: 1fr; }
+  .footer-right { width: 100%; }
+  .footer-right .btn { flex: 1; }
+  .footer-left:empty { display: none; }
+}
 </style>

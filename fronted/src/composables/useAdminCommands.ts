@@ -30,7 +30,7 @@ export function useAdminCommands() {
 
   async function refreshAdminState() {
     try {
-      const response = await fetch('/test/admin/state')
+      const response = await fetch('/ai/admin/state')
       const state = await response.json()
       updateAdminState({
         is_sleeping: !!state.is_sleeping,
@@ -62,7 +62,7 @@ export function useAdminCommands() {
     try {
       const newState = !adminState.value.isAgentRunning
       const cmd = newState ? '/agent 1' : '/agent 0'
-      const res = await fetch('/test/admin/command', {
+      const res = await fetch('/ai/admin/command', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ command: cmd }),

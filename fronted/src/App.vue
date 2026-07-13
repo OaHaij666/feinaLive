@@ -40,26 +40,12 @@
       <!-- 通知提示组件 -->
       <NotificationToast />
 
-      <!-- SESSDATA警告弹窗 -->
-      <SessdataWarningModal
-        :visible="showSessdataWarning"
-        :error-message="sessdataError"
-        @ignore="handleSessdataIgnore"
-        @update="handleSessdataUpdate"
-      />
-
       <!-- 音乐播放解锁弹窗 -->
       <PlayUnlockModal :visible="showPlayUnlock" @confirm="handlePlayUnlock" />
 
       <!-- 信息栏 -->
       <InfoBar />
 
-      <!-- 设置面板（含直播状况监测） -->
-      <SettingsPanel
-        :visible="showSettings"
-        @close="toggleSettings"
-        @saved="handleConfigSaved"
-      />
     </div>
   </div>
 </template>
@@ -75,9 +61,6 @@ import LiveStatsPanel from './components/panels/LiveStatsPanel.vue'
 import PlaceholderPanel from './components/panels/PlaceholderPanel.vue'
 import NotificationToast from './components/NotificationToast.vue'
 import PlayUnlockModal from './components/PlayUnlockModal.vue'
-import SessdataWarningModal from './components/SessdataWarningModal.vue'
-
-import SettingsPanel from './components/SettingsPanel.vue'
 import { useDanmakuStore } from '@/stores/danmaku'
 import { useStreamStore } from '@/stores/stream'
 import { useMusicStore } from '@/features/music/store'
@@ -100,10 +83,6 @@ const showPlayUnlock = computed(() => {
   )
 })
 
-const showSessdataWarning = ref(false)
-const sessdataError = ref('')
-const sessdataIgnored = ref(false)
-const showSettings = ref(false)
 const liveConfigured = ref(false)
 const activeLivePlatform = ref<'bilibili' | 'douyin' | 'test'>('bilibili')
 
@@ -123,60 +102,6 @@ async function fetchConfig() {
     )
   } catch (e) {
     console.error('[App] Failed to fetch config:', e)
-  }
-}
-
-function toggleSettings() {
-  showSettings.value = !showSettings.value
-}
-
-function handleConfigSaved() {
-  void fetchConfig()
-}
-
-async function checkSessdata() {
-  try {
-    if (activeLivePlatform.value !== 'bilibili') return
-    const res = await fetch('/live/platforms/bilibili/verify')
-    const data = await res.json()
-    if (!data.valid) {
-      sessdataError.value = data.error || 'SESSDATA无效'
-      if (!sessdataIgnored.value) {
-        showSessdataWarning.value = true
-      }
-    } else {
-      console.log('[SESSDATA] 验证成功:', data.username)
-    }
-  } catch (e) {
-    console.error('[SESSDATA] 验证请求失败:', e)
-  }
-}
-
-function handleSessdataIgnore() {
-  sessdataIgnored.value = true
-  showSessdataWarning.value = false
-}
-
-async function handleSessdataUpdate(data: { sessdata: string; uid: number | null }) {
-  try {
-    const cfgRes = await fetch('/config')
-    const cfg = await cfgRes.json()
-    cfg.bilibili.sessdata = data.sessdata
-    if (data.uid !== null) {
-      cfg.bilibili.uid = data.uid
-    }
-    const saveRes = await fetch('/config', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(cfg),
-    })
-    if (!saveRes.ok) throw new Error('Bilibili 凭据保存失败')
-
-    showSessdataWarning.value = false
-    sessdataIgnored.value = false
-    await checkSessdata()
-  } catch (e) {
-    alert('更新失败: ' + e)
   }
 }
 
@@ -213,13 +138,6 @@ const layoutStyle = computed(() => ({
   transform: `translate(-50%, -50%) scale(${scale.value})`
 }))
 
-function handleGlobalKeydown(event: KeyboardEvent) {
-  if (event.ctrlKey && event.shiftKey && event.key.toLowerCase() === 's') {
-    event.preventDefault()
-    toggleSettings()
-  }
-}
-
 onMounted(() => {
   streamStore.startClock()
   streamStore.fetchConfig()
@@ -228,14 +146,11 @@ onMounted(() => {
   avatarInput.connect()
   fetchConfig().then(() => {
     if (liveConfigured.value) danmakuStore.connectToLive()
-    if (activeLivePlatform.value === 'bilibili') void checkSessdata()
   })
-  window.addEventListener('keydown', handleGlobalKeydown)
 })
 
 onUnmounted(() => {
   window.removeEventListener('resize', updateScale)
-  window.removeEventListener('keydown', handleGlobalKeydown)
   streamStore.stopClock()
   avatarInput.disconnect()
   danmakuStore.disconnectFromLive()

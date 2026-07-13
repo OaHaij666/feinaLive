@@ -1,14 +1,13 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { mockStreamStatus } from '@/mock/data'
 
 export const useStreamStore = defineStore('stream', () => {
   const currentTime = ref('')
-  const isStreaming = ref(mockStreamStatus.isLive)
-  const streamTitle = ref(mockStreamStatus.title)
+  const isStreaming = ref(false)
+  const streamTitle = ref('Feina Live')
   const announcement = ref('')
-  const viewerCount = ref(mockStreamStatus.viewerCount)
-  const currentTopic = ref(mockStreamStatus.currentTopic)
+  const viewerCount = ref(0)
+  const currentTopic = ref('')
   const llmModel = ref('')
   const ttsVoice = ref('')
 

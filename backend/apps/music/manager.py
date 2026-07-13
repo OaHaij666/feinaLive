@@ -173,6 +173,11 @@ class MusicManager:
 
     async def list_library(self) -> list[Track]:
         await self.initialize()
+        return await self._list_trusted_library()
+
+    async def _list_trusted_library(self) -> list[Track]:
+        """Read the trusted catalog without recursively initializing the manager."""
+
         tracks = await self._repository.list_library()
         trusted: list[Track] = []
         for track in tracks:
@@ -204,7 +209,7 @@ class MusicManager:
     async def _ensure_fallback(self, state: MusicState) -> MusicState:
         if state.current is not None or state.queue:
             return state
-        library = await self.list_library()
+        library = await self._list_trusted_library()
         if not library:
             return state
         fallback = random.choice(library)

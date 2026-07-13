@@ -11,11 +11,11 @@ const emit = defineEmits<{
 <template>
   <Teleport to="body">
     <Transition name="modal">
-      <div v-if="visible" class="modal-overlay" @click="emit('confirm')">
-        <div class="modal-content" @click.stop>
-          <div class="modal-icon">🎵</div>
-          <h3 class="modal-title">音乐播放器</h3>
-          <p class="modal-desc">点击任意位置开始播放音乐</p>
+      <div v-if="visible" class="modal-overlay">
+        <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="playback-unlock-title">
+          <div class="modal-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M9 18V5l10-2v13" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="6" cy="18" r="3" stroke="currentColor" stroke-width="1.8"/><circle cx="16" cy="16" r="3" stroke="currentColor" stroke-width="1.8"/></svg></div>
+          <h3 id="playback-unlock-title" class="modal-title">启用直播音频</h3>
+          <p class="modal-desc">浏览器需要一次手动确认，才能播放主播语音和音乐。</p>
           <button class="modal-btn" @click="emit('confirm')">开始播放</button>
         </div>
       </div>
@@ -46,9 +46,16 @@ const emit = defineEmits<{
 }
 
 .modal-icon {
-  font-size: 60px;
+  width: 64px;
+  height: 64px;
+  margin-inline: auto;
   margin-bottom: 16px;
+  padding: 14px;
+  color: #2563eb;
+  border-radius: 18px;
+  background: rgba(59, 130, 246, .1);
 }
+.modal-icon svg { width: 100%; height: 100%; }
 
 .modal-title {
   font-size: 22px;
@@ -71,6 +78,7 @@ const emit = defineEmits<{
   border-radius: 25px;
   font-size: 16px;
   font-weight: 600;
+  min-height: 48px;
   cursor: pointer;
   transition: all 0.3s ease;
   box-shadow: 0 4px 15px rgba(59, 130, 246, 0.4);

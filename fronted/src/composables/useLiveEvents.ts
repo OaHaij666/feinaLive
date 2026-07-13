@@ -112,8 +112,8 @@ export function useLiveEvents() {
           llmStore.handleExternalChunk({ type: 'start', data: {} })
           llmStore.handleExternalChunk({ type: 'end', data: { text: msg.data?.text || '' } })
         } else if (msg.type === 'music_added') {
-          notification.success(`🎵 ${msg.data.user} 点歌成功: ${msg.data.title} - ${msg.data.artist}`)
-        } else if (msg.type === 'music_error') notification.error(`❌ 点歌失败: ${msg.data.error}`)
+          notification.success(`${msg.data.user} 点歌成功: ${msg.data.title} - ${msg.data.artist}`)
+        } else if (msg.type === 'music_error') notification.error(`点歌失败: ${msg.data.error}`)
         else if (msg.type === 'music_state') musicStore.applyExternalState(msg.data as MusicState)
       } catch (cause) {
         console.error('[LiveEvents] Parse error:', cause)

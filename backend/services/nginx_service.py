@@ -1,9 +1,8 @@
 """Nginx RTMP 服务管理"""
 
+import logging
 import os
 import subprocess
-import logging
-import threading
 from pathlib import Path
 from typing import Optional
 
@@ -15,8 +14,10 @@ NGINX_CONF = NGINX_DIR / "conf" / "nginx.conf"
 HLS_DIR = NGINX_DIR / "hls"
 
 HTTP_PORT = 8088
+CONSOLE_PORT = 8089
 HLS_URL = f"http://localhost:{HTTP_PORT}/hls/stream.m3u8"
-FRONTEND_URL = f"http://localhost:{HTTP_PORT}"
+LIVE_FRONTEND_URL = f"http://localhost:{HTTP_PORT}"
+CONSOLE_URL = f"http://localhost:{CONSOLE_PORT}"
 
 
 class NginxService:
@@ -39,6 +40,23 @@ class NginxService:
         self._ensure_hls_dir()
 
         try:
+            pid_file = NGINX_DIR / "logs" / "nginx.pid"
+            if pid_file.exists():
+                try:
+                    existing_pid = int(pid_file.read_text(encoding="utf-8").strip())
+                    if existing_pid > 0:
+                        os.kill(existing_pid, 0)
+                        subprocess.run(
+                            [str(NGINX_EXE), "-s", "reload", "-c", str(NGINX_CONF)],
+                            cwd=str(NGINX_DIR),
+                            check=True,
+                            capture_output=True,
+                        )
+                        self._is_running = True
+                        logger.info("Reloaded existing Nginx process pid=%s", existing_pid)
+                        return True
+                except (OSError, ValueError, subprocess.SubprocessError):
+                    logger.warning("Stale Nginx pid file found; starting a new process")
             self._process = subprocess.Popen(
                 [str(NGINX_EXE), "-c", str(NGINX_CONF)],
                 cwd=str(NGINX_DIR),
@@ -53,7 +71,7 @@ class NginxService:
             return False
 
     def stop(self):
-        if not self._is_running or self._process is None:
+        if not self._is_running:
             logger.warning("Nginx is not running")
             return
 
@@ -62,11 +80,13 @@ class NginxService:
                 [str(NGINX_EXE), "-s", "stop"],
                 cwd=str(NGINX_DIR),
             )
-            self._process.wait(timeout=5)
+            if self._process is not None:
+                self._process.wait(timeout=5)
         except Exception as e:
             logger.error(f"Error stopping Nginx: {e}")
             try:
-                self._process.kill()
+                if self._process is not None:
+                    self._process.kill()
             except Exception:
                 pass
         finally:
@@ -80,7 +100,9 @@ class NginxService:
     def get_stream_urls(self) -> dict:
         return {
             "hls_url": HLS_URL,
-            "frontend_url": FRONTEND_URL,
+            "frontend_url": LIVE_FRONTEND_URL,
+            "live_frontend_url": LIVE_FRONTEND_URL,
+            "console_url": CONSOLE_URL,
         }
 
 
@@ -97,7 +119,8 @@ def get_nginx_service() -> NginxService:
 async def start_nginx():
     service = get_nginx_service()
     if service.start():
-        logger.info(f"HTTP proxy available at: {FRONTEND_URL}")
+        logger.info(f"Live frontend available at: {LIVE_FRONTEND_URL}")
+        logger.info(f"Control console available at: {CONSOLE_URL}")
         logger.info(f"HLS stream available at: {HLS_URL}")
 
 

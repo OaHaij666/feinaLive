@@ -42,3 +42,26 @@ export interface MusicState {
   effective_volume: number
   playback_owner_id?: string | null
 }
+
+export interface ProviderSearchResult {
+  source_id: string
+  title: string
+  artist: string
+  duration_seconds: number
+  cover_url: string
+  metadata: Record<string, unknown>
+}
+
+export interface MusicRequestResult {
+  accepted: boolean
+  intercepted: boolean
+  entry?: QueueEntry | null
+  error_code: string
+  error: string
+  classification?: {
+    verdict: 'accept' | 'reject' | 'review'
+    source: 'cache' | 'rules' | 'llm' | 'provider'
+    confidence?: number | null
+    reason: string
+  } | null
+}

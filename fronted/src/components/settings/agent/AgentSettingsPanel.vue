@@ -1,5 +1,6 @@
 <template>
   <div class="agent-settings">
+    <AgentRuntimePanel />
     <section class="catalog-section" aria-labelledby="game-catalog-heading">
       <div class="section-heading">
         <div><span>运行场景</span><h2 id="game-catalog-heading">选择注册场景</h2></div>
@@ -50,6 +51,7 @@
 import { computed, onMounted, ref } from 'vue'
 import type { AgentConfig, RegisteredScenarioDefinition, ScenarioCatalogPayload } from '@/types/config'
 import CommonAgentSettings from './CommonAgentSettings.vue'
+import AgentRuntimePanel from './AgentRuntimePanel.vue'
 import GenericScenarioSettings from './GenericScenarioSettings.vue'
 import SlayTheSpireSettings from './SlayTheSpireSettings.vue'
 

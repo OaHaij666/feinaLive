@@ -22,14 +22,14 @@
       <div class="metric-row">
         <div class="metric">
           <div class="metric-label">
-            <span class="metric-icon">👥</span>
+            <span class="metric-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M16 20v-1.5A3.5 3.5 0 0 0 12.5 15h-5A3.5 3.5 0 0 0 4 18.5V20M10 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm7-1a3 3 0 0 0 0-6m1 10c1.7.5 3 2 3 4v2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></span>
             <span>人气</span>
           </div>
           <span class="metric-value">{{ formatNumber(popularity) }}</span>
         </div>
         <div class="metric">
           <div class="metric-label">
-            <span class="metric-icon">💬</span>
+            <span class="metric-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M20 15a4 4 0 0 1-4 4H8l-5 3 1.5-5A7 7 0 0 1 3 13V8a5 5 0 0 1 5-5h8a5 5 0 0 1 5 5v5c0 .7-.2 1.4-.5 2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
             <span>弹幕</span>
           </div>
           <span class="metric-value">{{ formatNumber(danmakuCount) }}</span>
@@ -39,14 +39,14 @@
       <div class="metric-row">
         <div class="metric">
           <div class="metric-label">
-            <span class="metric-icon">🎁</span>
+            <span class="metric-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M3 9h18v4H3V9Zm2 4h14v8H5v-8Zm7-4v12M7.5 9C5 9 4 7.8 4 6.5S5 4 6.5 4C9 4 12 9 12 9m4.5 0C19 9 20 7.8 20 6.5S19 4 17.5 4C15 4 12 9 12 9" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg></span>
             <span>礼物</span>
           </div>
           <span class="metric-value">{{ formatNumber(giftCount) }}</span>
         </div>
         <div class="metric">
           <div class="metric-label">
-            <span class="metric-icon">💎</span>
+            <span class="metric-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="m3 9 4-5h10l4 5-9 11L3 9Zm0 0h18M8 4l4 16 4-16" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg></span>
             <span>价值</span>
           </div>
           <span class="metric-value">¥{{ formatMoney(giftValueMinor) }}</span>
@@ -231,8 +231,11 @@ onUnmounted(() => {
 }
 
 .metric-icon {
-  font-size: 12px;
+  width: 14px;
+  height: 14px;
+  display: inline-flex;
 }
+.metric-icon svg { width: 100%; height: 100%; }
 
 .metric-value {
   font-size: 15px;

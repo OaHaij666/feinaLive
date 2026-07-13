@@ -2,37 +2,40 @@ import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import { resolve } from 'path'
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   plugins: [vue()],
   resolve: {
     alias: {
-      '@': resolve(__dirname, 'src')
+      '@': resolve(__dirname, 'src'),
+      '@app-root': resolve(
+        __dirname,
+        mode === 'console' ? 'src/apps/console/ConsoleApp.vue' : 'src/App.vue'
+      )
     }
   },
   server: {
     port: 5173,
     host: true,
     proxy: {
-      '/api': {
-        target: 'ws://localhost:9191',
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api/, ''),
-        ws: true,
-      },
       '/music': {
         target: 'http://localhost:9191',
         changeOrigin: true,
       },
-      '/bilibili': {
-        target: 'ws://localhost:9191',
+      '/live': {
+        target: 'http://localhost:9191',
         changeOrigin: true,
         ws: true,
       },
-      '/ai': {
+      '/agent': {
+        target: 'http://localhost:9191',
+        changeOrigin: true,
+        ws: true,
+      },
+      '/health': {
         target: 'http://localhost:9191',
         changeOrigin: true,
       },
-      '/game': {
+      '/ai': {
         target: 'http://localhost:9191',
         changeOrigin: true,
       },
@@ -41,7 +44,8 @@ export default defineConfig({
         changeOrigin: true,
       },
       '/avatar': {
-        target: 'ws://localhost:9191',
+        target: 'http://localhost:9191',
+        changeOrigin: true,
         ws: true,
       },
       '/stream': {
@@ -60,8 +64,8 @@ export default defineConfig({
     }
   },
   build: {
-    outDir: 'dist',
+    outDir: mode === 'console' ? 'dist/console' : 'dist/live',
     assetsDir: 'assets',
     sourcemap: false
   }
-})
+}))

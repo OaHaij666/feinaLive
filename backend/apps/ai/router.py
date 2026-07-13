@@ -42,3 +42,10 @@ async def send_admin_command(request: AdminCommandRequest):
             "state": result.new_state,
         }
     return {"success": False, "message": "非管理员或无效指令"}
+
+
+@router.get("/admin/state")
+async def get_admin_state():
+    """Return the canonical runtime control state for the operator console."""
+
+    return get_admin_handler().get_state_dict()

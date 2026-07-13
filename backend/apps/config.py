@@ -101,10 +101,6 @@ class Config:
         return os.getenv("LLM_API_URL") or self._data.get("llm", {}).get("api_url", "")
 
     @property
-    def llm_provider(self) -> str:
-        return os.getenv("LLM_PROVIDER") or self._data.get("llm", {}).get("provider", "openai")
-
-    @property
     def llm_api_key(self) -> str | None:
         return os.getenv("LLM_API_KEY") or secret_store.get("llm.api_key")
 
@@ -131,10 +127,6 @@ class Config:
     @property
     def llm_prompts(self) -> dict[str, str]:
         return self._data.get("llm", {}).get("prompts", {})
-
-    @property
-    def embedding_provider(self) -> str:
-        return os.getenv("EMBEDDING_PROVIDER") or self._data.get("embedding", {}).get("provider", "openai")
 
     @property
     def embedding_model(self) -> str:

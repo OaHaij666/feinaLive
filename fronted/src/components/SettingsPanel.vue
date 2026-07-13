@@ -229,13 +229,8 @@
                 <div class="section-title">向量模型 (Embedding)</div>
                 <p class="section-desc">用于记忆语义检索，未配置时自动退化到纯关键词检索</p>
                 <div class="form-group">
-                  <label>提供商</label>
-                  <select v-model="cfg.embedding.provider">
-                    <option value="openai">OpenAI</option>
-                    <option value="azure">Azure</option>
-                    <option value="ollama">Ollama</option>
-                    <option value="custom">自定义</option>
-                  </select>
+                  <label>模型网关</label>
+                  <input value="Bifrost Gateway (OpenAI-compatible)" disabled />
                 </div>
                 <div class="form-group">
                   <label>模型名</label>
@@ -712,7 +707,7 @@ function initCfgShape() {
     storage: { sqlite_path: 'data/feinalive.db', chroma_path: 'data/chroma', chroma_collection: 'memory_atoms' },
     announcement: '',
     admin: { username: '', identities: { bilibili: '', douyin: '', test: 'internal' } },
-    embedding: { provider: 'openai', model: '', api_url: '', api_key: '', dimensions: null, user_graph_enabled: true, game_graph_enabled: true },
+    embedding: { model: '', api_url: '', api_key: '', dimensions: null, user_graph_enabled: true, game_graph_enabled: true },
   }
   Object.assign(cfg, s)
 }

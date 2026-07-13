@@ -57,10 +57,9 @@ music:
 # 通用 LLM 配置
 # 用途：RAG 检索、用户记忆总结、游戏记忆总结等通用任务
 llm:
-  provider: "openai"  # LiteLLM provider；OpenAI-compatible 自建/中转接口通常填 openai
-  api_url: "https://api.deepseek.com"
-  api_key: ""  # 请通过控制台保存到系统密钥库，或设置 LLM_API_KEY
-  model: "deepseek-v4-flash"
+  api_url: "http://127.0.0.1:8081/v1"  # Bifrost Gateway 的 OpenAI-compatible 地址
+  api_key: ""  # Gateway 启用鉴权时通过控制台保存，或设置 LLM_API_KEY
+  model: "deepseek/deepseek-chat"       # Bifrost 中注册的模型名
   temperature: 0.1
   top_p: 0.9
   max_tokens: 200
@@ -73,9 +72,8 @@ ai:
   summary_scan_interval_seconds: 60  # 定时总结扫描间隔
   max_recent_messages: 16            # 仅控制回复上下文，不限制待总结队列
 
-# Embedding 配置（LiteLLM embeddings）
+# Embedding 配置（同样经 Bifrost Gateway）
 embedding:
-  provider: "openai"
   api_url: ""       # 留空则复用 llm.api_url
   api_key: ""       # 留空则复用 llm.api_key
   model: ""         # 例如 text-embedding-3-small / doubao-embedding 等
@@ -118,7 +116,7 @@ agent:
   enabled: false          # 是否启用 AgentRuntime
   scenario_id: "slay_the_spire"
   mcp_url: "http://127.0.0.1:8080"  # MCP 服务地址
-  api_url: "https://api.deepseek.com"
+  api_url: "http://127.0.0.1:8081/v1"
   api_key: ""  # 请通过控制台保存到系统密钥库，或设置 AGENT_API_KEY
   model: "deepseek-v4-flash"
   temperature: 0.4

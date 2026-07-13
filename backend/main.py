@@ -175,6 +175,15 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"MemoryEngine shutdown error: {e}")
 
+    # OpenAI SDK clients own persistent HTTP connection pools. Close them only
+    # after every runtime and memory consumer has stopped.
+    from apps.ai.client import get_agent_ai_client, get_ai_client
+    from apps.ai.embedding import get_embedding_client
+
+    await get_agent_ai_client().close()
+    await get_ai_client().close()
+    await get_embedding_client().close()
+
     await music_manager.shutdown()
     await avatar_runtime.stop()
     await stop_nginx()

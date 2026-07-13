@@ -91,6 +91,8 @@ Copy-Item backend\config.example.yaml backend\config.yaml
 
 敏感凭据通过运营控制台写入系统密钥库，也可使用环境变量；`backend/config.yaml` 只保存非敏感运行参数，仍不应提交个人配置。
 
+LLM 与 Embedding 统一通过独立的 Bifrost Gateway 接入。feinaLive 只调用其 OpenAI-compatible `/v1` API，不直接保存上游供应商配置；供应商路由、fallback、限流和上游密钥均由 Bifrost 管理。示例配置使用 `http://127.0.0.1:8081/v1`，避免与默认 MCP 端口 `8080` 冲突。
+
 ### 4. FeinaAvatar 模型
 
 FeinaAvatar 继承的模型文件不要提交到仓库。模型下载地址：

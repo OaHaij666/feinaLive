@@ -171,7 +171,6 @@ class AdminConfig(BaseModel):
 
 
 class EmbeddingConfig(BaseModel):
-    provider: str = "openai"
     model: str = ""
     api_url: str = ""
     api_key: str = ""
@@ -338,7 +337,6 @@ async def get_full_config():
             identities=config.admin_identities,
         ),
         embedding=EmbeddingConfig(
-            provider=config.embedding_provider,
             model=config.embedding_model,
             api_url=config.embedding_api_url,
             api_key=_mask_sensitive(config.embedding_api_key or ""),

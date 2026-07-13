@@ -63,7 +63,7 @@ class Config:
 
     @property
     def bilibili_sessdata(self) -> str | None:
-        return os.getenv("BILIBILI_SESSDATA") or secret_store.get("bilibili.sessdata") or self._data.get("bilibili", {}).get("sessdata")
+        return os.getenv("BILIBILI_SESSDATA") or secret_store.get("bilibili.sessdata")
 
     @property
     def bilibili_room_id(self) -> int:
@@ -94,11 +94,7 @@ class Config:
 
     @property
     def douyin_cookie(self) -> str | None:
-        return (
-            os.getenv("DOUYIN_COOKIE")
-            or secret_store.get("douyin.cookie")
-            or self._data.get("douyin", {}).get("cookie")
-        )
+        return os.getenv("DOUYIN_COOKIE") or secret_store.get("douyin.cookie")
 
     @property
     def llm_api_url(self) -> str:
@@ -110,7 +106,7 @@ class Config:
 
     @property
     def llm_api_key(self) -> str | None:
-        return os.getenv("LLM_API_KEY") or secret_store.get("llm.api_key") or self._data.get("llm", {}).get("api_key")
+        return os.getenv("LLM_API_KEY") or secret_store.get("llm.api_key")
 
     @property
     def llm_model(self) -> str:
@@ -150,7 +146,7 @@ class Config:
 
     @property
     def embedding_api_key(self) -> str | None:
-        return os.getenv("EMBEDDING_API_KEY") or secret_store.get("embedding.api_key") or self._data.get("embedding", {}).get("api_key") or self.llm_api_key
+        return os.getenv("EMBEDDING_API_KEY") or secret_store.get("embedding.api_key") or self.llm_api_key
 
     @property
     def embedding_dimensions(self) -> int | None:
@@ -187,7 +183,7 @@ class Config:
 
     @property
     def volcano_access_token(self) -> str:
-        return os.getenv("VOLCANO_ACCESS_TOKEN") or secret_store.get("volcano.access_token") or self._data.get("volcano", {}).get("access_token", "")
+        return os.getenv("VOLCANO_ACCESS_TOKEN") or secret_store.get("volcano.access_token") or ""
 
     @property
     def volcano_speaker_id(self) -> str:
@@ -215,7 +211,7 @@ class Config:
 
     @property
     def host_api_key(self) -> str | None:
-        return os.getenv("HOST_API_KEY") or secret_store.get("host.api_key") or self._data.get("host", {}).get("api_key") or self.llm_api_key
+        return os.getenv("HOST_API_KEY") or secret_store.get("host.api_key") or self.llm_api_key
 
     @property
     def host_temperature(self) -> float:
@@ -247,7 +243,7 @@ class Config:
 
     @property
     def agent_api_key(self) -> str | None:
-        return os.getenv("AGENT_API_KEY") or secret_store.get("agent.api_key") or self._data.get("agent", {}).get("api_key") or self.llm_api_key
+        return os.getenv("AGENT_API_KEY") or secret_store.get("agent.api_key") or self.llm_api_key
 
     @property
     def agent_disable_thinking(self) -> bool:

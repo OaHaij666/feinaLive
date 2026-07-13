@@ -10,32 +10,32 @@ dependencies = [
     "uvicorn[standard]>=0.34.0",
     "websockets>=14.0",
     "httpx>=0.28.0",
-    "litellm>=1.70.4,<1.71.0",
-    "brotli>=1.0.0",
+    "litellm>=1.84.0,<1.85.0",
+    "brotli>=1.2.0",
     "pyyaml>=6.0",
     "python-dotenv>=1.0.0",
     "blivedm",
     "bilibili-api-python>=6.0.0",
-    "aiohttp>=3.9.0",
+    "aiohttp>=3.14.1",
     "sqlalchemy[asyncio]>=2.0.0",
     "aiosqlite>=0.20.0",
     "chromadb>=1.0.0,<2.0.0",
     "keyring>=25.0.0",
-    "cryptography>=42.0.0",
+    "cryptography>=48.0.1",
     "langgraph>=0.2.0",
     "numpy",
     "scipy",
-    "protobuf",
+    "protobuf>=6.33.5,<7",
     "betterproto==2.0.0b6",
     "mini-racer>=0.12.4",
-    "opencv-python",
-    "Pillow",
+    "opencv-python>=4.13.0,<5",
+    "Pillow>=12.3.0",
     "mutagen>=1.47.0",
     "pyopengl",
-    "onnx",
+    "onnx>=1.22.0,<1.23.0",
     "onnxruntime-gpu>=1.21.0,<1.23.0",
     "tqdm",
-    "torch",
+    "torch>=2.6.0,<2.7.0",
 ]
 
 [project.optional-dependencies]
@@ -46,9 +46,6 @@ dev = [
 ]
 tts-edge = [
     "edge-tts>=6.1.0",
-]
-mysql-migration = [
-    "aiomysql>=0.2.0",
 ]
 
 [tool.uv.sources]
@@ -76,6 +73,11 @@ override-dependencies = [
     # Chroma's bundled default embedding function needs the CPU wheel; feinaLive
     # always supplies embeddings itself, while FeinaAvatar needs the GPU wheel.
     "onnxruntime; sys_platform == 'never'",
+    # blivedm's metadata still caps Brotli below the patched 1.2 release; the
+    # public API it uses remains compatible, so enforce the security update.
+    "brotli>=1.2.0",
+    "aiohttp>=3.14.1",
+    "yarl>=1.17.0,<2.0",
 ]
 
 [dependency-groups]

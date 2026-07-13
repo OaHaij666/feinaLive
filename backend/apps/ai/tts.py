@@ -7,10 +7,9 @@
 - 音频和文字一起发送，保证同步
 """
 
-import asyncio
+import base64
 import logging
 import re
-import base64
 import uuid
 from dataclasses import dataclass
 from pathlib import Path

@@ -3,7 +3,6 @@ import { ref, computed, watch } from 'vue'
 import type { DanmakuMessage } from '@/types/danmaku'
 import { DanmakuType } from '@/types/danmaku'
 import { useLiveEvents } from '@/composables/useLiveEvents'
-import { useAdminCommands } from '@/composables/useAdminCommands'
 
 export const useDanmakuStore = defineStore('danmaku', () => {
   const danmakuList = ref<DanmakuMessage[]>([])
@@ -11,7 +10,6 @@ export const useDanmakuStore = defineStore('danmaku', () => {
   const maxCount = 9
 
   const { danmakuList: wsDanmakuList, isConnected: wsConnected, connect, disconnect } = useLiveEvents()
-  const { shouldHideDanmaku, adminState } = useAdminCommands()
 
   const sortedList = computed(() => {
     return [...danmakuList.value].sort((a, b) =>
@@ -23,9 +21,6 @@ export const useDanmakuStore = defineStore('danmaku', () => {
     const list = wsDanmakuList.value
     if (list.length > 0) {
       const latest = list[list.length - 1]
-      if (shouldHideDanmaku(latest.isAdmin)) {
-        return
-      }
       const msg: DanmakuMessage = {
         id: latest.id,
         user: latest.user,
@@ -46,9 +41,6 @@ export const useDanmakuStore = defineStore('danmaku', () => {
   })
 
   function addDanmaku(message: DanmakuMessage) {
-    if (shouldHideDanmaku(message.isAdmin || false)) {
-      return
-    }
     if (danmakuList.value.some((item) => item.id === message.id)) {
       return
     }
@@ -74,7 +66,6 @@ export const useDanmakuStore = defineStore('danmaku', () => {
     danmakuList,
     sortedList,
     isConnected,
-    adminState,
     addDanmaku,
     clearDanmaku,
     connectToLive,

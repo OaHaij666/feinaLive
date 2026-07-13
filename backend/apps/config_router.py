@@ -390,10 +390,15 @@ def _deep_delete(data: dict, keys: list[str]) -> None:
 
 
 def _store_secret(data: dict, path: str, value: str) -> None:
-    if value and MASKED_PATTERN not in value and not secret_store.set(path, value):
-        raise RuntimeError(f"无法写入系统密钥库: {path}")
-    if not value or MASKED_PATTERN in value or secret_store.get(path):
+    if MASKED_PATTERN in value:
         _deep_delete(data, path.split("."))
+        return
+    if value:
+        if not secret_store.set(path, value):
+            raise RuntimeError(f"无法写入系统密钥库: {path}")
+    else:
+        secret_store.delete(path)
+    _deep_delete(data, path.split("."))
 
 
 def _atomic_write_yaml(data: dict) -> None:
@@ -505,7 +510,6 @@ async def update_full_config(config_data: FullConfig, response: Response):
         flat["agent.scenario_config"] = validated_scenario_config
 
         data["avatar"] = config_data.avatar.model_dump(mode="json")
-        data.pop("easyvtuber", None)
 
         # ai
         a = config_data.ai
@@ -638,7 +642,6 @@ async def update_avatar_config(config_data: AvatarConfig):
             data = yaml.safe_load(f) or {}
 
         data["avatar"] = config_data.model_dump(mode="json")
-        data.pop("easyvtuber", None)
 
         _atomic_write_yaml(data)
 

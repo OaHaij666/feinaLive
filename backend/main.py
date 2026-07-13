@@ -3,10 +3,10 @@
 import asyncio
 import logging
 from contextlib import asynccontextmanager
-from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import JSONResponse
 
 from apps.agent.router import router as agent_router
@@ -15,10 +15,10 @@ from apps.ai.router import router as ai_router
 from apps.avatar.router import router as avatar_router
 from apps.config import config
 from apps.config_router import router as config_router
-from apps.exceptions import AppException
 from apps.live.router import router as live_router
 from apps.music.router import router as music_router
 from apps.test_router import router as test_router
+from core.local_boundary import LocalOriginBoundaryMiddleware
 from services.nginx_service import get_nginx_service, start_nginx, stop_nginx
 
 logging.basicConfig(
@@ -30,16 +30,21 @@ logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
 
 logger = logging.getLogger(__name__)
 
+LOCAL_FRONTEND_ORIGINS = [
+    "http://127.0.0.1:5173",
+    "http://127.0.0.1:5174",
+    "http://127.0.0.1:8088",
+    "http://127.0.0.1:8089",
+    "http://localhost:5173",
+    "http://localhost:5174",
+    "http://localhost:8088",
+    "http://localhost:8089",
+]
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Application starting up...")
-    from apps.storage.secrets import migrate_legacy_secrets
-
-    migrated_secrets = migrate_legacy_secrets(Path(__file__).parent / "config.yaml")
-    if migrated_secrets:
-        config._load()
-        logger.info("Migrated %s legacy storage/security config entries", migrated_secrets)
     from apps.ai.admin_commands import get_admin_handler
     from apps.ai.memory import (
         init_user_profiles,
@@ -184,10 +189,18 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=LOCAL_FRONTEND_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+)
+app.add_middleware(
+    LocalOriginBoundaryMiddleware,
+    allowed_origins=LOCAL_FRONTEND_ORIGINS,
+)
+app.add_middleware(
+    TrustedHostMiddleware,
+    allowed_hosts=["127.0.0.1", "localhost", "[::1]", "testserver"],
 )
 
 app.include_router(live_router)
@@ -198,18 +211,6 @@ app.include_router(memory_router, tags=["AI Memory"])
 app.include_router(agent_router, tags=["Agent"])
 app.include_router(avatar_router)
 app.include_router(test_router, tags=["Test"])
-
-@app.exception_handler(AppException)
-async def app_exception_handler(request: Request, exc: AppException):
-    logger.error(f"AppException: {exc.message} (code={exc.code})")
-    return JSONResponse(
-        status_code=exc.status_code,
-        content={
-            "error": exc.message,
-            "code": exc.code,
-        }
-    )
-
 
 @app.exception_handler(Exception)
 async def general_exception_handler(request: Request, exc: Exception):
@@ -258,4 +259,4 @@ async def stream_status():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=9191, access_log=False)
+    uvicorn.run(app, host="127.0.0.1", port=9191, access_log=False)

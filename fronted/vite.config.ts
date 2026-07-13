@@ -15,7 +15,7 @@ export default defineConfig(({ mode }) => ({
   },
   server: {
     port: 5173,
-    host: true,
+    host: '127.0.0.1',
     proxy: {
       '/music': {
         target: 'http://localhost:9191',
@@ -62,6 +62,9 @@ export default defineConfig(({ mode }) => ({
         ws: true,
       },
     }
+  },
+  preview: {
+    host: '127.0.0.1',
   },
   build: {
     outDir: mode === 'console' ? 'dist/console' : 'dist/live',

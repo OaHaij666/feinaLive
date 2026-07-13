@@ -2,17 +2,17 @@
 
 FeinaLive 是一个个人开发的虚拟主播直播系统，目标是把 AI 主播、B 站弹幕互动、点歌、数字人渲染、游戏 AI 自动化和长期记忆系统放在同一个本地直播工作流里。
 
-项目目前主要面向 Windows 本地运行。OBS 推流建议安装 Spout2 插件，用 OBS 捕获 EasyVtuber 输出的数字人画面。
+项目目前面向 Windows 本地单机运行。OBS 推流建议安装 Spout2 插件，用 OBS 捕获 FeinaAvatar 输出的数字人画面。控制接口默认只监听本机回环地址，不作为公网服务暴露。
 
 ## 当前能力
 
-- B 站直播间弹幕接入、测试房间、管理员弹幕指令
-- AI 主播回复：HostGraph、流式 LLM、TTS、数字人口型联动
-- 弹幕点歌：B 站 BV/关键词点歌、队列、播放列表、音量/暂停控制
-- EasyVtuber 数字人：THA3/THA4 推理、WebSocket 输入、Spout2 输出
-- 游戏 AI：通过 MCP 驱动杀戮尖塔，GameGraph 决策、操作、请求主播解说
-- 记忆系统：单局记忆、长期记忆原子、游戏知识图谱、召回测试与可视化调试台
-- 前端直播界面：视频/HLS、弹幕面板、音乐播放器、任务面板、集中配置面板
+- Bilibili、抖音与内部测试平台接入，统一标准弹幕、礼物与价值数据
+- AI 主播回复：HostRuntime、流式 LLM、TTS、消费队列与播放确认
+- 独立音乐系统：Bilibili 审核源、本地音乐源、可信曲库、队列及自动压低
+- FeinaAvatar：THA3/THA4 推理、浏览器口型输入、预览与 Spout2 输出
+- 通用 Agent：按静态场景装配 MCP、记忆、事件与主播解说能力
+- 记忆系统：用户原子记忆、用户/游戏知识图谱、工作记忆、SQLite 与 ChromaDB
+- 双前端：直播展示端与独立运营控制台分别构建和监听
 
 ## 项目结构
 
@@ -20,16 +20,19 @@ FeinaLive 是一个个人开发的虚拟主播直播系统，目标是把 AI 主
 feinaLive/
 ├── backend/                 # FastAPI 后端
 │   ├── apps/
-│   │   ├── ai/              # 主播/游戏 AI、记忆、消息队列、MCP 适配
-│   │   ├── live/            # B 站弹幕与点歌
-│   │   ├── easyvtuber/      # 数字人运行管理
+│   │   ├── agent/           # 通用 Agent、场景与能力装配
+│   │   ├── ai/              # 主播 Runtime、记忆、消息与语音流水线
+│   │   ├── live/            # 直播平台适配与唯一房间 Runtime
+│   │   ├── music/           # Provider、审核、曲库与播放队列
+│   │   ├── avatar/          # FeinaAvatar 生命周期与控制 API
+│   │   ├── storage/         # SQLite 初始化与系统密钥库
 │   │   └── config_router.py # 配置 API
-│   ├── EasyVtuber/          # 数字人渲染引擎
+│   ├── avatar_engine/       # FeinaAvatar 渲染引擎
 │   ├── data/                # 本地运行数据，不提交
 │   ├── main.py              # FastAPI 入口，默认端口 9191
 │   └── pyproject.toml       # uv 依赖配置
-├── fronted/                 # Vue 3 前端，默认端口 5173/5174
-├── docs/                    # 业务流程与系统架构文档
+├── fronted/                 # Vue 3 直播端 5173、控制台 5174
+├── .ua/                     # Understand Anything 架构知识图谱
 ├── mcp/                     # 杀戮尖塔 MCP Mod
 ├── nginx-rtmp-win32/        # 本地 HLS/HTTP 代理运行文件
 └── cankao/                  # 参考项目，不提交
@@ -41,9 +44,10 @@ feinaLive/
 - Python 3.11
 - uv
 - Node.js 20+
-- NVIDIA GPU/CUDA 环境（运行 EasyVtuber GPU 推理时需要）
+- NVIDIA GPU/CUDA 环境（运行 FeinaAvatar GPU 推理时需要）
 - OBS + Spout2 插件（正式推流时建议）
-- MySQL（用户画像、播放列表等业务数据）
+- SQLite（用户画像、播放列表、记忆原子和知识图谱）
+- ChromaDB（可从 SQLite 重建的向量索引）
 
 ## 快速开始
 
@@ -77,18 +81,19 @@ Copy-Item backend\config.example.yaml backend\config.yaml
 
 至少需要检查：
 
-- `database.url`：MySQL 连接
+- `storage.sqlite_path`：SQLite 权威数据库路径
+- `storage.chroma_path`：ChromaDB 向量索引路径
 - `bilibili.room_id` / `bilibili.sessdata`
-- `llm` / `host` / `game` 的模型 API 配置
+- `llm` / `host` / `agent` 的模型 API 配置
 - `tts` / `volcano` 或 Edge TTS 配置
-- `game.enabled`、`game.mcp_url`
-- `easyvtuber` 数字人角色、输入和性能配置
+- `agent.enabled`、`agent.scenario_id`、`agent.mcp_url`
+- `avatar` 数字人角色、输入、输出和性能配置
 
-`backend/config.yaml` 包含凭证，不应提交。
+敏感凭据通过运营控制台写入系统密钥库，也可使用环境变量；`backend/config.yaml` 只保存非敏感运行参数，仍不应提交个人配置。
 
-### 4. EasyVtuber 模型
+### 4. FeinaAvatar 模型
 
-EasyVtuber 模型文件不要提交到仓库。模型下载地址：
+FeinaAvatar 继承的模型文件不要提交到仓库。模型下载地址：
 
 ```
 https://drive.google.com/file/d/1pWKIpjWeqfpa3Rub185FVvxDr5H09pOi/view?usp=drive_link
@@ -97,7 +102,7 @@ https://drive.google.com/file/d/1pWKIpjWeqfpa3Rub185FVvxDr5H09pOi/view?usp=drive
 下载后解压到：
 
 ```text
-backend/EasyVtuber/data/models/
+backend/avatar_engine/data/models/
 ├── rife/
 ├── sr/
 ├── tha3/
@@ -113,7 +118,7 @@ cd backend
 .\.venv\Scripts\python.exe -m uvicorn main:app --host 127.0.0.1 --port 9191
 ```
 
-前端：
+直播展示端：
 
 ```powershell
 cd fronted
@@ -126,7 +131,16 @@ npm run dev
 http://127.0.0.1:5173
 ```
 
-后端启动时会初始化音乐队列、用户画像、记忆引擎、EasyVtuber 和本地 Nginx/HLS 代理。
+运营控制台另开一个终端：
+
+```powershell
+cd fronted
+npm run dev:console
+```
+
+控制台默认地址为 `http://127.0.0.1:5174`。生产构建由 Nginx 分别在 `8088`（直播端）和 `8089`（控制台）提供。
+
+后端启动时会初始化音乐队列、用户画像、记忆引擎、FeinaAvatar 和本地 Nginx/HLS 代理。
 
 ## 常用入口
 
@@ -135,17 +149,19 @@ http://127.0.0.1:5173
 | `GET /health` | 后端健康检查 |
 | `GET /config` / `PUT /config` | 集中配置读取与保存 |
 | `GET /stream/status` | 本地 Nginx/HLS 状态 |
-| `POST /test/danmaku` | 测试弹幕 |
-| `POST /test/admin/command` | 测试管理员指令 |
-| `GET /game/status` | 游戏 AI 状态 |
-| `POST /game/start` / `POST /game/stop` | 手动启停游戏 AI |
+| `GET /live/state` | 唯一直播平台会话状态 |
+| `POST /test/live/event` | 测试平台标准事件 |
+| `GET /agent/status` | Agent Runtime 状态 |
+| `POST /agent/start` / `POST /agent/stop` | 手动启停 Agent |
+| `GET /music/state` | 音乐队列与播放状态 |
+| `GET /avatar/status` | FeinaAvatar 运行状态 |
 | `GET /ai/memory/stats` | 记忆系统统计 |
 | `POST /ai/memory/recall/test` | 记忆召回测试 |
 | `GET /ai/memory/graph/overview` | 记忆/知识图谱概览 |
 
-前端按 `Ctrl + Shift + S` 打开集中配置面板。面板内包含：
+独立运营控制台包含：
 
-- AI 主播、AI 模型、TTS、消息调度、数字人、游戏参数、直播、直播状况
+- 运行总览、AI 主播、模型、TTS、消息调度、数字人、Agent 场景、音乐和直播平台
 - 记忆调试台：概览、记忆管理、召回测试、知识图谱、单局/注入、备份
 
 ## 管理员指令
@@ -204,10 +220,10 @@ cd backend
 git rm --cached path\to\file
 ```
 
-## 文档
+## 架构知识图谱
 
-更完整的业务流程和架构说明见 [docs/README.md](docs/README.md)。
+项目架构、模块关系与引导式导览由 Understand Anything 维护在 `.ua/knowledge-graph.json`，使用 UA Dashboard 查看。该图谱跟随最终提交完整重建，不再维护一套容易过期的手写 `docs/`。
 
 ## 说明
 
-这是个人实验性项目，很多模块按直播间实际需求迭代，接口和内部结构仍可能调整。优先参考当前代码和 `docs/` 下的最新文档。
+这是个人实验性项目，接口和内部结构仍可能调整。运行事实以当前代码、测试与 UA 图谱为准。

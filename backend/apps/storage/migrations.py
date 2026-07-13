@@ -7,36 +7,16 @@ version beside the database is more reliable than hiding those changes behind
 
 from __future__ import annotations
 
-import logging
 import sqlite3
 from pathlib import Path
 
-logger = logging.getLogger(__name__)
-
 SCHEMA_VERSION = 3
-
-
-def _copy_legacy_memory_database(target: Path) -> None:
-    legacy = target.with_name("memory.db")
-    if target.exists() or not legacy.exists() or legacy.resolve() == target.resolve():
-        return
-    target.parent.mkdir(parents=True, exist_ok=True)
-    source_db = sqlite3.connect(str(legacy))
-    target_db = sqlite3.connect(str(target))
-    try:
-        source_db.backup(target_db)
-        target_db.commit()
-        logger.info("Imported legacy memory database into %s", target)
-    finally:
-        target_db.close()
-        source_db.close()
 
 
 def prepare_database(db_path: str) -> None:
     """Create the database location and apply idempotent bootstrap migrations."""
 
     path = Path(db_path).resolve()
-    _copy_legacy_memory_database(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     connection = sqlite3.connect(str(path))
     try:

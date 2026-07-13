@@ -1,0 +1,88 @@
+# .understandignore — patterns for files/dirs to exclude from analysis
+# Syntax: same as .gitignore (globs, # comments, ! negation, trailing / for dirs)
+# Lines below are suggestions — uncomment to activate.
+# Use ! prefix to force-include something excluded by defaults.
+#
+# Built-in defaults (always excluded unless negated):
+#   node_modules/, .git/, dist/, build/, obj/, *.lock, *.min.js, etc.
+#
+
+# --- From .gitignore (uncomment to exclude) ---
+
+# oss-referances/
+# cankao/
+# .claude/
+# .cursor/
+# backend/EasyVtuber/data/models/
+# *.onnx
+# *.pth
+# *.pt
+# *.bin
+# *.safetensors
+# *.engine
+# *.plan
+# *.swp
+# *.swo
+# *.pyc
+# *.pyo
+# .pytest_cache/
+# .ruff_cache/
+# .mypy_cache/
+# .DS_Store
+# Thumbs.db
+# npm-debug.log*
+# *.pid
+# playwright-report/
+# test-results/
+# fronted/test-results/
+# .env
+# .env.local
+# .env.*.local
+# backend/config.yaml
+# backend/data/
+# backend/*.db
+# backend/*.db-wal
+# backend/*.db-shm
+
+# --- Detected directories (uncomment to exclude) ---
+
+# docs/
+
+# --- Test file patterns (uncomment to exclude) ---
+
+# JS / TS
+# *.test.*
+# *.spec.*
+# *.snap
+# C# / .NET
+# **/*Tests.cs
+# **/*Test.cs
+# **/*Fixture.cs
+# **/*.Tests.csproj
+# Java / Kotlin
+# **/src/test/**
+# **/*Test.java
+# **/*IT.java
+# **/*Spec.kt
+# Go
+# **/*_test.go
+# C++
+# **/*_test.cc
+# **/*_test.cpp
+# **/*_test.cxx
+# **/*Test.cc
+# **/*Test.cpp
+# **/*_unittest.cc
+# **/*_unittest.cpp
+# **/*_browsertest.cc
+# **/*_benchmark.cc
+# **/*Benchmark.cpp
+
+# --- Understand Anything generated artifacts ---
+.ua/.trash-*/
+.ua/intermediate/
+.ua/tmp/
+.ua/knowledge-graph.json
+.ua/fingerprints.json
+.ua/meta.json
+.ua/dashboard*.log

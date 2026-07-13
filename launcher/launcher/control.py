@@ -35,23 +35,60 @@ from PySide6.QtWidgets import (
 API_ROOT = "http://127.0.0.1:9191"
 Callback = Callable[[bool, Any, str], None]
 
-SECTION_LABELS = {
-    "live": "直播平台",
-    "bilibili": "Bilibili",
-    "douyin": "抖音",
-    "host": "AI 主播",
-    "llm": "通用模型",
-    "tts": "语音路由",
-    "agent": "Agent 场景",
-    "avatar": "数字人",
-    "ai": "记忆行为",
-    "messaging": "消息调度",
-    "music": "音乐策略",
-    "storage": "数据存储",
-    "announcement": "公告",
-    "admin": "管理员",
-    "embedding": "向量模型",
+FIELD_LABELS = {
+    "platform": "当前平台",
+    "room_id": "房间号",
+    "sessdata": "SESSDATA",
+    "uid": "用户 UID",
+    "web_rid": "直播间 Web RID",
+    "cookie": "Cookie",
+    "api_url": "API 地址",
+    "api_key": "API 密钥",
+    "model": "模型名称",
+    "temperature": "温度",
+    "top_p": "Top P",
+    "max_tokens": "最大 Token",
+    "disable_thinking": "关闭思考模式",
+    "reply_interval": "回复间隔（秒）",
+    "max_reply_length": "最大回复长度",
+    "enabled": "启用",
+    "scenario_id": "场景",
+    "mcp_url": "MCP 地址",
+    "gateway_url": "Gateway 地址",
+    "response_format": "音频格式",
+    "speed": "语速",
+    "timeout_seconds": "超时（秒）",
+    "dimensions": "向量维度",
+    "user_graph_enabled": "用户图启用向量",
+    "game_graph_enabled": "游戏图启用向量",
+    "sqlite_path": "SQLite 文件",
+    "chroma_path": "ChromaDB 目录",
+    "chroma_collection": "向量集合",
+    "announcement": "直播公告",
+    "username": "管理员名称",
+    "identities": "各平台管理员身份",
+    "scenario_config": "场景专属配置",
+    "local_directories": "本地音乐目录",
 }
+
+MODEL_FIELDS = {
+    "api_url",
+    "api_key",
+    "model",
+    "temperature",
+    "top_p",
+    "max_tokens",
+    "disable_thinking",
+}
+AGENT_MODEL_FIELDS = {
+    "api_url",
+    "api_key",
+    "model",
+    "temperature",
+    "max_tokens",
+    "disable_thinking",
+}
+EMBEDDING_MODEL_FIELDS = {"api_url", "api_key", "model", "dimensions"}
 
 
 class ApiClient(QNetworkAccessManager):
@@ -150,40 +187,216 @@ class ConfigPage(QWidget):
         self.status.setText("配置已同步")
 
     def _build_forms(self) -> None:
+        selected_row = max(0, self.sections.currentRow())
         while self.pages.count():
             widget = self.pages.widget(0)
             self.pages.removeWidget(widget)
             widget.deleteLater()
         self.sections.clear()
         self.fields.clear()
-        for key, value in self.data.items():
-            if key == "restart_required":
+        builders = [
+            ("直播平台", self._build_live_page),
+            ("模型配置", self._build_models_page),
+            ("主播与消息", self._build_host_page),
+            ("语音与数字人", self._build_output_page),
+            ("Agent 场景", self._build_agent_page),
+            ("音乐策略", self._build_music_page),
+            ("记忆与数据", self._build_memory_page),
+            ("管理员与公告", self._build_admin_page),
+        ]
+        for label, builder in builders:
+            self.sections.addItem(label)
+            self.pages.addWidget(builder())
+        self.sections.setCurrentRow(min(selected_row, self.sections.count() - 1))
+
+    def _page(self, title: str, description: str) -> tuple[QScrollArea, QVBoxLayout]:
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(18, 16, 24, 24)
+        layout.setSpacing(14)
+        heading = QLabel(title)
+        heading.setObjectName("configPageTitle")
+        intro = QLabel(description)
+        intro.setObjectName("mutedText")
+        intro.setWordWrap(True)
+        layout.addWidget(heading)
+        layout.addWidget(intro)
+        scroll.setWidget(page)
+        return scroll, layout
+
+    def _group(
+        self, layout: QVBoxLayout, title: str, description: str = ""
+    ) -> tuple[QGroupBox, QFormLayout]:
+        box = QGroupBox(title)
+        box_layout = QVBoxLayout(box)
+        if description:
+            hint = QLabel(description)
+            hint.setObjectName("mutedText")
+            hint.setWordWrap(True)
+            box_layout.addWidget(hint)
+        form = QFormLayout()
+        form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
+        form.setHorizontalSpacing(18)
+        form.setVerticalSpacing(10)
+        box_layout.addLayout(form)
+        layout.addWidget(box)
+        return box, form
+
+    def _section_values(
+        self,
+        form: QFormLayout,
+        section: str,
+        *,
+        include: set[str] | None = None,
+        exclude: set[str] | None = None,
+    ) -> None:
+        values = self.data.get(section, {})
+        if not isinstance(values, dict):
+            return
+        for key, value in values.items():
+            if include is not None and key not in include:
                 continue
-            self.sections.addItem(SECTION_LABELS.get(key, key))
-            scroll = QScrollArea()
-            scroll.setWidgetResizable(True)
-            page = QWidget()
-            form = QFormLayout(page)
-            form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
-            form.setContentsMargins(16, 14, 24, 20)
-            if isinstance(value, dict):
-                self._add_values(form, (key,), value)
-            else:
-                self._add_field(form, (key,), value)
-            form.addRow(QWidget())
-            scroll.setWidget(page)
-            self.pages.addWidget(scroll)
-        if self.sections.count():
-            self.sections.setCurrentRow(0)
+            if exclude is not None and key in exclude:
+                continue
+            self._add_field(form, (section, key), value)
+
+    def _build_live_page(self) -> QScrollArea:
+        scroll, layout = self._page(
+            "直播平台",
+            "同一时间只启用一个平台。选择后仅填写该平台需要的房间与身份凭据，修改后重启生效。",
+        )
+        _, selector_form = self._group(layout, "平台选择")
+        platform = str(self.data.get("live", {}).get("platform", "bilibili"))
+        selector = self._add_field(
+            selector_form,
+            ("live", "platform"),
+            platform,
+            choices=[("Bilibili", "bilibili"), ("抖音", "douyin"), ("内部测试平台", "test")],
+        )
+        bilibili_box, bilibili_form = self._group(
+            layout, "Bilibili 接入", "SESSDATA 属于敏感凭据，保存后进入系统密钥库。"
+        )
+        self._section_values(bilibili_form, "bilibili")
+        douyin_box, douyin_form = self._group(
+            layout, "抖音接入", "Cookie 属于敏感凭据，保存后进入系统密钥库。"
+        )
+        self._section_values(douyin_form, "douyin")
+        test_box, _ = self._group(
+            layout, "内部测试平台", "不连接外部直播服务；标准弹幕和礼物从“直播操作”页发送。"
+        )
+
+        def show_platform(value: str) -> None:
+            bilibili_box.setVisible(value == "bilibili")
+            douyin_box.setVisible(value == "douyin")
+            test_box.setVisible(value == "test")
+
+        if isinstance(selector, QComboBox):
+            selector.currentIndexChanged.connect(lambda: show_platform(str(selector.currentData())))
+            show_platform(str(selector.currentData()))
+        layout.addStretch()
+        return scroll
+
+    def _build_models_page(self) -> QScrollArea:
+        scroll, layout = self._page(
+            "模型配置",
+            "所有 OpenAI-compatible 模型集中配置。Bifrost 负责实际供应商、路由和 fallback。",
+        )
+        _, host = self._group(layout, "主播生成模型", "负责最终主播回复和解说词生成。")
+        self._section_values(host, "host", include=MODEL_FIELDS)
+        _, general = self._group(layout, "通用分析模型", "负责抽取、总结、审核等后台任务。")
+        self._section_values(general, "llm", include=MODEL_FIELDS)
+        _, agent = self._group(layout, "Agent 决策模型", "负责场景观察、工具选择和行动规划。")
+        self._section_values(agent, "agent", include=AGENT_MODEL_FIELDS)
+        _, embedding = self._group(
+            layout, "Embedding 模型", "为空时知识图谱召回自动使用关键词兜底。"
+        )
+        self._section_values(embedding, "embedding", include=EMBEDDING_MODEL_FIELDS)
+        layout.addStretch()
+        return scroll
+
+    def _build_host_page(self) -> QScrollArea:
+        scroll, layout = self._page(
+            "主播与消息",
+            "配置回复节奏、消息优先级、饥饿保护、洪峰控制和队列速率。",
+        )
+        _, host = self._group(layout, "主播回复节奏")
+        self._section_values(host, "host", exclude=MODEL_FIELDS)
+        _, messaging = self._group(layout, "消息调度")
+        self._section_values(messaging, "messaging")
+        layout.addStretch()
+        return scroll
+
+    def _build_output_page(self) -> QScrollArea:
+        scroll, layout = self._page(
+            "语音与数字人",
+            "这里配置主播输出链路；具体 Speech Provider 与 fallback 在上方“语音”运行页维护。",
+        )
+        _, tts = self._group(layout, "语音路由")
+        self._section_values(tts, "tts")
+        _, avatar = self._group(layout, "FeinaAvatar", "角色、渲染器和输出方式修改后需要重启。")
+        values = self.data.get("avatar", {})
+        if isinstance(values, dict):
+            self._add_values(avatar, ("avatar",), values)
+        layout.addStretch()
+        return scroll
+
+    def _build_agent_page(self) -> QScrollArea:
+        scroll, layout = self._page(
+            "Agent 场景",
+            "场景、MCP 和能力装配在进程启动时固定；此页不重复显示模型参数。",
+        )
+        _, agent = self._group(layout, "场景与运行参数")
+        self._section_values(agent, "agent", exclude=AGENT_MODEL_FIELDS)
+        layout.addStretch()
+        return scroll
+
+    def _build_music_page(self) -> QScrollArea:
+        scroll, layout = self._page(
+            "音乐策略",
+            "配置 Provider 路由、队列容量、审核阈值、本地目录与自动压低。实时播放操作在“音乐”页。",
+        )
+        _, music = self._group(layout, "点歌与播放策略")
+        self._section_values(music, "music")
+        layout.addStretch()
+        return scroll
+
+    def _build_memory_page(self) -> QScrollArea:
+        scroll, layout = self._page(
+            "记忆与数据",
+            "配置用户总结、游戏记忆、SQLite 权威数据和 ChromaDB 可重建向量索引。",
+        )
+        _, memory = self._group(layout, "用户记忆调度")
+        self._section_values(memory, "ai")
+        _, graph = self._group(layout, "知识图谱召回")
+        self._section_values(
+            graph,
+            "embedding",
+            include={"user_graph_enabled", "game_graph_enabled"},
+        )
+        _, storage = self._group(layout, "存储位置", "路径修改后重启生效。")
+        self._section_values(storage, "storage")
+        layout.addStretch()
+        return scroll
+
+    def _build_admin_page(self) -> QScrollArea:
+        scroll, layout = self._page(
+            "管理员与公告",
+            "配置管理员显示名称、各平台身份映射和直播间公告。",
+        )
+        _, admin = self._group(layout, "管理员身份")
+        self._section_values(admin, "admin")
+        _, announcement = self._group(layout, "直播公告")
+        if "announcement" in self.data:
+            self._add_field(announcement, ("announcement",), self.data["announcement"])
+        layout.addStretch()
+        return scroll
 
     def _add_values(self, form: QFormLayout, prefix: tuple[str, ...], values: dict) -> None:
         for key, value in values.items():
             path = (*prefix, key)
-            if isinstance(value, dict) and (
-                not value or all(not isinstance(v, (dict, list)) for v in value.values())
-            ):
-                self._add_field(form, path, value)
-            elif isinstance(value, dict):
+            if isinstance(value, dict) and value:
                 heading = QLabel(key.replace("_", " ").title())
                 heading.setObjectName("formHeading")
                 form.addRow(heading)
@@ -191,9 +404,21 @@ class ConfigPage(QWidget):
             else:
                 self._add_field(form, path, value)
 
-    def _add_field(self, form: QFormLayout, path: tuple[str, ...], value: Any) -> None:
-        label = path[-1].replace("_", " ").title()
-        if isinstance(value, bool):
+    def _add_field(
+        self,
+        form: QFormLayout,
+        path: tuple[str, ...],
+        value: Any,
+        choices: list[tuple[str, str]] | None = None,
+    ) -> QWidget:
+        label = FIELD_LABELS.get(path[-1], path[-1].replace("_", " ").title())
+        if choices:
+            widget: QWidget = QComboBox()
+            for text, stored_value in choices:
+                widget.addItem(text, stored_value)
+            index = widget.findData(value)
+            widget.setCurrentIndex(max(0, index))
+        elif isinstance(value, bool):
             widget: QWidget = QCheckBox()
             widget.setChecked(value)
         elif isinstance(value, int):
@@ -215,6 +440,7 @@ class ConfigPage(QWidget):
         widget.setToolTip(".".join(path))
         self.fields[path] = (widget, type(value))
         form.addRow(label, widget)
+        return widget
 
     def _select_section(self, row: int) -> None:
         if row >= 0:
@@ -245,6 +471,8 @@ class ConfigPage(QWidget):
             return widget.value()
         if isinstance(widget, QPlainTextEdit):
             return json.loads(widget.toPlainText())
+        if isinstance(widget, QComboBox):
+            return widget.currentData()
         if isinstance(widget, QLineEdit):
             return widget.text()
         raise TypeError(f"不支持的配置控件：{value_type.__name__}")

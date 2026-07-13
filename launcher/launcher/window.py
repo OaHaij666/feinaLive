@@ -474,12 +474,14 @@ class LauncherWindow(QMainWindow):
         if theme == "light":
             return """
         QWidget { color: #172033; background: #f4f6fb; }
+        QLabel { background: transparent; }
         QWidget#appRoot { background: #f4f6fb; color: #172033; }
         QLabel#heading { font-size: 24px; font-weight: 700; color: #172033; }
         QLabel#subtitle, QLabel#moduleDescription, QLabel#moduleDetail, QLabel#mutedText { color: #64748b; }
         QLabel#subtitle { font-size: 12px; }
         QLabel#summary { padding: 8px 12px; border: 1px solid #d7dce6; border-radius: 8px; color: #475569; background: #ffffff; }
         QLabel#pageTitle { font-size: 18px; font-weight: 700; color: #172033; }
+        QLabel#configPageTitle { font-size: 16px; font-weight: 700; color: #172033; }
         QLabel#formHeading { padding-top: 12px; font-weight: 700; color: #5b21b6; }
         QFrame#moduleCard, QGroupBox { border: 1px solid #dce1eb; border-radius: 10px; background: #ffffff; }
         QGroupBox { margin-top: 12px; padding: 14px 10px 10px; font-weight: 650; }
@@ -518,12 +520,14 @@ class LauncherWindow(QMainWindow):
         """
         return """
         QWidget { color: #f8fafc; background: #020617; }
+        QLabel { background: transparent; }
         QWidget#appRoot { background: #020617; color: #f8fafc; }
         QLabel#heading { font-size: 24px; font-weight: 700; color: #f8fafc; }
         QLabel#subtitle, QLabel#moduleDescription, QLabel#moduleDetail, QLabel#mutedText { color: #94a3b8; }
         QLabel#subtitle { font-size: 12px; }
         QLabel#summary { padding: 8px 12px; border: 1px solid #334155; border-radius: 8px; color: #cbd5e1; background: #0f172a; }
         QLabel#pageTitle { font-size: 18px; font-weight: 700; color: #f8fafc; }
+        QLabel#configPageTitle { font-size: 16px; font-weight: 700; color: #f8fafc; }
         QLabel#formHeading { padding-top: 12px; font-weight: 700; color: #c4b5fd; }
         QFrame#moduleCard, QGroupBox { border: 1px solid #334155; border-radius: 10px; background: #0f172a; }
         QGroupBox { margin-top: 12px; padding: 14px 10px 10px; font-weight: 650; }

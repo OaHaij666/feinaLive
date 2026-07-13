@@ -66,3 +66,8 @@ backend/avatar_engine/data/models/
 
 # Local archives / downloaded bundles
 *.zip
+
+# Understand Anything scratch output
+.ua/.trash-*/
+.ua/tmp/
+.ua/dashboard*.log

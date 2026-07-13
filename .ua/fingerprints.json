@@ -1,7 +1,7 @@
 {
   "version": "1.0.0",
-  "gitCommitHash": "5dfafbfed10fe06b866fb6ef7190a1f5d9be3cdd",
-  "generatedAt": "2026-07-13T09:34:48.848Z",
+  "gitCommitHash": "cc348c7a86d24ef4ba2df883802b972b7324df55",
+  "generatedAt": "2026-07-13T16:12:48.388Z",
   "files": {
     ".ua/.understandignore": {
       "filePath": ".ua/.understandignore",
@@ -2488,7 +2488,7 @@
     },
     "backend/apps/ai/client.py": {
       "filePath": "backend/apps/ai/client.py",
-      "contentHash": "d46677ebd913a66dab9e49e82ff43909dfff22bb622f828b4a0cd3d4be01d5c0",
+      "contentHash": "e7ba05fe19144f8a3950122774934fa154ed28d5209bab505d3b7fcf0661c97c",
       "functions": [
         {
           "name": "get_ai_client",
@@ -2554,19 +2554,18 @@
           "name": "AIClient",
           "methods": [
             "__init__",
-            "close",
             "available",
-            "_resolve_params",
+            "_get_client",
+            "close",
             "_build_payload",
             "chat",
             "chat_stream",
-            "_to_dict",
             "_parse_response",
             "simple_chat"
           ],
           "properties": [],
           "exported": true,
-          "lineCount": 148
+          "lineCount": 140
         }
       ],
       "imports": [
@@ -2586,7 +2585,14 @@
         {
           "source": "typing",
           "specifiers": [
-            "Any"
+            "Any",
+            "AsyncIterator"
+          ]
+        },
+        {
+          "source": "openai",
+          "specifiers": [
+            "AsyncOpenAI"
           ]
         },
         {
@@ -2604,12 +2610,12 @@
         "get_ai_client",
         "get_agent_ai_client"
       ],
-      "totalLines": 217,
+      "totalLines": 213,
       "hasStructuralAnalysis": true
     },
     "backend/apps/ai/embedding.py": {
       "filePath": "backend/apps/ai/embedding.py",
-      "contentHash": "9d2792cc98b367ad880a903ca5204f9a1c52f9967bea23f9aa5c47cedbe13976",
+      "contentHash": "8a84bb7f2dac4b144f5ef2d2e6a49a9cbe5efb3a7125e432b3a75d754165996c",
       "functions": [
         {
           "name": "get_embedding_client",
@@ -2637,13 +2643,14 @@
           "methods": [
             "__init__",
             "available",
+            "_get_client",
+            "close",
             "embed_text",
-            "embed_batch",
-            "_to_dict"
+            "embed_batch"
           ],
           "properties": [],
           "exported": true,
-          "lineCount": 68
+          "lineCount": 60
         }
       ],
       "imports": [
@@ -2660,9 +2667,9 @@
           ]
         },
         {
-          "source": "typing",
+          "source": "openai",
           "specifiers": [
-            "Any"
+            "AsyncOpenAI"
           ]
         },
         {
@@ -2677,7 +2684,7 @@
         "EmbeddingClient",
         "get_embedding_client"
       ],
-      "totalLines": 100,
+      "totalLines": 93,
       "hasStructuralAnalysis": true
     },
     "backend/apps/ai/history.py": {
@@ -5916,7 +5923,7 @@
     },
     "backend/apps/ai/speech_pipeline.py": {
       "filePath": "backend/apps/ai/speech_pipeline.py",
-      "contentHash": "5dcbe947269bbf6f20eeda53126c53dbe511124f6d5c9a761ea31c0542417096",
+      "contentHash": "f590855f54dae4e9cfd033535e5bcde3f02da141e52685dde4eccd5a693a3935",
       "functions": [],
       "classes": [
         {
@@ -5930,10 +5937,19 @@
             "audio_data",
             "sentence_index",
             "char_offset",
-            "is_final"
+            "is_final",
+            "media_type",
+            "provider",
+            "voice",
+            "sample_rate",
+            "duration_ms",
+            "timings",
+            "synthesis_ms",
+            "rtf",
+            "fallback_from"
           ],
           "exported": true,
-          "lineCount": 18
+          "lineCount": 42
         },
         {
           "name": "SpeechResult",
@@ -5975,7 +5991,7 @@
           ],
           "properties": [],
           "exported": true,
-          "lineCount": 366
+          "lineCount": 375
         }
       ],
       "imports": [
@@ -6045,12 +6061,6 @@
           ]
         },
         {
-          "source": "apps.ai.tts",
-          "specifiers": [
-            "get_tts_client"
-          ]
-        },
-        {
           "source": "apps.config",
           "specifiers": [
             "config"
@@ -6067,6 +6077,12 @@
           "specifiers": [
             "get_live_runtime"
           ]
+        },
+        {
+          "source": "apps.speech",
+          "specifiers": [
+            "get_speech_gateway_client"
+          ]
         }
       ],
       "exports": [
@@ -6075,7 +6091,7 @@
         "SentenceBuffer",
         "SpeechPipeline"
       ],
-      "totalLines": 450,
+      "totalLines": 483,
       "hasStructuralAnalysis": true
     },
     "backend/apps/ai/tools/__init__.py": {
@@ -6147,115 +6163,6 @@
         "ToolResult"
       ],
       "totalLines": 28,
-      "hasStructuralAnalysis": true
-    },
-    "backend/apps/ai/tts.py": {
-      "filePath": "backend/apps/ai/tts.py",
-      "contentHash": "e1c71f3fab705509aeb3e669ea82cd68022c62e7e30583eb723f1ffc6311182d",
-      "functions": [
-        {
-          "name": "get_tts_client",
-          "params": [],
-          "returnType": "VolcanoTTSClient",
-          "exported": true,
-          "lineCount": 7
-        }
-      ],
-      "classes": [
-        {
-          "name": "TTSResult",
-          "methods": [],
-          "properties": [
-            "audio_data",
-            "text",
-            "voice"
-          ],
-          "exported": true,
-          "lineCount": 4
-        },
-        {
-          "name": "TTSSentenceResult",
-          "methods": [],
-          "properties": [
-            "audio_data",
-            "text",
-            "sentence_index",
-            "voice"
-          ],
-          "exported": true,
-          "lineCount": 5
-        },
-        {
-          "name": "VolcanoTTSClient",
-          "methods": [
-            "__init__",
-            "synthesize",
-            "synthesize_to_file",
-            "split_sentences",
-            "synthesize_stream_by_sentence"
-          ],
-          "properties": [],
-          "exported": true,
-          "lineCount": 125
-        }
-      ],
-      "imports": [
-        {
-          "source": "base64",
-          "specifiers": [
-            "base64"
-          ]
-        },
-        {
-          "source": "logging",
-          "specifiers": [
-            "logging"
-          ]
-        },
-        {
-          "source": "re",
-          "specifiers": [
-            "re"
-          ]
-        },
-        {
-          "source": "uuid",
-          "specifiers": [
-            "uuid"
-          ]
-        },
-        {
-          "source": "dataclasses",
-          "specifiers": [
-            "dataclass"
-          ]
-        },
-        {
-          "source": "pathlib",
-          "specifiers": [
-            "Path"
-          ]
-        },
-        {
-          "source": "typing",
-          "specifiers": [
-            "AsyncIterator"
-          ]
-        },
-        {
-          "source": "apps.config",
-          "specifiers": [
-            "config"
-          ]
-        }
-      ],
-      "exports": [
-        "TTSResult",
-        "TTSSentenceResult",
-        "VolcanoTTSClient",
-        "get_tts_client"
-      ],
-      "totalLines": 175,
       "hasStructuralAnalysis": true
     },
     "backend/apps/audio_focus.py": {
@@ -6422,7 +6329,7 @@
     },
     "backend/apps/avatar/runtime.py": {
       "filePath": "backend/apps/avatar/runtime.py",
-      "contentHash": "b0a24ba74d8e9e92e4cd21a756bfa2c782d25f664dc5982722861aeb2a375820",
+      "contentHash": "6018da62b0c68e46187fac4cfbdae3c5fe7549b425b62fabfafa6f2811343a41",
       "functions": [
         {
           "name": "_default_engine_factory",
@@ -6488,7 +6395,7 @@
           ],
           "properties": [],
           "exported": true,
-          "lineCount": 183
+          "lineCount": 189
         }
       ],
       "imports": [
@@ -6542,12 +6449,12 @@
         "get_avatar_runtime",
         "reset_avatar_runtime"
       ],
-      "totalLines": 242,
+      "totalLines": 248,
       "hasStructuralAnalysis": true
     },
     "backend/apps/avatar/schemas.py": {
       "filePath": "backend/apps/avatar/schemas.py",
-      "contentHash": "1167f696d81a44ca29c249117e82b20add35c5961ca67b8e35aec4bfcf4081ab",
+      "contentHash": "7264d40bda4e713bf2787a0db5b0722dc616f95c6db228b87c4d8fe4cd7713e6",
       "functions": [],
       "classes": [
         {
@@ -6679,7 +6586,7 @@
     },
     "backend/apps/config_router.py": {
       "filePath": "backend/apps/config_router.py",
-      "contentHash": "b7b2519e9ebddec4b59c1b5bab45aa171d82f34dc197f7f40a23c5226adeb84d",
+      "contentHash": "380023e9303ba9a2505b0c44496cbbd90026d1f01afde1060e0b9430196aedda",
       "functions": [
         {
           "name": "_mask_sensitive",
@@ -6694,7 +6601,7 @@
           "name": "get_full_config",
           "params": [],
           "exported": true,
-          "lineCount": 135
+          "lineCount": 131
         },
         {
           "name": "_should_skip_sensitive",
@@ -6753,13 +6660,19 @@
             "response"
           ],
           "exported": true,
-          "lineCount": 191
+          "lineCount": 186
         },
         {
           "name": "list_sections",
           "params": [],
           "exported": true,
-          "lineCount": 19
+          "lineCount": 18
+        },
+        {
+          "name": "config_ui_options",
+          "params": [],
+          "exported": true,
+          "lineCount": 40
         },
         {
           "name": "get_avatar_config",
@@ -6857,24 +6770,15 @@
           "name": "TTSConfig",
           "methods": [],
           "properties": [
-            "provider",
-            "voice",
-            "encoding",
-            "speed_ratio"
+            "gateway_url",
+            "api_key",
+            "model",
+            "response_format",
+            "speed",
+            "timeout_seconds"
           ],
           "exported": true,
-          "lineCount": 5
-        },
-        {
-          "name": "VolcanoConfig",
-          "methods": [],
-          "properties": [
-            "appid",
-            "access_token",
-            "speaker_id"
-          ],
-          "exported": true,
-          "lineCount": 4
+          "lineCount": 7
         },
         {
           "name": "AgentConfig",
@@ -7004,7 +6908,6 @@
           "name": "EmbeddingConfig",
           "methods": [],
           "properties": [
-            "provider",
             "model",
             "api_url",
             "api_key",
@@ -7013,7 +6916,7 @@
             "game_graph_enabled"
           ],
           "exported": true,
-          "lineCount": 8
+          "lineCount": 7
         },
         {
           "name": "FullConfig",
@@ -7025,7 +6928,6 @@
             "host",
             "llm",
             "tts",
-            "volcano",
             "agent",
             "avatar",
             "ai",
@@ -7038,10 +6940,16 @@
             "restart_required"
           ],
           "exported": true,
-          "lineCount": 18
+          "lineCount": 17
         }
       ],
       "imports": [
+        {
+          "source": "asyncio",
+          "specifiers": [
+            "asyncio"
+          ]
+        },
         {
           "source": "logging",
           "specifiers": [
@@ -7108,7 +7016,6 @@
         "HostConfig",
         "LLMConfig",
         "TTSConfig",
-        "VolcanoConfig",
         "AgentConfig",
         "AIConfig",
         "MessagingRateLimitsConfig",
@@ -7127,17 +7034,18 @@
         "_atomic_write_yaml",
         "update_full_config",
         "list_sections",
+        "config_ui_options",
         "get_avatar_config",
         "update_avatar_config",
         "list_characters",
         "open_images_folder"
       ],
-      "totalLines": 684,
+      "totalLines": 712,
       "hasStructuralAnalysis": true
     },
     "backend/apps/config.py": {
       "filePath": "backend/apps/config.py",
-      "contentHash": "3f8dbc41ecf819b64cf9764ce64d13a5412a2032d94a0e13ddb6c8499eb51110",
+      "contentHash": "c1c4b2b613899450eee118540daf32abe8b7d0a545a7c4f70d4ec2227101507f",
       "functions": [],
       "classes": [
         {
@@ -7157,7 +7065,6 @@
             "douyin_web_rid",
             "douyin_cookie",
             "llm_api_url",
-            "llm_provider",
             "llm_api_key",
             "llm_model",
             "llm_temperature",
@@ -7165,20 +7072,18 @@
             "llm_max_tokens",
             "llm_disable_thinking",
             "llm_prompts",
-            "embedding_provider",
             "embedding_model",
             "embedding_api_url",
             "embedding_api_key",
             "embedding_dimensions",
             "embedding_user_graph_enabled",
             "embedding_game_graph_enabled",
-            "tts_voice",
-            "tts_provider",
-            "tts_encoding",
-            "tts_speed_ratio",
-            "volcano_appid",
-            "volcano_access_token",
-            "volcano_speaker_id",
+            "tts_gateway_url",
+            "tts_api_key",
+            "tts_model",
+            "tts_response_format",
+            "tts_speed",
+            "tts_timeout_seconds",
             "host_reply_interval",
             "host_max_reply_length",
             "host_playback_timeout_seconds",
@@ -7260,7 +7165,7 @@
             "_data"
           ],
           "exported": true,
-          "lineCount": 497
+          "lineCount": 488
         }
       ],
       "imports": [
@@ -7292,7 +7197,7 @@
       "exports": [
         "Config"
       ],
-      "totalLines": 514,
+      "totalLines": 505,
       "hasStructuralAnalysis": true
     },
     "backend/apps/db.py": {
@@ -8714,13 +8619,25 @@
     },
     "backend/apps/live/router.py": {
       "filePath": "backend/apps/live/router.py",
-      "contentHash": "b4b5b0e158322f7e801c86dd1497efac56a1777dfcbcc9d9674370d839693560",
+      "contentHash": "ca349fa81680db3feb9447e2351ad4a3461e302601ab7338e4d8def64ce6a9af",
       "functions": [
         {
           "name": "live_state",
           "params": [],
           "exported": true,
           "lineCount": 7
+        },
+        {
+          "name": "start_live_runtime",
+          "params": [],
+          "exported": true,
+          "lineCount": 6
+        },
+        {
+          "name": "stop_live_runtime",
+          "params": [],
+          "exported": true,
+          "lineCount": 3
         },
         {
           "name": "verify_bilibili_credentials",
@@ -8804,11 +8721,13 @@
       ],
       "exports": [
         "live_state",
+        "start_live_runtime",
+        "stop_live_runtime",
         "verify_bilibili_credentials",
         "verify_douyin_credentials",
         "live_websocket"
       ],
-      "totalLines": 89,
+      "totalLines": 104,
       "hasStructuralAnalysis": true
     },
     "backend/apps/live/runtime.py": {
@@ -10722,6 +10641,284 @@
       "totalLines": 335,
       "hasStructuralAnalysis": true
     },
+    "backend/apps/speech/__init__.py": {
+      "filePath": "backend/apps/speech/__init__.py",
+      "contentHash": "6d237232522118b16ad2da4856f7f7685b0f11110f266b5113253c71698ff482",
+      "functions": [],
+      "classes": [],
+      "imports": [
+        {
+          "source": "apps.speech.client",
+          "specifiers": [
+            "SpeechGatewayClient",
+            "get_speech_gateway_client"
+          ]
+        },
+        {
+          "source": "apps.speech.models",
+          "specifiers": [
+            "SpeechArtifact"
+          ]
+        }
+      ],
+      "exports": [],
+      "totalLines": 7,
+      "hasStructuralAnalysis": true
+    },
+    "backend/apps/speech/client.py": {
+      "filePath": "backend/apps/speech/client.py",
+      "contentHash": "7ea8584e053d276859ebad82b5399685ad1f1e525323efd105864c13d763c557",
+      "functions": [
+        {
+          "name": "_optional_int",
+          "params": [
+            "value"
+          ],
+          "returnType": "int | None",
+          "exported": true,
+          "lineCount": 5
+        },
+        {
+          "name": "get_speech_gateway_client",
+          "params": [],
+          "returnType": "SpeechGatewayClient",
+          "exported": true,
+          "lineCount": 5
+        }
+      ],
+      "classes": [
+        {
+          "name": "SpeechGatewayClient",
+          "methods": [
+            "__init__",
+            "available",
+            "synthesize",
+            "health",
+            "get_provider_schemas",
+            "get_admin_config",
+            "get_status",
+            "update_provider",
+            "update_route",
+            "probe_provider",
+            "_get_json",
+            "close",
+            "_optional_float"
+          ],
+          "properties": [],
+          "exported": true,
+          "lineCount": 135
+        }
+      ],
+      "imports": [
+        {
+          "source": "json",
+          "specifiers": [
+            "json"
+          ]
+        },
+        {
+          "source": "logging",
+          "specifiers": [
+            "logging"
+          ]
+        },
+        {
+          "source": "httpx",
+          "specifiers": [
+            "httpx"
+          ]
+        },
+        {
+          "source": "apps.config",
+          "specifiers": [
+            "config"
+          ]
+        },
+        {
+          "source": "apps.speech.models",
+          "specifiers": [
+            "SpeechArtifact"
+          ]
+        }
+      ],
+      "exports": [
+        "_optional_int",
+        "SpeechGatewayClient",
+        "get_speech_gateway_client"
+      ],
+      "totalLines": 168,
+      "hasStructuralAnalysis": true
+    },
+    "backend/apps/speech/models.py": {
+      "filePath": "backend/apps/speech/models.py",
+      "contentHash": "9c0d5583616fe1869fb6f977aed4d0357199d7412eea2fc8bf9f5f1ee46491f5",
+      "functions": [],
+      "classes": [
+        {
+          "name": "SpeechArtifact",
+          "methods": [],
+          "properties": [
+            "audio_data",
+            "text",
+            "media_type",
+            "provider",
+            "model",
+            "voice",
+            "sample_rate",
+            "duration_ms",
+            "timings",
+            "synthesis_ms",
+            "rtf",
+            "fallback_from",
+            "attempts"
+          ],
+          "exported": true,
+          "lineCount": 14
+        }
+      ],
+      "imports": [
+        {
+          "source": "dataclasses",
+          "specifiers": [
+            "dataclass",
+            "field"
+          ]
+        },
+        {
+          "source": "typing",
+          "specifiers": [
+            "Any"
+          ]
+        }
+      ],
+      "exports": [
+        "SpeechArtifact"
+      ],
+      "totalLines": 24,
+      "hasStructuralAnalysis": true
+    },
+    "backend/apps/speech/router.py": {
+      "filePath": "backend/apps/speech/router.py",
+      "contentHash": "46672bd8c1ed1dc896ff532408774fe77842594ead2de2766c341b337059344d",
+      "functions": [
+        {
+          "name": "_proxy",
+          "params": [
+            "call"
+          ],
+          "exported": true,
+          "lineCount": 8
+        },
+        {
+          "name": "provider_schemas",
+          "params": [],
+          "exported": true,
+          "lineCount": 2
+        },
+        {
+          "name": "gateway_config",
+          "params": [],
+          "exported": true,
+          "lineCount": 2
+        },
+        {
+          "name": "gateway_status",
+          "params": [],
+          "exported": true,
+          "lineCount": 2
+        },
+        {
+          "name": "update_provider",
+          "params": [
+            "provider",
+            "request"
+          ],
+          "exported": true,
+          "lineCount": 4
+        },
+        {
+          "name": "update_route",
+          "params": [
+            "route",
+            "request"
+          ],
+          "exported": true,
+          "lineCount": 4
+        },
+        {
+          "name": "probe_provider",
+          "params": [
+            "provider"
+          ],
+          "exported": true,
+          "lineCount": 2
+        }
+      ],
+      "classes": [
+        {
+          "name": "ProviderUpdateRequest",
+          "methods": [],
+          "properties": [
+            "type",
+            "enabled",
+            "values"
+          ],
+          "exported": true,
+          "lineCount": 4
+        },
+        {
+          "name": "RouteUpdateRequest",
+          "methods": [],
+          "properties": [
+            "primary",
+            "fallback"
+          ],
+          "exported": true,
+          "lineCount": 3
+        }
+      ],
+      "imports": [
+        {
+          "source": "httpx",
+          "specifiers": [
+            "httpx"
+          ]
+        },
+        {
+          "source": "fastapi",
+          "specifiers": [
+            "APIRouter",
+            "HTTPException"
+          ]
+        },
+        {
+          "source": "pydantic",
+          "specifiers": [
+            "BaseModel",
+            "Field"
+          ]
+        },
+        {
+          "source": "apps.speech.client",
+          "specifiers": [
+            "get_speech_gateway_client"
+          ]
+        }
+      ],
+      "exports": [
+        "ProviderUpdateRequest",
+        "RouteUpdateRequest",
+        "_proxy",
+        "provider_schemas",
+        "gateway_config",
+        "gateway_status",
+        "update_provider",
+        "update_route",
+        "probe_provider"
+      ],
+      "totalLines": 67,
+      "hasStructuralAnalysis": true
+    },
     "backend/apps/storage/__init__.py": {
       "filePath": "backend/apps/storage/__init__.py",
       "contentHash": "b00707ec367814ee4d176151204d76ac139617321c5371ad36b1f44bd771a543",
@@ -10899,7 +11096,7 @@
     },
     "backend/avatar_engine/config.py": {
       "filePath": "backend/avatar_engine/config.py",
-      "contentHash": "9f16125bfb8c23550a7ee038af8367859468ea05e65019dfa7dd027b54103713",
+      "contentHash": "115eb898e32297c678efd05e720b8aa2bf841ff55d0b2b45f2b6e72cc1faf2d5",
       "functions": [
         {
           "name": "apply_engine_config",
@@ -11155,7 +11352,7 @@
     },
     "backend/avatar_engine/pose.py": {
       "filePath": "backend/avatar_engine/pose.py",
-      "contentHash": "379a48fa84fea8ad129b03c72198806eabb159c4cbfb80fe1d82e474b8de52ba",
+      "contentHash": "44d1bdf8a978d73e3d1e88ba3973229fb069b5dae9cc4d52bf1abd9a35cb6431",
       "functions": [],
       "classes": [
         {
@@ -11165,6 +11362,8 @@
             "head_pitch",
             "head_yaw",
             "head_roll",
+            "body_yaw",
+            "body_roll",
             "gaze_x",
             "gaze_y",
             "breathing",
@@ -11173,7 +11372,7 @@
             "scale"
           ],
           "exported": true,
-          "lineCount": 10
+          "lineCount": 12
         },
         {
           "name": "FacialPose",
@@ -11215,7 +11414,7 @@
         "FacialPose",
         "THAPoseMapper"
       ],
-      "totalLines": 57,
+      "totalLines": 59,
       "hasStructuralAnalysis": true
     },
     "backend/avatar_engine/runner.py": {
@@ -11426,8 +11625,18 @@
     },
     "backend/avatar_engine/src/composite_input.py": {
       "filePath": "backend/avatar_engine/src/composite_input.py",
-      "contentHash": "993590a4bd0d3630bb415dab9473d700434b8b85cf2151616467dc4c733674d1",
-      "functions": [],
+      "contentHash": "7d1d7933d0436a539f632d211d0651a2076a128e2b445c29a022486cddf5a74d",
+      "functions": [
+        {
+          "name": "broadcast_idle_motion",
+          "params": [
+            "now"
+          ],
+          "returnType": "MotionPose",
+          "exported": true,
+          "lineCount": 17
+        }
+      ],
       "classes": [
         {
           "name": "NaturalMotion",
@@ -11454,7 +11663,7 @@
           ],
           "properties": [],
           "exported": true,
-          "lineCount": 139
+          "lineCount": 145
         }
       ],
       "imports": [
@@ -11532,9 +11741,10 @@
       ],
       "exports": [
         "NaturalMotion",
+        "broadcast_idle_motion",
         "CompositePoseProcess"
       ],
-      "totalLines": 179,
+      "totalLines": 204,
       "hasStructuralAnalysis": true
     },
     "backend/avatar_engine/src/ezvtb_rt_interface.py": {
@@ -12007,12 +12217,12 @@
     },
     "backend/config.example.yaml": {
       "filePath": "backend/config.example.yaml",
-      "contentHash": "5906b611d522f960a09b92a465360a579080f58469b338b01ea8293db119dcbf",
+      "contentHash": "29717924270b239bdd41def7e4054d0d52a1e635d40469f9284831b0246db589",
       "functions": [],
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 175,
+      "totalLines": 169,
       "hasStructuralAnalysis": true
     },
     "backend/core/__init__.py": {
@@ -12137,7 +12347,7 @@
     },
     "backend/main.py": {
       "filePath": "backend/main.py",
-      "contentHash": "df4245a72aec53a357a51afafed7948b2888b7a86a4669557bad79d709ec49f2",
+      "contentHash": "b85e60e156a05a6253c4544b9f947fc11b5145359adce53f8104ff36959028ad",
       "functions": [
         {
           "name": "lifespan",
@@ -12145,7 +12355,7 @@
             "app"
           ],
           "exported": true,
-          "lineCount": 135
+          "lineCount": 146
         },
         {
           "name": "general_exception_handler",
@@ -12166,13 +12376,33 @@
           "name": "health",
           "params": [],
           "exported": true,
-          "lineCount": 16
+          "lineCount": 24
+        },
+        {
+          "name": "shutdown",
+          "params": [
+            "request"
+          ],
+          "exported": true,
+          "lineCount": 11
         },
         {
           "name": "stream_status",
           "params": [],
           "exported": true,
           "lineCount": 6
+        },
+        {
+          "name": "stream_start",
+          "params": [],
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "stream_stop",
+          "params": [],
+          "exported": true,
+          "lineCount": 3
         }
       ],
       "classes": [],
@@ -12199,7 +12429,9 @@
           "source": "fastapi",
           "specifiers": [
             "FastAPI",
-            "Request"
+            "HTTPException",
+            "Request",
+            "status"
           ]
         },
         {
@@ -12269,6 +12501,12 @@
           ]
         },
         {
+          "source": "apps.speech.router",
+          "specifiers": [
+            "speech_gateway_router"
+          ]
+        },
+        {
           "source": "apps.test_router",
           "specifiers": [
             "test_router"
@@ -12294,19 +12532,22 @@
         "general_exception_handler",
         "root",
         "health",
-        "stream_status"
+        "shutdown",
+        "stream_status",
+        "stream_start",
+        "stream_stop"
       ],
-      "totalLines": 263,
+      "totalLines": 310,
       "hasStructuralAnalysis": true
     },
     "backend/pyproject.toml": {
       "filePath": "backend/pyproject.toml",
-      "contentHash": "12ae0ddacd1016f9c4193eb2b53ab85f3cad5c2331b2779b39887a23ae3e4ecf",
+      "contentHash": "261f4a16185f332392532dbd089f0d4d64891ad7f43e7aaed8b86476594670c5",
       "functions": [],
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 104,
+      "totalLines": 101,
       "hasStructuralAnalysis": true
     },
     "backend/README.md": {
@@ -12424,7 +12665,7 @@
     },
     "backend/services/nginx_service.py": {
       "filePath": "backend/services/nginx_service.py",
-      "contentHash": "42fa12da10a63281bbf12264454ec19ba51c4194eb28932cf033c381bebe8170",
+      "contentHash": "41ce511d1d72bf594852c452c25cf07544c540694f8a28e7d952e8f8c6cd508d",
       "functions": [
         {
           "name": "get_nginx_service",
@@ -12437,7 +12678,7 @@
           "name": "start_nginx",
           "params": [],
           "exported": true,
-          "lineCount": 6
+          "lineCount": 5
         },
         {
           "name": "stop_nginx",
@@ -12459,7 +12700,7 @@
           ],
           "properties": [],
           "exported": true,
-          "lineCount": 84
+          "lineCount": 83
         }
       ],
       "imports": [
@@ -12500,7 +12741,7 @@
         "start_nginx",
         "stop_nginx"
       ],
-      "totalLines": 130,
+      "totalLines": 126,
       "hasStructuralAnalysis": true
     },
     "backend/test_llm.py": {
@@ -12927,7 +13168,7 @@
     },
     "backend/tests/test_avatar_runtime.py": {
       "filePath": "backend/tests/test_avatar_runtime.py",
-      "contentHash": "4cb5456071917fa7891f3a11753aaae3943a8f5745169fbd5ef66cbe1564c4cf",
+      "contentHash": "d28f273af5a046f36abc8bc84c480f5942c40595258735237a5a98a6170fc23e",
       "functions": [
         {
           "name": "wait_for_state",
@@ -12944,6 +13185,18 @@
           "params": [],
           "exported": true,
           "lineCount": 11
+        },
+        {
+          "name": "test_broadcast_idle_motion_is_default_and_ignores_browser_face_mode",
+          "params": [],
+          "exported": true,
+          "lineCount": 14
+        },
+        {
+          "name": "test_hybrid_motion_switches_browser_control_at_runtime",
+          "params": [],
+          "exported": true,
+          "lineCount": 12
         },
         {
           "name": "test_avatar_runtime_rejects_stale_and_cross_reply_lip_packets",
@@ -12980,6 +13233,18 @@
           "params": [],
           "exported": true,
           "lineCount": 12
+        },
+        {
+          "name": "test_broadcast_idle_motion_is_anchored_and_coordinates_eyes_with_head",
+          "params": [],
+          "exported": true,
+          "lineCount": 10
+        },
+        {
+          "name": "test_pose_mapper_can_keep_body_sway_smaller_than_head_motion",
+          "params": [],
+          "exported": true,
+          "lineCount": 8
         },
         {
           "name": "test_avatar_engine_fails_when_either_worker_exits",
@@ -13057,21 +13322,137 @@
           "specifiers": [
             "FeinaAvatarEngine"
           ]
+        },
+        {
+          "source": "avatar_engine.src.composite_input",
+          "specifiers": [
+            "broadcast_idle_motion"
+          ]
         }
       ],
       "exports": [
         "FakeEngine",
         "wait_for_state",
         "test_avatar_runtime_supervises_engine_without_blocking_event_loop",
+        "test_broadcast_idle_motion_is_default_and_ignores_browser_face_mode",
+        "test_hybrid_motion_switches_browser_control_at_runtime",
         "test_avatar_runtime_rejects_stale_and_cross_reply_lip_packets",
         "test_avatar_runtime_reports_renderer_start_failure",
         "test_avatar_runtime_reclaims_engine_after_runtime_failure",
         "test_avatar_config_maps_every_runtime_setting_to_engine_snapshot",
         "test_avatar_config_requires_at_least_one_output",
         "test_named_pose_channels_map_to_tha_contract",
+        "test_broadcast_idle_motion_is_anchored_and_coordinates_eyes_with_head",
+        "test_pose_mapper_can_keep_body_sway_smaller_than_head_motion",
         "test_avatar_engine_fails_when_either_worker_exits"
       ],
-      "totalLines": 199,
+      "totalLines": 254,
+      "hasStructuralAnalysis": true
+    },
+    "backend/tests/test_bifrost_clients.py": {
+      "filePath": "backend/tests/test_bifrost_clients.py",
+      "contentHash": "712e3a46b81e206c2392b573f90ad898e13e99044fa7ecb956c5dc8314874f83",
+      "functions": [
+        {
+          "name": "test_chat_uses_bifrost_openai_contract_without_client_api_key",
+          "params": [],
+          "exported": true,
+          "lineCount": 40
+        },
+        {
+          "name": "test_chat_stream_forwards_text_deltas",
+          "params": [],
+          "exported": true,
+          "lineCount": 20
+        },
+        {
+          "name": "test_embedding_uses_bifrost_openai_contract_and_preserves_order",
+          "params": [],
+          "exported": true,
+          "lineCount": 21
+        }
+      ],
+      "classes": [
+        {
+          "name": "_CompletionEndpoint",
+          "methods": [
+            "__init__",
+            "create"
+          ],
+          "properties": [],
+          "exported": true,
+          "lineCount": 9
+        },
+        {
+          "name": "_EmbeddingEndpoint",
+          "methods": [
+            "__init__",
+            "create"
+          ],
+          "properties": [],
+          "exported": true,
+          "lineCount": 8
+        },
+        {
+          "name": "_AsyncChunks",
+          "methods": [
+            "__init__",
+            "__aiter__",
+            "__anext__"
+          ],
+          "properties": [],
+          "exported": true,
+          "lineCount": 13
+        },
+        {
+          "name": "_FakeOpenAI",
+          "methods": [
+            "__init__",
+            "close"
+          ],
+          "properties": [],
+          "exported": true,
+          "lineCount": 10
+        }
+      ],
+      "imports": [
+        {
+          "source": "types",
+          "specifiers": [
+            "SimpleNamespace"
+          ]
+        },
+        {
+          "source": "pytest",
+          "specifiers": [
+            "pytest"
+          ]
+        },
+        {
+          "source": "apps.ai.client",
+          "specifiers": [
+            "AIClient",
+            "ChatMessage",
+            "ChatRequest"
+          ]
+        },
+        {
+          "source": "apps.ai.embedding",
+          "specifiers": [
+            "EmbeddingClient"
+          ]
+        }
+      ],
+      "exports": [
+        "_CompletionEndpoint",
+        "_EmbeddingEndpoint",
+        "_AsyncChunks",
+        "_FakeOpenAI",
+        "test_chat_uses_bifrost_openai_contract_without_client_api_key",
+        "test_chat_stream_forwards_text_deltas",
+        "test_embedding_uses_bifrost_openai_contract_and_preserves_order"
+      ],
+      "totalLines": 145,
       "hasStructuralAnalysis": true
     },
     "backend/tests/test_game_memory_pipeline.py": {
@@ -13322,7 +13703,7 @@
     },
     "backend/tests/test_host_runtime.py": {
       "filePath": "backend/tests/test_host_runtime.py",
-      "contentHash": "8f269514e028f2e7572d9ecd06cc4752b14afe7f3ad5ffe2e2abb2fe0527fedb",
+      "contentHash": "991b78cfbdbffaf21e17396805b5848ac1a7438b20190447b282df706b212166",
       "functions": [
         {
           "name": "active_test_live_runtime",
@@ -13375,7 +13756,7 @@
             "monkeypatch"
           ],
           "exported": true,
-          "lineCount": 65
+          "lineCount": 74
         },
         {
           "name": "test_speak_text_bypasses_llm_and_waits_for_playback",
@@ -13383,7 +13764,7 @@
             "monkeypatch"
           ],
           "exported": true,
-          "lineCount": 38
+          "lineCount": 47
         },
         {
           "name": "test_prepared_speech_handler_plays_final_text_without_llm",
@@ -13577,7 +13958,7 @@
         "test_playback_coordinator_elects_one_owner_and_waits_for_real_finish",
         "test_playback_owner_disconnect_fails_active_reply_and_promotes_backup"
       ],
-      "totalLines": 416,
+      "totalLines": 434,
       "hasStructuralAnalysis": true
     },
     "backend/tests/test_live_adapters.py": {
@@ -14607,7 +14988,7 @@
     },
     "backend/tests/test_production_boundary.py": {
       "filePath": "backend/tests/test_production_boundary.py",
-      "contentHash": "ed0095fc13e7abb61d8630a1d326ec50dca86adfb457ef8f2fd61ec61db30b6b",
+      "contentHash": "599d0762e6f3d623b30db4faa02c011089c479bcf183eb902faff00e0c3a9b9a",
       "functions": [
         {
           "name": "_receive",
@@ -14773,6 +15154,163 @@
         "test_event_assistant_builds_without_mcp_capability"
       ],
       "totalLines": 113,
+      "hasStructuralAnalysis": true
+    },
+    "backend/tests/test_speech_gateway_client.py": {
+      "filePath": "backend/tests/test_speech_gateway_client.py",
+      "contentHash": "60c3c9205a84e4134d9b33cb801a3cf5791bcab344b14715ae2a3b8099fdfc05",
+      "functions": [
+        {
+          "name": "test_speech_gateway_client_normalizes_audio_metadata",
+          "params": [],
+          "exported": true,
+          "lineCount": 32
+        },
+        {
+          "name": "test_speech_gateway_client_returns_none_on_explicit_gateway_error",
+          "params": [],
+          "exported": true,
+          "lineCount": 16
+        },
+        {
+          "name": "test_speech_gateway_admin_contract_uses_same_authenticated_connection",
+          "params": [],
+          "exported": true,
+          "lineCount": 35
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "httpx",
+          "specifiers": [
+            "httpx"
+          ]
+        },
+        {
+          "source": "pytest",
+          "specifiers": [
+            "pytest"
+          ]
+        },
+        {
+          "source": "apps.speech.client",
+          "specifiers": [
+            "SpeechGatewayClient"
+          ]
+        }
+      ],
+      "exports": [
+        "test_speech_gateway_client_normalizes_audio_metadata",
+        "test_speech_gateway_client_returns_none_on_explicit_gateway_error",
+        "test_speech_gateway_admin_contract_uses_same_authenticated_connection"
+      ],
+      "totalLines": 97,
+      "hasStructuralAnalysis": true
+    },
+    "backend/tests/test_system_shutdown.py": {
+      "filePath": "backend/tests/test_system_shutdown.py",
+      "contentHash": "71f806f4f86a4aa435784addf6f304339f7daa402ede465b2e9c5e086855ffac",
+      "functions": [
+        {
+          "name": "make_request",
+          "params": [
+            "host",
+            "origin"
+          ],
+          "returnType": "Request",
+          "exported": true,
+          "lineCount": 12
+        },
+        {
+          "name": "test_local_launcher_can_request_graceful_shutdown",
+          "params": [
+            "monkeypatch"
+          ],
+          "exported": true,
+          "lineCount": 8
+        },
+        {
+          "name": "test_shutdown_rejects_remote_or_browser_requests",
+          "params": [
+            "host",
+            "origin"
+          ],
+          "exported": true,
+          "lineCount": 5
+        },
+        {
+          "name": "test_internal_runtime_lifecycle_routes_are_exposed",
+          "params": [],
+          "exported": true,
+          "lineCount": 15
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "types",
+          "specifiers": [
+            "SimpleNamespace"
+          ]
+        },
+        {
+          "source": "pytest",
+          "specifiers": [
+            "pytest"
+          ]
+        },
+        {
+          "source": "fastapi",
+          "specifiers": [
+            "HTTPException"
+          ]
+        },
+        {
+          "source": "starlette.requests",
+          "specifiers": [
+            "Request"
+          ]
+        },
+        {
+          "source": "apps.agent.router",
+          "specifiers": [
+            "agent_router"
+          ]
+        },
+        {
+          "source": "apps.avatar.router",
+          "specifiers": [
+            "avatar_router"
+          ]
+        },
+        {
+          "source": "apps.config_router",
+          "specifiers": [
+            "config_router"
+          ]
+        },
+        {
+          "source": "apps.live.router",
+          "specifiers": [
+            "live_router"
+          ]
+        },
+        {
+          "source": "main",
+          "specifiers": [
+            "app",
+            "shutdown"
+          ]
+        }
+      ],
+      "exports": [
+        "make_request",
+        "test_local_launcher_can_request_graceful_shutdown",
+        "test_shutdown_rejects_remote_or_browser_requests",
+        "test_internal_runtime_lifecycle_routes_are_exposed"
+      ],
+      "totalLines": 67,
       "hasStructuralAnalysis": true
     },
     "backend/tests/test_test_live_platform_api.py": {
@@ -15004,12 +15542,12 @@
     },
     "fronted/package.json": {
       "filePath": "fronted/package.json",
-      "contentHash": "04bdb0cc3decbc5729db7980f6b7b5cbf05e713e4d2ee16e4948fc55020fd8ad",
+      "contentHash": "0d51c562e118417199b77e580c96057b615423bb0870a4a9f37133506316cb8d",
       "functions": [],
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 32,
+      "totalLines": 27,
       "hasStructuralAnalysis": true
     },
     "fronted/postcss.config.js": {
@@ -15030,16 +15568,6 @@
       "imports": [],
       "exports": [],
       "totalLines": 286,
-      "hasStructuralAnalysis": false
-    },
-    "fronted/src/apps/console/ConsoleApp.vue": {
-      "filePath": "fronted/src/apps/console/ConsoleApp.vue",
-      "contentHash": "388d10a2c87bf0181d895bb3c8de43d1c9c233457256d8b77b937b33875c3cf6",
-      "functions": [],
-      "classes": [],
-      "imports": [],
-      "exports": [],
-      "totalLines": 125,
       "hasStructuralAnalysis": false
     },
     "fronted/src/assets/styles/main.css": {
@@ -15142,26 +15670,6 @@
       "totalLines": 220,
       "hasStructuralAnalysis": false
     },
-    "fronted/src/components/memory/GameMemoryControl.vue": {
-      "filePath": "fronted/src/components/memory/GameMemoryControl.vue",
-      "contentHash": "632b0a8611c981985a38b3de5745e8771188aba9a79163ec3bcb6d1293a70afe",
-      "functions": [],
-      "classes": [],
-      "imports": [],
-      "exports": [],
-      "totalLines": 302,
-      "hasStructuralAnalysis": false
-    },
-    "fronted/src/components/memory/MemoryDebugPanel.vue": {
-      "filePath": "fronted/src/components/memory/MemoryDebugPanel.vue",
-      "contentHash": "7a0350cc5c716f9211d67b3ec217202cfedb44cc3db70172784a4b582d0ce702",
-      "functions": [],
-      "classes": [],
-      "imports": [],
-      "exports": [],
-      "totalLines": 694,
-      "hasStructuralAnalysis": false
-    },
     "fronted/src/components/NotificationToast.vue": {
       "filePath": "fronted/src/components/NotificationToast.vue",
       "contentHash": "2cd43978a49d3ec4b354fe472247f431882b76251a16318e70672aeeb7e55f07",
@@ -15200,76 +15708,6 @@
       "imports": [],
       "exports": [],
       "totalLines": 107,
-      "hasStructuralAnalysis": false
-    },
-    "fronted/src/components/settings/agent/AgentRuntimePanel.vue": {
-      "filePath": "fronted/src/components/settings/agent/AgentRuntimePanel.vue",
-      "contentHash": "f8cc7abba5e8cbda387f941146d7d73cc6fa49e7bd1070c6bf07bb56f6aed0fa",
-      "functions": [],
-      "classes": [],
-      "imports": [],
-      "exports": [],
-      "totalLines": 116,
-      "hasStructuralAnalysis": false
-    },
-    "fronted/src/components/settings/agent/AgentSettingsPanel.vue": {
-      "filePath": "fronted/src/components/settings/agent/AgentSettingsPanel.vue",
-      "contentHash": "c9f0e718d90fa6431f50385cfd25b1d04475caf89c9093b5f7a4a69fd0b09ad8",
-      "functions": [],
-      "classes": [],
-      "imports": [],
-      "exports": [],
-      "totalLines": 129,
-      "hasStructuralAnalysis": false
-    },
-    "fronted/src/components/settings/agent/CommonAgentSettings.vue": {
-      "filePath": "fronted/src/components/settings/agent/CommonAgentSettings.vue",
-      "contentHash": "bcd50980fb9fd19159c14e216491ba6125e8ed3594e29a3fa7a3cd4cbaaabff4",
-      "functions": [],
-      "classes": [],
-      "imports": [],
-      "exports": [],
-      "totalLines": 72,
-      "hasStructuralAnalysis": false
-    },
-    "fronted/src/components/settings/agent/GenericScenarioSettings.vue": {
-      "filePath": "fronted/src/components/settings/agent/GenericScenarioSettings.vue",
-      "contentHash": "ebf5d84894437206cf5227a2b65859c855d2a15151039a4f4cdf17a4b4e5ae4a",
-      "functions": [],
-      "classes": [],
-      "imports": [],
-      "exports": [],
-      "totalLines": 56,
-      "hasStructuralAnalysis": false
-    },
-    "fronted/src/components/settings/agent/SlayTheSpireSettings.vue": {
-      "filePath": "fronted/src/components/settings/agent/SlayTheSpireSettings.vue",
-      "contentHash": "b9a3bae848782ed0c84bf8e51d5ee286b612a89c77c4cab3987f89f290a753d3",
-      "functions": [],
-      "classes": [],
-      "imports": [],
-      "exports": [],
-      "totalLines": 39,
-      "hasStructuralAnalysis": false
-    },
-    "fronted/src/components/settings/music/MusicManagementPanel.vue": {
-      "filePath": "fronted/src/components/settings/music/MusicManagementPanel.vue",
-      "contentHash": "9f6e7255103d1d0b92f976845bf0be1f09806a56508fcfbf57b13953c7ff1c7e",
-      "functions": [],
-      "classes": [],
-      "imports": [],
-      "exports": [],
-      "totalLines": 279,
-      "hasStructuralAnalysis": false
-    },
-    "fronted/src/components/SettingsPanel.vue": {
-      "filePath": "fronted/src/components/SettingsPanel.vue",
-      "contentHash": "ef83bd59371cda69c04696633af9f39ac2f964ba152adfb05ff00c6686b6d293",
-      "functions": [],
-      "classes": [],
-      "imports": [],
-      "exports": [],
-      "totalLines": 1540,
       "hasStructuralAnalysis": false
     },
     "fronted/src/composables/useAvatarInput.ts": {
@@ -15421,48 +15859,6 @@
       "totalLines": 225,
       "hasStructuralAnalysis": true
     },
-    "fronted/src/composables/useConsoleTheme.ts": {
-      "filePath": "fronted/src/composables/useConsoleTheme.ts",
-      "contentHash": "5b548d59f19f15b11e8e5eea3a2357fdd527d9abb69e7a34a2ddf658401e4960",
-      "functions": [
-        {
-          "name": "readInitialTheme",
-          "params": [],
-          "returnType": "ConsoleTheme",
-          "exported": false,
-          "lineCount": 4
-        },
-        {
-          "name": "applyTheme",
-          "params": [
-            "value"
-          ],
-          "exported": false,
-          "lineCount": 6
-        },
-        {
-          "name": "useConsoleTheme",
-          "params": [],
-          "exported": true,
-          "lineCount": 15
-        }
-      ],
-      "classes": [],
-      "imports": [
-        {
-          "source": "vue",
-          "specifiers": [
-            "computed",
-            "ref"
-          ]
-        }
-      ],
-      "exports": [
-        "useConsoleTheme"
-      ],
-      "totalLines": 38,
-      "hasStructuralAnalysis": true
-    },
     "fronted/src/composables/useLiveEvents.ts": {
       "filePath": "fronted/src/composables/useLiveEvents.ts",
       "contentHash": "d2ddb16a5de24e49c0f18d989b63b41d0ac3510c041dcdafc24008b912fcedde",
@@ -15587,7 +15983,7 @@
     },
     "fronted/src/main.ts": {
       "filePath": "fronted/src/main.ts",
-      "contentHash": "9c401f4ff5a6d0bdbfed8bc3c19073355b1ad59dbd8d58bf9c9b87988a631923",
+      "contentHash": "b395a8a2912465566e6adf2afad681b89a1c2648e550206df60101f1097d4d76",
       "functions": [],
       "classes": [],
       "imports": [
@@ -15604,7 +16000,7 @@
           ]
         },
         {
-          "source": "@app-root",
+          "source": "./App.vue",
           "specifiers": [
             "Root"
           ]
@@ -15615,7 +16011,7 @@
         }
       ],
       "exports": [],
-      "totalLines": 13,
+      "totalLines": 12,
       "hasStructuralAnalysis": true
     },
     "fronted/src/stores/danmaku.ts": {
@@ -15877,14 +16273,14 @@
     },
     "fronted/src/types/config.ts": {
       "filePath": "fronted/src/types/config.ts",
-      "contentHash": "be5b6b747cc0a8abe9a19c537a703511dcaba0e51e79d5987732438773acffa7",
+      "contentHash": "7b59fc41da994fe32733f49838cf0a54ba491c8242a1d87fa1262c12954e7d8e",
       "functions": [],
       "classes": [],
       "imports": [],
       "exports": [
         "MASKED"
       ],
-      "totalLines": 241,
+      "totalLines": 236,
       "hasStructuralAnalysis": true
     },
     "fronted/src/types/danmaku.ts": {
@@ -15975,7 +16371,7 @@
     },
     "fronted/vite.config.ts": {
       "filePath": "fronted/vite.config.ts",
-      "contentHash": "5988e9f28f173376a8622fda616f776a4f22986d24e1162ba4764b68ec70e819",
+      "contentHash": "ed2810be2c583a70df4523347c381b8bcd76d51d89bd339ce1c43a287e5ee383",
       "functions": [],
       "classes": [],
       "imports": [
@@ -15990,27 +16386,923 @@
           "specifiers": [
             "vue"
           ]
-        },
-        {
-          "source": "path",
-          "specifiers": [
-            "resolve"
-          ]
         }
       ],
       "exports": [],
-      "totalLines": 75,
+      "totalLines": 70,
       "hasStructuralAnalysis": true
     },
-    "nginx-rtmp-win32/conf/backend-locations.conf": {
-      "filePath": "nginx-rtmp-win32/conf/backend-locations.conf",
-      "contentHash": "479d8849649bb959bdfc20419980324acb4327cadb4c28d69441174c53488786",
+    "launcher/launcher/__init__.py": {
+      "filePath": "launcher/launcher/__init__.py",
+      "contentHash": "2e0cf7369ed2e62b36231ac6c95b43dc82beb227d3b2ad8ce5b0e772fb41a04b",
       "functions": [],
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 12,
-      "hasStructuralAnalysis": false
+      "totalLines": 2,
+      "hasStructuralAnalysis": true
+    },
+    "launcher/launcher/control.py": {
+      "filePath": "launcher/launcher/control.py",
+      "contentHash": "8ddd6aefb55e59a3b79a74fb7a6b9e72b20d1d21efcfee8859b46cd26b2ba5ba",
+      "functions": [],
+      "classes": [
+        {
+          "name": "ApiClient",
+          "methods": [
+            "send",
+            "_finish"
+          ],
+          "properties": [],
+          "exported": true,
+          "lineCount": 36
+        },
+        {
+          "name": "JsonView",
+          "methods": [
+            "__init__",
+            "show_data"
+          ],
+          "properties": [],
+          "exported": true,
+          "lineCount": 8
+        },
+        {
+          "name": "ConfigPage",
+          "methods": [
+            "__init__",
+            "load",
+            "_loaded",
+            "_options_loaded",
+            "_build_forms",
+            "_page",
+            "_group",
+            "_section_values",
+            "_build_live_page",
+            "_build_models_page",
+            "_build_host_page",
+            "_build_output_page",
+            "_build_agent_page",
+            "_build_music_page",
+            "_build_memory_page",
+            "_build_admin_page",
+            "_add_values",
+            "_add_field",
+            "_choices_for_path",
+            "_static_choices_for_path",
+            "_numeric_range",
+            "_select_section",
+            "save",
+            "_widget_value",
+            "_saved"
+          ],
+          "properties": [],
+          "exported": true,
+          "lineCount": 486
+        },
+        {
+          "name": "OperationsPage",
+          "methods": [
+            "__init__",
+            "refresh",
+            "command",
+            "send_event",
+            "_show"
+          ],
+          "properties": [],
+          "exported": true,
+          "lineCount": 93
+        },
+        {
+          "name": "SpeechPage",
+          "methods": [
+            "__init__",
+            "load",
+            "_loaded",
+            "_schemas_loaded",
+            "_select",
+            "_provider_type_changed",
+            "_clear_provider_fields",
+            "_build_provider_fields",
+            "save",
+            "_select_route",
+            "save_route",
+            "probe",
+            "_result"
+          ],
+          "properties": [],
+          "exported": true,
+          "lineCount": 216
+        },
+        {
+          "name": "MusicPage",
+          "methods": [
+            "__init__",
+            "refresh",
+            "request_song",
+            "toggle_pause",
+            "skip",
+            "clear",
+            "set_volume",
+            "set_ducking",
+            "_show"
+          ],
+          "properties": [],
+          "exported": true,
+          "lineCount": 89
+        },
+        {
+          "name": "InspectorPage",
+          "methods": [
+            "__init__",
+            "_agent_actions",
+            "_memory_actions",
+            "refresh",
+            "call",
+            "_show"
+          ],
+          "properties": [],
+          "exported": true,
+          "lineCount": 72
+        },
+        {
+          "name": "OperationsConsole",
+          "methods": [
+            "__init__",
+            "set_language"
+          ],
+          "properties": [],
+          "exported": true,
+          "lineCount": 20
+        }
+      ],
+      "imports": [
+        {
+          "source": "copy",
+          "specifiers": [
+            "copy"
+          ]
+        },
+        {
+          "source": "json",
+          "specifiers": [
+            "json"
+          ]
+        },
+        {
+          "source": "collections.abc",
+          "specifiers": [
+            "Callable"
+          ]
+        },
+        {
+          "source": "typing",
+          "specifiers": [
+            "Any"
+          ]
+        },
+        {
+          "source": "urllib.parse",
+          "specifiers": [
+            "quote"
+          ]
+        },
+        {
+          "source": "PySide6.QtCore",
+          "specifiers": [
+            "QByteArray",
+            "Qt",
+            "QUrl"
+          ]
+        },
+        {
+          "source": "PySide6.QtNetwork",
+          "specifiers": [
+            "QNetworkAccessManager",
+            "QNetworkReply",
+            "QNetworkRequest"
+          ]
+        },
+        {
+          "source": "PySide6.QtWidgets",
+          "specifiers": [
+            "QAbstractItemView",
+            "QCheckBox",
+            "QComboBox",
+            "QDoubleSpinBox",
+            "QFormLayout",
+            "QGridLayout",
+            "QGroupBox",
+            "QHBoxLayout",
+            "QLabel",
+            "QLineEdit",
+            "QListWidget",
+            "QMessageBox",
+            "QPlainTextEdit",
+            "QPushButton",
+            "QScrollArea",
+            "QSpinBox",
+            "QStackedWidget",
+            "QTabWidget",
+            "QVBoxLayout",
+            "QWidget"
+          ]
+        },
+        {
+          "source": "launcher.i18n",
+          "specifiers": [
+            "localize_widget_tree",
+            "translate"
+          ]
+        }
+      ],
+      "exports": [
+        "ApiClient",
+        "JsonView",
+        "ConfigPage",
+        "OperationsPage",
+        "SpeechPage",
+        "MusicPage",
+        "InspectorPage",
+        "OperationsConsole"
+      ],
+      "totalLines": 1207,
+      "hasStructuralAnalysis": true
+    },
+    "launcher/launcher/health.py": {
+      "filePath": "launcher/launcher/health.py",
+      "contentHash": "28a6628d2e2a8c3600ede1d5b3d580453454dd64b36b04cf49e2e62628253e51",
+      "functions": [
+        {
+          "name": "evaluate_health",
+          "params": [
+            "kind",
+            "status_code",
+            "body"
+          ],
+          "returnType": "HealthResult",
+          "exported": true,
+          "lineCount": 50
+        }
+      ],
+      "classes": [
+        {
+          "name": "HealthResult",
+          "methods": [],
+          "properties": [
+            "state",
+            "label",
+            "detail"
+          ],
+          "exported": true,
+          "lineCount": 4
+        }
+      ],
+      "imports": [
+        {
+          "source": "json",
+          "specifiers": [
+            "json"
+          ]
+        },
+        {
+          "source": "dataclasses",
+          "specifiers": [
+            "dataclass"
+          ]
+        }
+      ],
+      "exports": [
+        "HealthResult",
+        "evaluate_health"
+      ],
+      "totalLines": 66,
+      "hasStructuralAnalysis": true
+    },
+    "launcher/launcher/i18n.py": {
+      "filePath": "launcher/launcher/i18n.py",
+      "contentHash": "50252db22058214fec9ff677a64b1af6a4bd55202e19a47990ff650864cc9e5b",
+      "functions": [
+        {
+          "name": "translate",
+          "params": [
+            "text",
+            "language"
+          ],
+          "returnType": "str",
+          "exported": true,
+          "lineCount": 6
+        },
+        {
+          "name": "localize_widget_tree",
+          "params": [
+            "root",
+            "language"
+          ],
+          "returnType": "None",
+          "exported": true,
+          "lineCount": 20
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "PySide6.QtWidgets",
+          "specifiers": [
+            "QCheckBox",
+            "QComboBox",
+            "QGroupBox",
+            "QLabel",
+            "QLineEdit",
+            "QListWidget",
+            "QPlainTextEdit",
+            "QPushButton",
+            "QTabWidget",
+            "QWidget"
+          ]
+        }
+      ],
+      "exports": [
+        "translate",
+        "localize_widget_tree"
+      ],
+      "totalLines": 296,
+      "hasStructuralAnalysis": true
+    },
+    "launcher/launcher/main.py": {
+      "filePath": "launcher/launcher/main.py",
+      "contentHash": "f09436266dd42bc2c0eeca247f5870a1a916905cdd3edffadaf5d8a010f59094",
+      "functions": [
+        {
+          "name": "project_root",
+          "params": [],
+          "returnType": "Path",
+          "exported": true,
+          "lineCount": 2
+        },
+        {
+          "name": "configure_ui_font",
+          "params": [
+            "app"
+          ],
+          "returnType": "None",
+          "exported": true,
+          "lineCount": 9
+        },
+        {
+          "name": "main",
+          "params": [],
+          "returnType": "int",
+          "exported": true,
+          "lineCount": 28
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "argparse",
+          "specifiers": [
+            "argparse"
+          ]
+        },
+        {
+          "source": "os",
+          "specifiers": [
+            "os"
+          ]
+        },
+        {
+          "source": "sys",
+          "specifiers": [
+            "sys"
+          ]
+        },
+        {
+          "source": "pathlib",
+          "specifiers": [
+            "Path"
+          ]
+        },
+        {
+          "source": "PySide6.QtCore",
+          "specifiers": [
+            "QLockFile",
+            "QSettings",
+            "QStandardPaths"
+          ]
+        },
+        {
+          "source": "PySide6.QtGui",
+          "specifiers": [
+            "QFont",
+            "QFontDatabase"
+          ]
+        },
+        {
+          "source": "PySide6.QtWidgets",
+          "specifiers": [
+            "QApplication",
+            "QMessageBox"
+          ]
+        },
+        {
+          "source": "launcher.window",
+          "specifiers": [
+            "LauncherWindow"
+          ]
+        }
+      ],
+      "exports": [
+        "project_root",
+        "configure_ui_font",
+        "main"
+      ],
+      "totalLines": 64,
+      "hasStructuralAnalysis": true
+    },
+    "launcher/launcher/models.py": {
+      "filePath": "launcher/launcher/models.py",
+      "contentHash": "f9bb60ea4705e83392f44ef7b059162f42f6dcd4512bfcfc89608bd3fa805aeb",
+      "functions": [
+        {
+          "name": "executable",
+          "params": [
+            "name"
+          ],
+          "returnType": "str",
+          "exported": true,
+          "lineCount": 2
+        },
+        {
+          "name": "build_specs",
+          "params": [
+            "root",
+            "command_overrides"
+          ],
+          "returnType": "list[ModuleSpec]",
+          "exported": true,
+          "lineCount": 102
+        }
+      ],
+      "classes": [
+        {
+          "name": "ModuleSpec",
+          "methods": [
+            "controllable"
+          ],
+          "properties": [
+            "id",
+            "name",
+            "description",
+            "health_url",
+            "managed",
+            "program",
+            "arguments",
+            "working_directory",
+            "open_url",
+            "health_kind",
+            "autostart",
+            "start_url",
+            "stop_url",
+            "command_env"
+          ],
+          "exported": true,
+          "lineCount": 19
+        }
+      ],
+      "imports": [
+        {
+          "source": "os",
+          "specifiers": [
+            "os"
+          ]
+        },
+        {
+          "source": "shutil",
+          "specifiers": [
+            "shutil"
+          ]
+        },
+        {
+          "source": "dataclasses",
+          "specifiers": [
+            "dataclass"
+          ]
+        },
+        {
+          "source": "pathlib",
+          "specifiers": [
+            "Path"
+          ]
+        }
+      ],
+      "exports": [
+        "ModuleSpec",
+        "executable",
+        "build_specs"
+      ],
+      "totalLines": 139,
+      "hasStructuralAnalysis": true
+    },
+    "launcher/launcher/processes.py": {
+      "filePath": "launcher/launcher/processes.py",
+      "contentHash": "cbc0542022334b2b05de0421e7ff4485e93dc651eaf640cc82b1b527ccf3f9f4",
+      "functions": [
+        {
+          "name": "clean_output",
+          "params": [
+            "value"
+          ],
+          "returnType": "str",
+          "exported": true,
+          "lineCount": 2
+        }
+      ],
+      "classes": [
+        {
+          "name": "ProcessController",
+          "methods": [
+            "__init__",
+            "is_running",
+            "configure_command",
+            "start",
+            "restart",
+            "stop",
+            "stop_all_sync",
+            "_read",
+            "_started",
+            "_error",
+            "_finished",
+            "_request_backend_shutdown",
+            "_stop_nginx",
+            "_kill_tree"
+          ],
+          "properties": [],
+          "exported": true,
+          "lineCount": 193
+        }
+      ],
+      "imports": [
+        {
+          "source": "os",
+          "specifiers": [
+            "os"
+          ]
+        },
+        {
+          "source": "re",
+          "specifiers": [
+            "re"
+          ]
+        },
+        {
+          "source": "subprocess",
+          "specifiers": [
+            "subprocess"
+          ]
+        },
+        {
+          "source": "urllib.error",
+          "specifiers": [
+            "urllib.error"
+          ]
+        },
+        {
+          "source": "urllib.request",
+          "specifiers": [
+            "urllib.request"
+          ]
+        },
+        {
+          "source": "dataclasses",
+          "specifiers": [
+            "replace"
+          ]
+        },
+        {
+          "source": "pathlib",
+          "specifiers": [
+            "Path"
+          ]
+        },
+        {
+          "source": "PySide6.QtCore",
+          "specifiers": [
+            "QObject",
+            "QProcess",
+            "QProcessEnvironment",
+            "QTimer",
+            "Signal"
+          ]
+        },
+        {
+          "source": "launcher.models",
+          "specifiers": [
+            "ModuleSpec"
+          ]
+        }
+      ],
+      "exports": [
+        "clean_output",
+        "ProcessController"
+      ],
+      "totalLines": 217,
+      "hasStructuralAnalysis": true
+    },
+    "launcher/launcher/window.py": {
+      "filePath": "launcher/launcher/window.py",
+      "contentHash": "9cfbe1522cbf49d8b19e5ad843ccb5cccdc9f855f7ab1dfcea1d724e97f87ccc",
+      "functions": [],
+      "classes": [
+        {
+          "name": "ModuleCard",
+          "methods": [
+            "__init__",
+            "_button",
+            "set_state"
+          ],
+          "properties": [],
+          "exported": true,
+          "lineCount": 74
+        },
+        {
+          "name": "LauncherWindow",
+          "methods": [
+            "__init__",
+            "_build_ui",
+            "_connect_signals",
+            "_start_module",
+            "_stop_module",
+            "_restart_module",
+            "_api_control",
+            "start_all",
+            "stop_all",
+            "_ensure_frontend_then_start_backend",
+            "_run_frontend_setup",
+            "_read_setup_output",
+            "_setup_finished",
+            "check_health",
+            "_health_finished",
+            "on_process_state",
+            "_apply_module_state",
+            "_update_summary",
+            "append_log",
+            "_log_matches",
+            "render_logs",
+            "_clear_log_view",
+            "_open_log_file",
+            "_restore_window",
+            "toggle_theme",
+            "toggle_language",
+            "_update_language_button",
+            "_update_theme_button",
+            "closeEvent",
+            "_stylesheet"
+          ],
+          "properties": [],
+          "exported": true,
+          "lineCount": 592
+        }
+      ],
+      "imports": [
+        {
+          "source": "os",
+          "specifiers": [
+            "os"
+          ]
+        },
+        {
+          "source": "collections",
+          "specifiers": [
+            "deque"
+          ]
+        },
+        {
+          "source": "datetime",
+          "specifiers": [
+            "datetime"
+          ]
+        },
+        {
+          "source": "pathlib",
+          "specifiers": [
+            "Path"
+          ]
+        },
+        {
+          "source": "PySide6.QtCore",
+          "specifiers": [
+            "QByteArray",
+            "QProcess",
+            "QSettings",
+            "Qt",
+            "QTimer",
+            "QUrl",
+            "Signal"
+          ]
+        },
+        {
+          "source": "PySide6.QtGui",
+          "specifiers": [
+            "QCloseEvent",
+            "QDesktopServices",
+            "QFont",
+            "QTextCursor"
+          ]
+        },
+        {
+          "source": "PySide6.QtNetwork",
+          "specifiers": [
+            "QNetworkAccessManager",
+            "QNetworkReply",
+            "QNetworkRequest"
+          ]
+        },
+        {
+          "source": "PySide6.QtWidgets",
+          "specifiers": [
+            "QCheckBox",
+            "QComboBox",
+            "QFrame",
+            "QGridLayout",
+            "QHBoxLayout",
+            "QInputDialog",
+            "QLabel",
+            "QLineEdit",
+            "QMainWindow",
+            "QMessageBox",
+            "QPlainTextEdit",
+            "QPushButton",
+            "QScrollArea",
+            "QSplitter",
+            "QTabWidget",
+            "QVBoxLayout",
+            "QWidget"
+          ]
+        },
+        {
+          "source": "launcher.control",
+          "specifiers": [
+            "OperationsConsole"
+          ]
+        },
+        {
+          "source": "launcher.health",
+          "specifiers": [
+            "HealthResult",
+            "evaluate_health"
+          ]
+        },
+        {
+          "source": "launcher.i18n",
+          "specifiers": [
+            "localize_widget_tree",
+            "translate"
+          ]
+        },
+        {
+          "source": "launcher.models",
+          "specifiers": [
+            "ModuleSpec",
+            "build_specs",
+            "executable"
+          ]
+        },
+        {
+          "source": "launcher.processes",
+          "specifiers": [
+            "ProcessController",
+            "clean_output"
+          ]
+        }
+      ],
+      "exports": [
+        "ModuleCard",
+        "LauncherWindow"
+      ],
+      "totalLines": 721,
+      "hasStructuralAnalysis": true
+    },
+    "launcher/pyproject.toml": {
+      "filePath": "launcher/pyproject.toml",
+      "contentHash": "716c038294a34805c041a988b22e171739f5b6f71489f484610acf5bc52ec005",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 33,
+      "hasStructuralAnalysis": true
+    },
+    "launcher/tests/test_launcher.py": {
+      "filePath": "launcher/tests/test_launcher.py",
+      "contentHash": "96102c0101fcc938792b885505952f449b46adb5b54bef8f8f434a03c2f8390f",
+      "functions": [
+        {
+          "name": "test_backend_health_reports_degraded_component_state",
+          "params": [],
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "test_runtime_health_distinguishes_idle_from_failure",
+          "params": [],
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "test_bifrost_authentication_response_still_proves_process_is_online",
+          "params": [],
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "test_log_cleaner_removes_terminal_control_sequences",
+          "params": [],
+          "exported": true,
+          "lineCount": 2
+        },
+        {
+          "name": "test_native_console_replaces_the_old_nginx_console_module",
+          "params": [],
+          "exported": true,
+          "lineCount": 16
+        },
+        {
+          "name": "test_desktop_i18n_switches_business_labels_both_ways",
+          "params": [],
+          "exported": true,
+          "lineCount": 6
+        },
+        {
+          "name": "test_avatar_motion_source_defaults_to_broadcast_idle_order",
+          "params": [],
+          "exported": true,
+          "lineCount": 9
+        },
+        {
+          "name": "test_all_bounded_avatar_and_speech_values_have_ui_constraints",
+          "params": [],
+          "exported": true,
+          "lineCount": 11
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "json",
+          "specifiers": [
+            "json"
+          ]
+        },
+        {
+          "source": "pathlib",
+          "specifiers": [
+            "Path"
+          ]
+        },
+        {
+          "source": "launcher.control",
+          "specifiers": [
+            "ConfigPage"
+          ]
+        },
+        {
+          "source": "launcher.health",
+          "specifiers": [
+            "evaluate_health"
+          ]
+        },
+        {
+          "source": "launcher.i18n",
+          "specifiers": [
+            "translate"
+          ]
+        },
+        {
+          "source": "launcher.models",
+          "specifiers": [
+            "build_specs"
+          ]
+        },
+        {
+          "source": "launcher.processes",
+          "specifiers": [
+            "clean_output"
+          ]
+        }
+      ],
+      "exports": [
+        "test_backend_health_reports_degraded_component_state",
+        "test_runtime_health_distinguishes_idle_from_failure",
+        "test_bifrost_authentication_response_still_proves_process_is_online",
+        "test_log_cleaner_removes_terminal_control_sequences",
+        "test_native_console_replaces_the_old_nginx_console_module",
+        "test_desktop_i18n_switches_business_labels_both_ways",
+        "test_avatar_motion_source_defaults_to_broadcast_idle_order",
+        "test_all_bounded_avatar_and_speech_values_have_ui_constraints"
+      ],
+      "totalLines": 78,
+      "hasStructuralAnalysis": true
     },
     "nginx-rtmp-win32/conf/live-locations.conf": {
       "filePath": "nginx-rtmp-win32/conf/live-locations.conf",
@@ -16034,12 +17326,12 @@
     },
     "nginx-rtmp-win32/conf/nginx.conf": {
       "filePath": "nginx-rtmp-win32/conf/nginx.conf",
-      "contentHash": "05ec4e002d09111fba56a6121cc2229759d7b894446c7ada24f6f75f4747613d",
+      "contentHash": "1edbeff91efb31886df3eb3b23c6c096a55cbfcc01c2d4c0c493e0adb522458a",
       "functions": [],
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 70,
+      "totalLines": 58,
       "hasStructuralAnalysis": false
     },
     "nginx-rtmp-win32/html/50x.html": {
@@ -16211,12 +17503,1615 @@
     },
     "README.md": {
       "filePath": "README.md",
-      "contentHash": "49605e3104bd796849f2f69d189e3870d9ade6d647ca93db9cea70da48717e60",
+      "contentHash": "26c51ec0a63c6f597f07006120dc0e3b7f9ac1f9b3dd5188011001ce4922804a",
       "functions": [],
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 230,
+      "totalLines": 249,
+      "hasStructuralAnalysis": true
+    },
+    "speech_gateway/.env.example": {
+      "filePath": "speech_gateway/.env.example",
+      "contentHash": "05599e3bc9fa4689d4a5338c01e7ff808ca742d330245ea0f257f149bec5918f",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 14,
+      "hasStructuralAnalysis": true
+    },
+    "speech_gateway/config.example.yaml": {
+      "filePath": "speech_gateway/config.example.yaml",
+      "contentHash": "4d74b39a80a5c306a53aa50201ad9b893d44b9513034bbe5f9f2d62e024c6405",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 49,
+      "hasStructuralAnalysis": true
+    },
+    "speech_gateway/pyproject.toml": {
+      "filePath": "speech_gateway/pyproject.toml",
+      "contentHash": "e8bd02071604ed57ecaf20e299477e8b8ceffcb9850570faf60abf3dfe5e1956",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 42,
+      "hasStructuralAnalysis": true
+    },
+    "speech_gateway/speech_gateway/__init__.py": {
+      "filePath": "speech_gateway/speech_gateway/__init__.py",
+      "contentHash": "52b804eed2a689ef8e9ddf3161943ae96fa7b6edd7521d8e2b6d6a2fb6b24818",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 2,
+      "hasStructuralAnalysis": true
+    },
+    "speech_gateway/speech_gateway/admin.py": {
+      "filePath": "speech_gateway/speech_gateway/admin.py",
+      "contentHash": "a47fe42fed0ca97250c76eee10dcf6cc24715c3a8139c28b19cb8013447c0748",
+      "functions": [
+        {
+          "name": "config_path",
+          "params": [],
+          "returnType": "Path",
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "provider_schemas",
+          "params": [],
+          "returnType": "list[dict]",
+          "exported": true,
+          "lineCount": 2
+        },
+        {
+          "name": "_field_value",
+          "params": [
+            "provider",
+            "key"
+          ],
+          "exported": true,
+          "lineCount": 12
+        },
+        {
+          "name": "public_config",
+          "params": [],
+          "returnType": "dict[str, Any]",
+          "exported": true,
+          "lineCount": 34
+        },
+        {
+          "name": "update_provider",
+          "params": [
+            "name",
+            "provider_type",
+            "enabled",
+            "values"
+          ],
+          "returnType": "None",
+          "exported": true,
+          "lineCount": 27
+        },
+        {
+          "name": "update_route",
+          "params": [
+            "name",
+            "primary",
+            "fallback"
+          ],
+          "returnType": "None",
+          "exported": true,
+          "lineCount": 16
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "os",
+          "specifiers": [
+            "os"
+          ]
+        },
+        {
+          "source": "re",
+          "specifiers": [
+            "re"
+          ]
+        },
+        {
+          "source": "pathlib",
+          "specifiers": [
+            "Path"
+          ]
+        },
+        {
+          "source": "typing",
+          "specifiers": [
+            "Any"
+          ]
+        },
+        {
+          "source": "yaml",
+          "specifiers": [
+            "yaml"
+          ]
+        },
+        {
+          "source": "speech_gateway.config",
+          "specifiers": [
+            "_default_data",
+            "_load_data",
+            "load_config"
+          ]
+        },
+        {
+          "source": "speech_gateway.schemas",
+          "specifiers": [
+            "PROVIDER_SCHEMAS",
+            "schema_for"
+          ]
+        },
+        {
+          "source": "speech_gateway.secrets",
+          "specifiers": [
+            "secret_store"
+          ]
+        }
+      ],
+      "exports": [
+        "config_path",
+        "provider_schemas",
+        "_field_value",
+        "public_config",
+        "update_provider",
+        "update_route"
+      ],
+      "totalLines": 124,
+      "hasStructuralAnalysis": true
+    },
+    "speech_gateway/speech_gateway/audio.py": {
+      "filePath": "speech_gateway/speech_gateway/audio.py",
+      "contentHash": "bbd2fcc8479a0c35f713600a55e068476cfdc35d8c0b2a2f0dd265108f972747",
+      "functions": [
+        {
+          "name": "duration_ms",
+          "params": [
+            "audio"
+          ],
+          "returnType": "int | None",
+          "exported": true,
+          "lineCount": 9
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "io",
+          "specifiers": [
+            "BytesIO"
+          ]
+        },
+        {
+          "source": "mutagen",
+          "specifiers": [
+            "MutagenFile"
+          ]
+        }
+      ],
+      "exports": [
+        "duration_ms"
+      ],
+      "totalLines": 19,
+      "hasStructuralAnalysis": true
+    },
+    "speech_gateway/speech_gateway/config.py": {
+      "filePath": "speech_gateway/speech_gateway/config.py",
+      "contentHash": "82c1fc3977751290c36d7553ed356711d832fda452587c54db1e9fe37fa09284",
+      "functions": [
+        {
+          "name": "_default_data",
+          "params": [],
+          "returnType": "dict[str, Any]",
+          "exported": true,
+          "lineCount": 41
+        },
+        {
+          "name": "_load_data",
+          "params": [
+            "path"
+          ],
+          "returnType": "dict[str, Any]",
+          "exported": true,
+          "lineCount": 8
+        },
+        {
+          "name": "load_config",
+          "params": [
+            "path"
+          ],
+          "returnType": "GatewayConfig",
+          "exported": true,
+          "lineCount": 62
+        }
+      ],
+      "classes": [
+        {
+          "name": "ProviderConfig",
+          "methods": [
+            "api_key"
+          ],
+          "properties": [
+            "name",
+            "type",
+            "enabled",
+            "base_url",
+            "api_key_env",
+            "default_voice",
+            "timeout_seconds",
+            "formats",
+            "health_path",
+            "options",
+            "secrets"
+          ],
+          "exported": true,
+          "lineCount": 17
+        },
+        {
+          "name": "RouteConfig",
+          "methods": [],
+          "properties": [
+            "name",
+            "primary",
+            "fallback"
+          ],
+          "exported": true,
+          "lineCount": 4
+        },
+        {
+          "name": "GatewayConfig",
+          "methods": [],
+          "properties": [
+            "api_key",
+            "default_provider",
+            "providers",
+            "routes",
+            "circuit_failure_threshold",
+            "circuit_recovery_seconds",
+            "metrics_sample_size"
+          ],
+          "exported": true,
+          "lineCount": 8
+        }
+      ],
+      "imports": [
+        {
+          "source": "os",
+          "specifiers": [
+            "os"
+          ]
+        },
+        {
+          "source": "dataclasses",
+          "specifiers": [
+            "dataclass",
+            "field"
+          ]
+        },
+        {
+          "source": "pathlib",
+          "specifiers": [
+            "Path"
+          ]
+        },
+        {
+          "source": "typing",
+          "specifiers": [
+            "Any"
+          ]
+        },
+        {
+          "source": "yaml",
+          "specifiers": [
+            "yaml"
+          ]
+        },
+        {
+          "source": "speech_gateway.schemas",
+          "specifiers": [
+            "PROVIDER_SCHEMAS"
+          ]
+        },
+        {
+          "source": "speech_gateway.secrets",
+          "specifiers": [
+            "secret_store"
+          ]
+        }
+      ],
+      "exports": [
+        "ProviderConfig",
+        "RouteConfig",
+        "GatewayConfig",
+        "_default_data",
+        "_load_data",
+        "load_config"
+      ],
+      "totalLines": 172,
+      "hasStructuralAnalysis": true
+    },
+    "speech_gateway/speech_gateway/errors.py": {
+      "filePath": "speech_gateway/speech_gateway/errors.py",
+      "contentHash": "34d959fde96762cd2df89f79cef8db07c6e8a6926fd58968670f71f05fff379d",
+      "functions": [],
+      "classes": [
+        {
+          "name": "SpeechGatewayError",
+          "methods": [],
+          "properties": [],
+          "exported": true,
+          "lineCount": 4
+        },
+        {
+          "name": "InvalidSpeechRequestError",
+          "methods": [],
+          "properties": [],
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "ProviderNotFoundError",
+          "methods": [],
+          "properties": [],
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "ProviderUnavailableError",
+          "methods": [],
+          "properties": [],
+          "exported": true,
+          "lineCount": 4
+        },
+        {
+          "name": "CircuitOpenError",
+          "methods": [],
+          "properties": [],
+          "exported": true,
+          "lineCount": 2
+        },
+        {
+          "name": "UnsupportedCapabilityError",
+          "methods": [],
+          "properties": [],
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "UpstreamAuthenticationError",
+          "methods": [],
+          "properties": [],
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "UpstreamRateLimitError",
+          "methods": [],
+          "properties": [],
+          "exported": true,
+          "lineCount": 4
+        },
+        {
+          "name": "SynthesisError",
+          "methods": [],
+          "properties": [],
+          "exported": true,
+          "lineCount": 4
+        }
+      ],
+      "imports": [],
+      "exports": [
+        "SpeechGatewayError",
+        "InvalidSpeechRequestError",
+        "ProviderNotFoundError",
+        "ProviderUnavailableError",
+        "CircuitOpenError",
+        "UnsupportedCapabilityError",
+        "UpstreamAuthenticationError",
+        "UpstreamRateLimitError",
+        "SynthesisError"
+      ],
+      "totalLines": 50,
+      "hasStructuralAnalysis": true
+    },
+    "speech_gateway/speech_gateway/main.py": {
+      "filePath": "speech_gateway/speech_gateway/main.py",
+      "contentHash": "9a1065eec30b48c409417256a0263737fbf7f9655a53f3d5e91b2e0e670b5825",
+      "functions": [
+        {
+          "name": "authenticate",
+          "params": [
+            "authorization"
+          ],
+          "returnType": "None",
+          "exported": true,
+          "lineCount": 6
+        },
+        {
+          "name": "lifespan",
+          "params": [
+            "_"
+          ],
+          "exported": true,
+          "lineCount": 5
+        },
+        {
+          "name": "acquire_registry",
+          "params": [],
+          "returnType": "SpeechProviderRegistry",
+          "exported": true,
+          "lineCount": 6
+        },
+        {
+          "name": "release_registry",
+          "params": [
+            "current"
+          ],
+          "returnType": "None",
+          "exported": true,
+          "lineCount": 12
+        },
+        {
+          "name": "swap_registry",
+          "params": [
+            "new_registry"
+          ],
+          "returnType": "None",
+          "exported": true,
+          "lineCount": 13
+        },
+        {
+          "name": "speech_error_handler",
+          "params": [
+            "_",
+            "exc"
+          ],
+          "exported": true,
+          "lineCount": 14
+        },
+        {
+          "name": "health",
+          "params": [],
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "status",
+          "params": [],
+          "exported": true,
+          "lineCount": 2
+        },
+        {
+          "name": "get_provider_schemas",
+          "params": [],
+          "exported": true,
+          "lineCount": 2
+        },
+        {
+          "name": "get_admin_config",
+          "params": [],
+          "exported": true,
+          "lineCount": 2
+        },
+        {
+          "name": "put_provider",
+          "params": [
+            "provider",
+            "request"
+          ],
+          "exported": true,
+          "lineCount": 8
+        },
+        {
+          "name": "put_route",
+          "params": [
+            "route",
+            "request"
+          ],
+          "exported": true,
+          "lineCount": 8
+        },
+        {
+          "name": "probe_provider",
+          "params": [
+            "provider"
+          ],
+          "exported": true,
+          "lineCount": 2
+        },
+        {
+          "name": "metrics",
+          "params": [],
+          "exported": true,
+          "lineCount": 5
+        },
+        {
+          "name": "capabilities",
+          "params": [],
+          "exported": true,
+          "lineCount": 4
+        },
+        {
+          "name": "models",
+          "params": [],
+          "exported": true,
+          "lineCount": 25
+        },
+        {
+          "name": "voices",
+          "params": [
+            "provider"
+          ],
+          "exported": true,
+          "lineCount": 8
+        },
+        {
+          "name": "create_speech",
+          "params": [
+            "request"
+          ],
+          "exported": true,
+          "lineCount": 29
+        }
+      ],
+      "classes": [
+        {
+          "name": "ProviderUpdateRequest",
+          "methods": [],
+          "properties": [
+            "type",
+            "enabled",
+            "values"
+          ],
+          "exported": true,
+          "lineCount": 4
+        },
+        {
+          "name": "RouteUpdateRequest",
+          "methods": [],
+          "properties": [
+            "primary",
+            "fallback"
+          ],
+          "exported": true,
+          "lineCount": 3
+        }
+      ],
+      "imports": [
+        {
+          "source": "asyncio",
+          "specifiers": [
+            "asyncio"
+          ]
+        },
+        {
+          "source": "json",
+          "specifiers": [
+            "json"
+          ]
+        },
+        {
+          "source": "secrets",
+          "specifiers": [
+            "secrets"
+          ]
+        },
+        {
+          "source": "contextlib",
+          "specifiers": [
+            "asynccontextmanager"
+          ]
+        },
+        {
+          "source": "fastapi",
+          "specifiers": [
+            "Depends",
+            "FastAPI",
+            "Header",
+            "HTTPException",
+            "Query"
+          ]
+        },
+        {
+          "source": "fastapi.responses",
+          "specifiers": [
+            "PlainTextResponse",
+            "Response"
+          ]
+        },
+        {
+          "source": "pydantic",
+          "specifiers": [
+            "BaseModel",
+            "Field"
+          ]
+        },
+        {
+          "source": "speech_gateway.admin",
+          "specifiers": [
+            "provider_schemas",
+            "public_config",
+            "update_provider",
+            "update_route"
+          ]
+        },
+        {
+          "source": "speech_gateway.config",
+          "specifiers": [
+            "config",
+            "load_config"
+          ]
+        },
+        {
+          "source": "speech_gateway.errors",
+          "specifiers": [
+            "SpeechGatewayError"
+          ]
+        },
+        {
+          "source": "speech_gateway.models",
+          "specifiers": [
+            "SpeechRequest"
+          ]
+        },
+        {
+          "source": "speech_gateway.registry",
+          "specifiers": [
+            "SpeechProviderRegistry"
+          ]
+        }
+      ],
+      "exports": [
+        "ProviderUpdateRequest",
+        "RouteUpdateRequest",
+        "authenticate",
+        "lifespan",
+        "acquire_registry",
+        "release_registry",
+        "swap_registry",
+        "speech_error_handler",
+        "health",
+        "status",
+        "get_provider_schemas",
+        "get_admin_config",
+        "put_provider",
+        "put_route",
+        "probe_provider",
+        "metrics",
+        "capabilities",
+        "models",
+        "voices",
+        "create_speech"
+      ],
+      "totalLines": 248,
+      "hasStructuralAnalysis": true
+    },
+    "speech_gateway/speech_gateway/metrics.py": {
+      "filePath": "speech_gateway/speech_gateway/metrics.py",
+      "contentHash": "b62a0ec943dbefd962942c06c1e641b1d3aa3daebe72975bea056a4af4db8485",
+      "functions": [
+        {
+          "name": "_percentile",
+          "params": [
+            "values",
+            "percentile"
+          ],
+          "returnType": "float | None",
+          "exported": true,
+          "lineCount": 6
+        }
+      ],
+      "classes": [
+        {
+          "name": "ProviderMetrics",
+          "methods": [
+            "__post_init__",
+            "snapshot"
+          ],
+          "properties": [
+            "sample_size",
+            "requests",
+            "successes",
+            "failures",
+            "fallbacks",
+            "errors",
+            "latency_ms",
+            "rtf"
+          ],
+          "exported": true,
+          "lineCount": 33
+        },
+        {
+          "name": "MetricsStore",
+          "methods": [
+            "__init__",
+            "provider",
+            "snapshot",
+            "prometheus"
+          ],
+          "properties": [],
+          "exported": true,
+          "lineCount": 26
+        }
+      ],
+      "imports": [
+        {
+          "source": "collections",
+          "specifiers": [
+            "defaultdict",
+            "deque"
+          ]
+        },
+        {
+          "source": "dataclasses",
+          "specifiers": [
+            "dataclass",
+            "field"
+          ]
+        }
+      ],
+      "exports": [
+        "_percentile",
+        "ProviderMetrics",
+        "MetricsStore"
+      ],
+      "totalLines": 79,
+      "hasStructuralAnalysis": true
+    },
+    "speech_gateway/speech_gateway/models.py": {
+      "filePath": "speech_gateway/speech_gateway/models.py",
+      "contentHash": "25b8d1166f051edb095f09b59b021a8d1bf08f49bbc9b45c0a0b47a04a877fd9",
+      "functions": [],
+      "classes": [
+        {
+          "name": "SpeechRequest",
+          "methods": [],
+          "properties": [
+            "model",
+            "input",
+            "voice",
+            "response_format",
+            "speed",
+            "extensions"
+          ],
+          "exported": true,
+          "lineCount": 7
+        },
+        {
+          "name": "SpeechArtifact",
+          "methods": [],
+          "properties": [
+            "audio",
+            "media_type",
+            "provider",
+            "model",
+            "voice",
+            "sample_rate",
+            "duration_ms",
+            "timings",
+            "synthesis_ms",
+            "rtf",
+            "fallback_from",
+            "attempts"
+          ],
+          "exported": true,
+          "lineCount": 13
+        },
+        {
+          "name": "ProviderCapabilities",
+          "methods": [
+            "to_dict"
+          ],
+          "properties": [
+            "provider",
+            "formats",
+            "streaming",
+            "speed",
+            "pitch",
+            "emotion",
+            "word_timings",
+            "voice_listing"
+          ],
+          "exported": true,
+          "lineCount": 21
+        }
+      ],
+      "imports": [
+        {
+          "source": "dataclasses",
+          "specifiers": [
+            "dataclass",
+            "field"
+          ]
+        },
+        {
+          "source": "typing",
+          "specifiers": [
+            "Any"
+          ]
+        },
+        {
+          "source": "pydantic",
+          "specifiers": [
+            "BaseModel",
+            "Field"
+          ]
+        }
+      ],
+      "exports": [
+        "SpeechRequest",
+        "SpeechArtifact",
+        "ProviderCapabilities"
+      ],
+      "totalLines": 58,
+      "hasStructuralAnalysis": true
+    },
+    "speech_gateway/speech_gateway/providers/__init__.py": {
+      "filePath": "speech_gateway/speech_gateway/providers/__init__.py",
+      "contentHash": "00e631461377704e28c50945325df457c0f014b229d8e582bba9cd881d1e56c2",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 2,
+      "hasStructuralAnalysis": true
+    },
+    "speech_gateway/speech_gateway/providers/base.py": {
+      "filePath": "speech_gateway/speech_gateway/providers/base.py",
+      "contentHash": "6bca8bca39bad4d165a3224ccf84914fff45b3d71a385712aa3588dafffd3437",
+      "functions": [],
+      "classes": [
+        {
+          "name": "SpeechProvider",
+          "methods": [
+            "available",
+            "capabilities",
+            "voices",
+            "health",
+            "synthesize",
+            "close"
+          ],
+          "properties": [
+            "name"
+          ],
+          "exported": true,
+          "lineCount": 15
+        }
+      ],
+      "imports": [
+        {
+          "source": "typing",
+          "specifiers": [
+            "Protocol"
+          ]
+        },
+        {
+          "source": "speech_gateway.models",
+          "specifiers": [
+            "ProviderCapabilities",
+            "SpeechArtifact",
+            "SpeechRequest"
+          ]
+        }
+      ],
+      "exports": [
+        "SpeechProvider"
+      ],
+      "totalLines": 25,
+      "hasStructuralAnalysis": true
+    },
+    "speech_gateway/speech_gateway/providers/edge.py": {
+      "filePath": "speech_gateway/speech_gateway/providers/edge.py",
+      "contentHash": "bd6190afb03e12027db3b8a381ff2424cb10c5bf8532b0bd9ff038543177bd30",
+      "functions": [],
+      "classes": [
+        {
+          "name": "EdgeSpeechProvider",
+          "methods": [
+            "__init__",
+            "available",
+            "capabilities",
+            "voices",
+            "synthesize",
+            "close",
+            "health"
+          ],
+          "properties": [],
+          "exported": true,
+          "lineCount": 93
+        }
+      ],
+      "imports": [
+        {
+          "source": "edge_tts",
+          "specifiers": [
+            "edge_tts"
+          ]
+        },
+        {
+          "source": "speech_gateway.config",
+          "specifiers": [
+            "ProviderConfig"
+          ]
+        },
+        {
+          "source": "speech_gateway.errors",
+          "specifiers": [
+            "SynthesisError",
+            "UnsupportedCapabilityError"
+          ]
+        },
+        {
+          "source": "speech_gateway.models",
+          "specifiers": [
+            "ProviderCapabilities",
+            "SpeechArtifact",
+            "SpeechRequest"
+          ]
+        }
+      ],
+      "exports": [
+        "EdgeSpeechProvider"
+      ],
+      "totalLines": 105,
+      "hasStructuralAnalysis": true
+    },
+    "speech_gateway/speech_gateway/providers/openai_compatible.py": {
+      "filePath": "speech_gateway/speech_gateway/providers/openai_compatible.py",
+      "contentHash": "52577b6310f186c06e1ca5f530b659dca9825ac9c0bc8a87a9d44659efaba7b7",
+      "functions": [
+        {
+          "name": "_optional_int",
+          "params": [
+            "value"
+          ],
+          "returnType": "int | None",
+          "exported": true,
+          "lineCount": 5
+        }
+      ],
+      "classes": [
+        {
+          "name": "OpenAICompatibleSpeechProvider",
+          "methods": [
+            "__init__",
+            "available",
+            "capabilities",
+            "voices",
+            "synthesize",
+            "_request",
+            "health",
+            "close"
+          ],
+          "properties": [],
+          "exported": true,
+          "lineCount": 128
+        }
+      ],
+      "imports": [
+        {
+          "source": "json",
+          "specifiers": [
+            "json"
+          ]
+        },
+        {
+          "source": "httpx",
+          "specifiers": [
+            "httpx"
+          ]
+        },
+        {
+          "source": "speech_gateway.config",
+          "specifiers": [
+            "ProviderConfig"
+          ]
+        },
+        {
+          "source": "speech_gateway.errors",
+          "specifiers": [
+            "InvalidSpeechRequestError",
+            "ProviderUnavailableError",
+            "SynthesisError",
+            "UnsupportedCapabilityError",
+            "UpstreamAuthenticationError",
+            "UpstreamRateLimitError"
+          ]
+        },
+        {
+          "source": "speech_gateway.models",
+          "specifiers": [
+            "ProviderCapabilities",
+            "SpeechArtifact",
+            "SpeechRequest"
+          ]
+        }
+      ],
+      "exports": [
+        "_optional_int",
+        "OpenAICompatibleSpeechProvider"
+      ],
+      "totalLines": 156,
+      "hasStructuralAnalysis": true
+    },
+    "speech_gateway/speech_gateway/providers/volcano.py": {
+      "filePath": "speech_gateway/speech_gateway/providers/volcano.py",
+      "contentHash": "8cc2c973f1b1cd727cffebbd281cdac4262ab27b861c143b4bd5047d97bbb455",
+      "functions": [
+        {
+          "name": "_ratio_to_rate",
+          "params": [
+            "value",
+            "name"
+          ],
+          "returnType": "int",
+          "exported": true,
+          "lineCount": 6
+        },
+        {
+          "name": "_pitch_ratio_to_semitones",
+          "params": [
+            "value"
+          ],
+          "returnType": "int",
+          "exported": true,
+          "lineCount": 4
+        }
+      ],
+      "classes": [
+        {
+          "name": "VolcanoSpeechProvider",
+          "methods": [
+            "__init__",
+            "available",
+            "capabilities",
+            "voices",
+            "synthesize",
+            "_raise_http_error",
+            "_raise_event_error",
+            "close",
+            "health"
+          ],
+          "properties": [],
+          "exported": true,
+          "lineCount": 163
+        }
+      ],
+      "imports": [
+        {
+          "source": "base64",
+          "specifiers": [
+            "base64"
+          ]
+        },
+        {
+          "source": "binascii",
+          "specifiers": [
+            "binascii"
+          ]
+        },
+        {
+          "source": "json",
+          "specifiers": [
+            "json"
+          ]
+        },
+        {
+          "source": "math",
+          "specifiers": [
+            "math"
+          ]
+        },
+        {
+          "source": "uuid",
+          "specifiers": [
+            "uuid"
+          ]
+        },
+        {
+          "source": "httpx",
+          "specifiers": [
+            "httpx"
+          ]
+        },
+        {
+          "source": "speech_gateway.config",
+          "specifiers": [
+            "ProviderConfig"
+          ]
+        },
+        {
+          "source": "speech_gateway.errors",
+          "specifiers": [
+            "InvalidSpeechRequestError",
+            "ProviderUnavailableError",
+            "SynthesisError",
+            "UnsupportedCapabilityError",
+            "UpstreamAuthenticationError",
+            "UpstreamRateLimitError"
+          ]
+        },
+        {
+          "source": "speech_gateway.models",
+          "specifiers": [
+            "ProviderCapabilities",
+            "SpeechArtifact",
+            "SpeechRequest"
+          ]
+        }
+      ],
+      "exports": [
+        "_ratio_to_rate",
+        "_pitch_ratio_to_semitones",
+        "VolcanoSpeechProvider"
+      ],
+      "totalLines": 210,
+      "hasStructuralAnalysis": true
+    },
+    "speech_gateway/speech_gateway/registry.py": {
+      "filePath": "speech_gateway/speech_gateway/registry.py",
+      "contentHash": "44f9b4d90a322714ad5ab683c45703137eb3c20c78549a876193127528d98277",
+      "functions": [
+        {
+          "name": "build_provider",
+          "params": [
+            "settings"
+          ],
+          "returnType": "SpeechProvider",
+          "exported": true,
+          "lineCount": 8
+        }
+      ],
+      "classes": [
+        {
+          "name": "CircuitState",
+          "methods": [
+            "status"
+          ],
+          "properties": [
+            "consecutive_failures",
+            "open_until"
+          ],
+          "exported": true,
+          "lineCount": 10
+        },
+        {
+          "name": "SpeechProviderRegistry",
+          "methods": [
+            "__init__",
+            "resolve_route",
+            "split_target",
+            "get",
+            "synthesize",
+            "_record_retryable_failure",
+            "_record_success",
+            "probe",
+            "status",
+            "close"
+          ],
+          "properties": [],
+          "exported": true,
+          "lineCount": 155
+        }
+      ],
+      "imports": [
+        {
+          "source": "logging",
+          "specifiers": [
+            "logging"
+          ]
+        },
+        {
+          "source": "time",
+          "specifiers": [
+            "time"
+          ]
+        },
+        {
+          "source": "dataclasses",
+          "specifiers": [
+            "dataclass",
+            "replace"
+          ]
+        },
+        {
+          "source": "speech_gateway.audio",
+          "specifiers": [
+            "duration_ms"
+          ]
+        },
+        {
+          "source": "speech_gateway.config",
+          "specifiers": [
+            "GatewayConfig",
+            "ProviderConfig",
+            "config"
+          ]
+        },
+        {
+          "source": "speech_gateway.errors",
+          "specifiers": [
+            "CircuitOpenError",
+            "InvalidSpeechRequestError",
+            "ProviderNotFoundError",
+            "ProviderUnavailableError",
+            "SpeechGatewayError"
+          ]
+        },
+        {
+          "source": "speech_gateway.metrics",
+          "specifiers": [
+            "MetricsStore"
+          ]
+        },
+        {
+          "source": "speech_gateway.models",
+          "specifiers": [
+            "SpeechArtifact",
+            "SpeechRequest"
+          ]
+        },
+        {
+          "source": "speech_gateway.providers.base",
+          "specifiers": [
+            "SpeechProvider"
+          ]
+        },
+        {
+          "source": "speech_gateway.providers.edge",
+          "specifiers": [
+            "EdgeSpeechProvider"
+          ]
+        },
+        {
+          "source": "speech_gateway.providers.openai_compatible",
+          "specifiers": [
+            "OpenAICompatibleSpeechProvider"
+          ]
+        },
+        {
+          "source": "speech_gateway.providers.volcano",
+          "specifiers": [
+            "VolcanoSpeechProvider"
+          ]
+        }
+      ],
+      "exports": [
+        "CircuitState",
+        "build_provider",
+        "SpeechProviderRegistry"
+      ],
+      "totalLines": 206,
+      "hasStructuralAnalysis": true
+    },
+    "speech_gateway/speech_gateway/schemas.py": {
+      "filePath": "speech_gateway/speech_gateway/schemas.py",
+      "contentHash": "c5098b893d16d04a98d8cfd1501b14501233509509f414e988fb3a12332427f4",
+      "functions": [
+        {
+          "name": "schema_for",
+          "params": [
+            "provider_type"
+          ],
+          "returnType": "dict",
+          "exported": true,
+          "lineCount": 5
+        }
+      ],
+      "classes": [],
+      "imports": [],
+      "exports": [
+        "schema_for"
+      ],
+      "totalLines": 106,
+      "hasStructuralAnalysis": true
+    },
+    "speech_gateway/speech_gateway/secrets.py": {
+      "filePath": "speech_gateway/speech_gateway/secrets.py",
+      "contentHash": "b5bfb25e79ed37b6d058200f3f8f5901450f2b17cc7ff1230d3bd29de8bdec28",
+      "functions": [],
+      "classes": [
+        {
+          "name": "GatewaySecretStore",
+          "methods": [
+            "get",
+            "set"
+          ],
+          "properties": [],
+          "exported": true,
+          "lineCount": 20
+        }
+      ],
+      "imports": [
+        {
+          "source": "logging",
+          "specifiers": [
+            "logging"
+          ]
+        },
+        {
+          "source": "keyring",
+          "specifiers": [
+            "keyring"
+          ]
+        }
+      ],
+      "exports": [
+        "GatewaySecretStore"
+      ],
+      "totalLines": 36,
+      "hasStructuralAnalysis": true
+    },
+    "speech_gateway/tests/test_gateway.py": {
+      "filePath": "speech_gateway/tests/test_gateway.py",
+      "contentHash": "5e344a0b3538d0238155afeb356cba1a3e0f0ba54b6cb4570815f32a80fb10a7",
+      "functions": [
+        {
+          "name": "provider_config",
+          "params": [
+            "name",
+            "provider_type",
+            "**kwargs"
+          ],
+          "returnType": "ProviderConfig",
+          "exported": true,
+          "lineCount": 2
+        },
+        {
+          "name": "test_volcano_schema_exposes_v3_credentials_and_bounded_resource_choices",
+          "params": [],
+          "exported": true,
+          "lineCount": 18
+        },
+        {
+          "name": "test_registry_routes_prefixed_model_to_provider",
+          "params": [],
+          "exported": true,
+          "lineCount": 10
+        },
+        {
+          "name": "test_openai_compatible_speech_endpoint_returns_performance_headers",
+          "params": [
+            "monkeypatch"
+          ],
+          "exported": true,
+          "lineCount": 20
+        },
+        {
+          "name": "test_registry_hot_swap_waits_for_in_flight_request",
+          "params": [
+            "monkeypatch"
+          ],
+          "exported": true,
+          "lineCount": 16
+        },
+        {
+          "name": "test_named_route_uses_retryable_fallback",
+          "params": [],
+          "exported": true,
+          "lineCount": 23
+        },
+        {
+          "name": "test_non_retryable_capability_error_does_not_fallback",
+          "params": [],
+          "exported": true,
+          "lineCount": 21
+        },
+        {
+          "name": "test_circuit_opens_after_retryable_failure_threshold",
+          "params": [],
+          "exported": true,
+          "lineCount": 21
+        },
+        {
+          "name": "test_generic_openai_compatible_provider_forwards_standard_contract",
+          "params": [],
+          "exported": true,
+          "lineCount": 31
+        },
+        {
+          "name": "test_yaml_config_loads_routes_and_environment_secret",
+          "params": [
+            "tmp_path",
+            "monkeypatch"
+          ],
+          "exported": true,
+          "lineCount": 24
+        },
+        {
+          "name": "test_provider_admin_persists_non_secrets_and_masks_keyring_values",
+          "params": [
+            "tmp_path",
+            "monkeypatch"
+          ],
+          "exported": true,
+          "lineCount": 31
+        },
+        {
+          "name": "test_edge_provider_normalizes_upstream_failure",
+          "params": [
+            "monkeypatch"
+          ],
+          "exported": true,
+          "lineCount": 20
+        },
+        {
+          "name": "test_volcano_adapter_returns_normalized_artifact",
+          "params": [
+            "monkeypatch"
+          ],
+          "exported": true,
+          "lineCount": 59
+        },
+        {
+          "name": "test_volcano_rejects_unsupported_format_before_network",
+          "params": [
+            "monkeypatch"
+          ],
+          "exported": true,
+          "lineCount": 17
+        },
+        {
+          "name": "test_volcano_rejects_speed_outside_documented_range",
+          "params": [
+            "monkeypatch"
+          ],
+          "exported": true,
+          "lineCount": 17
+        }
+      ],
+      "classes": [
+        {
+          "name": "FakeProvider",
+          "methods": [
+            "__init__",
+            "available",
+            "capabilities",
+            "voices",
+            "health",
+            "synthesize",
+            "close"
+          ],
+          "properties": [],
+          "exported": true,
+          "lineCount": 27
+        },
+        {
+          "name": "FakeRegistry",
+          "methods": [
+            "__init__",
+            "synthesize",
+            "close"
+          ],
+          "properties": [],
+          "exported": true,
+          "lineCount": 21
+        }
+      ],
+      "imports": [
+        {
+          "source": "base64",
+          "specifiers": [
+            "base64"
+          ]
+        },
+        {
+          "source": "json",
+          "specifiers": [
+            "json"
+          ]
+        },
+        {
+          "source": "httpx",
+          "specifiers": [
+            "httpx"
+          ]
+        },
+        {
+          "source": "pytest",
+          "specifiers": [
+            "pytest"
+          ]
+        },
+        {
+          "source": "speech_gateway",
+          "specifiers": [
+            "main"
+          ]
+        },
+        {
+          "source": "speech_gateway.admin",
+          "specifiers": [
+            "public_config",
+            "update_provider",
+            "update_route"
+          ]
+        },
+        {
+          "source": "speech_gateway.config",
+          "specifiers": [
+            "GatewayConfig",
+            "ProviderConfig",
+            "RouteConfig",
+            "load_config"
+          ]
+        },
+        {
+          "source": "speech_gateway.errors",
+          "specifiers": [
+            "CircuitOpenError",
+            "InvalidSpeechRequestError",
+            "SynthesisError",
+            "UnsupportedCapabilityError"
+          ]
+        },
+        {
+          "source": "speech_gateway.models",
+          "specifiers": [
+            "ProviderCapabilities",
+            "SpeechArtifact",
+            "SpeechRequest"
+          ]
+        },
+        {
+          "source": "speech_gateway.providers.openai_compatible",
+          "specifiers": [
+            "OpenAICompatibleSpeechProvider"
+          ]
+        },
+        {
+          "source": "speech_gateway.providers.volcano",
+          "specifiers": [
+            "VolcanoSpeechProvider"
+          ]
+        },
+        {
+          "source": "speech_gateway.registry",
+          "specifiers": [
+            "SpeechProviderRegistry"
+          ]
+        },
+        {
+          "source": "speech_gateway.schemas",
+          "specifiers": [
+            "schema_for"
+          ]
+        }
+      ],
+      "exports": [
+        "provider_config",
+        "test_volcano_schema_exposes_v3_credentials_and_bounded_resource_choices",
+        "FakeProvider",
+        "FakeRegistry",
+        "test_registry_routes_prefixed_model_to_provider",
+        "test_openai_compatible_speech_endpoint_returns_performance_headers",
+        "test_registry_hot_swap_waits_for_in_flight_request",
+        "test_named_route_uses_retryable_fallback",
+        "test_non_retryable_capability_error_does_not_fallback",
+        "test_circuit_opens_after_retryable_failure_threshold",
+        "test_generic_openai_compatible_provider_forwards_standard_contract",
+        "test_yaml_config_loads_routes_and_environment_secret",
+        "test_provider_admin_persists_non_secrets_and_masks_keyring_values",
+        "test_edge_provider_normalizes_upstream_failure",
+        "test_volcano_adapter_returns_normalized_artifact",
+        "test_volcano_rejects_unsupported_format_before_network",
+        "test_volcano_rejects_speed_outside_documented_range"
+      ],
+      "totalLines": 444,
       "hasStructuralAnalysis": true
     },
     "Spout.dll": {
@@ -16227,6 +19122,16 @@
       "imports": [],
       "exports": [],
       "totalLines": 1146,
+      "hasStructuralAnalysis": false
+    },
+    "start_feinalive.bat": {
+      "filePath": "start_feinalive.bat",
+      "contentHash": "20897bee8ced5f77c814c45b0fb72b4f1cf880032072cd72fb4eba7abad321fb",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 22,
       "hasStructuralAnalysis": false
     },
     "THIRD_PARTY_NOTICES.md": {

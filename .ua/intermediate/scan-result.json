@@ -1,30 +1,5 @@
 {
-  "name": "feinaLive",
-  "description": "FeinaLive ??? Windows ??????????????????? AI ????????????????????? Agent ??????????????????????????? 100 ?????????????????????????",
-  "languages": [
-    "batch",
-    "conf",
-    "config",
-    "css",
-    "dll",
-    "exe",
-    "html",
-    "javascript",
-    "json",
-    "markdown",
-    "pyd",
-    "python",
-    "swf",
-    "toml",
-    "txt",
-    "types",
-    "typescript",
-    "unknown",
-    "vue",
-    "xml",
-    "yaml"
-  ],
-  "frameworks": [],
+  "scriptCompleted": true,
   "files": [
     {
       "path": ".ua/.understandignore",
@@ -209,13 +184,13 @@
     {
       "path": "backend/apps/ai/client.py",
       "language": "python",
-      "sizeLines": 216,
+      "sizeLines": 212,
       "fileCategory": "code"
     },
     {
       "path": "backend/apps/ai/embedding.py",
       "language": "python",
-      "sizeLines": 99,
+      "sizeLines": 92,
       "fileCategory": "code"
     },
     {
@@ -407,7 +382,7 @@
     {
       "path": "backend/apps/ai/speech_pipeline.py",
       "language": "python",
-      "sizeLines": 449,
+      "sizeLines": 482,
       "fileCategory": "code"
     },
     {
@@ -420,12 +395,6 @@
       "path": "backend/apps/ai/tools/types.py",
       "language": "python",
       "sizeLines": 27,
-      "fileCategory": "code"
-    },
-    {
-      "path": "backend/apps/ai/tts.py",
-      "language": "python",
-      "sizeLines": 174,
       "fileCategory": "code"
     },
     {
@@ -449,7 +418,7 @@
     {
       "path": "backend/apps/avatar/runtime.py",
       "language": "python",
-      "sizeLines": 241,
+      "sizeLines": 247,
       "fileCategory": "code"
     },
     {
@@ -461,13 +430,13 @@
     {
       "path": "backend/apps/config_router.py",
       "language": "python",
-      "sizeLines": 683,
+      "sizeLines": 711,
       "fileCategory": "code"
     },
     {
       "path": "backend/apps/config.py",
       "language": "python",
-      "sizeLines": 513,
+      "sizeLines": 504,
       "fileCategory": "code"
     },
     {
@@ -581,7 +550,7 @@
     {
       "path": "backend/apps/live/router.py",
       "language": "python",
-      "sizeLines": 88,
+      "sizeLines": 103,
       "fileCategory": "code"
     },
     {
@@ -705,6 +674,30 @@
       "fileCategory": "code"
     },
     {
+      "path": "backend/apps/speech/__init__.py",
+      "language": "python",
+      "sizeLines": 6,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/apps/speech/client.py",
+      "language": "python",
+      "sizeLines": 167,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/apps/speech/models.py",
+      "language": "python",
+      "sizeLines": 23,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/apps/speech/router.py",
+      "language": "python",
+      "sizeLines": 66,
+      "fileCategory": "code"
+    },
+    {
       "path": "backend/apps/storage/__init__.py",
       "language": "python",
       "sizeLines": 1,
@@ -773,7 +766,7 @@
     {
       "path": "backend/avatar_engine/pose.py",
       "language": "python",
-      "sizeLines": 56,
+      "sizeLines": 58,
       "fileCategory": "code"
     },
     {
@@ -797,7 +790,7 @@
     {
       "path": "backend/avatar_engine/src/composite_input.py",
       "language": "python",
-      "sizeLines": 178,
+      "sizeLines": 203,
       "fileCategory": "code"
     },
     {
@@ -857,7 +850,7 @@
     {
       "path": "backend/config.example.yaml",
       "language": "yaml",
-      "sizeLines": 174,
+      "sizeLines": 168,
       "fileCategory": "config"
     },
     {
@@ -881,13 +874,13 @@
     {
       "path": "backend/main.py",
       "language": "python",
-      "sizeLines": 262,
+      "sizeLines": 309,
       "fileCategory": "code"
     },
     {
       "path": "backend/pyproject.toml",
       "language": "toml",
-      "sizeLines": 103,
+      "sizeLines": 100,
       "fileCategory": "config"
     },
     {
@@ -911,7 +904,7 @@
     {
       "path": "backend/services/nginx_service.py",
       "language": "python",
-      "sizeLines": 129,
+      "sizeLines": 125,
       "fileCategory": "code"
     },
     {
@@ -947,7 +940,13 @@
     {
       "path": "backend/tests/test_avatar_runtime.py",
       "language": "python",
-      "sizeLines": 198,
+      "sizeLines": 253,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/tests/test_bifrost_clients.py",
+      "language": "python",
+      "sizeLines": 144,
       "fileCategory": "code"
     },
     {
@@ -959,7 +958,7 @@
     {
       "path": "backend/tests/test_host_runtime.py",
       "language": "python",
-      "sizeLines": 415,
+      "sizeLines": 433,
       "fileCategory": "code"
     },
     {
@@ -1029,6 +1028,18 @@
       "fileCategory": "code"
     },
     {
+      "path": "backend/tests/test_speech_gateway_client.py",
+      "language": "python",
+      "sizeLines": 96,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/tests/test_system_shutdown.py",
+      "language": "python",
+      "sizeLines": 66,
+      "fileCategory": "code"
+    },
+    {
       "path": "backend/tests/test_test_live_platform_api.py",
       "language": "python",
       "sizeLines": 56,
@@ -1073,7 +1084,7 @@
     {
       "path": "fronted/package.json",
       "language": "json",
-      "sizeLines": 31,
+      "sizeLines": 26,
       "fileCategory": "config"
     },
     {
@@ -1086,12 +1097,6 @@
       "path": "fronted/src/App.vue",
       "language": "vue",
       "sizeLines": 285,
-      "fileCategory": "code"
-    },
-    {
-      "path": "fronted/src/apps/console/ConsoleApp.vue",
-      "language": "vue",
-      "sizeLines": 124,
       "fileCategory": "code"
     },
     {
@@ -1155,18 +1160,6 @@
       "fileCategory": "code"
     },
     {
-      "path": "fronted/src/components/memory/GameMemoryControl.vue",
-      "language": "vue",
-      "sizeLines": 301,
-      "fileCategory": "code"
-    },
-    {
-      "path": "fronted/src/components/memory/MemoryDebugPanel.vue",
-      "language": "vue",
-      "sizeLines": 693,
-      "fileCategory": "code"
-    },
-    {
       "path": "fronted/src/components/NotificationToast.vue",
       "language": "vue",
       "sizeLines": 85,
@@ -1191,57 +1184,9 @@
       "fileCategory": "code"
     },
     {
-      "path": "fronted/src/components/settings/agent/AgentRuntimePanel.vue",
-      "language": "vue",
-      "sizeLines": 115,
-      "fileCategory": "code"
-    },
-    {
-      "path": "fronted/src/components/settings/agent/AgentSettingsPanel.vue",
-      "language": "vue",
-      "sizeLines": 128,
-      "fileCategory": "code"
-    },
-    {
-      "path": "fronted/src/components/settings/agent/CommonAgentSettings.vue",
-      "language": "vue",
-      "sizeLines": 71,
-      "fileCategory": "code"
-    },
-    {
-      "path": "fronted/src/components/settings/agent/GenericScenarioSettings.vue",
-      "language": "vue",
-      "sizeLines": 55,
-      "fileCategory": "code"
-    },
-    {
-      "path": "fronted/src/components/settings/agent/SlayTheSpireSettings.vue",
-      "language": "vue",
-      "sizeLines": 38,
-      "fileCategory": "code"
-    },
-    {
-      "path": "fronted/src/components/settings/music/MusicManagementPanel.vue",
-      "language": "vue",
-      "sizeLines": 278,
-      "fileCategory": "code"
-    },
-    {
-      "path": "fronted/src/components/SettingsPanel.vue",
-      "language": "vue",
-      "sizeLines": 1539,
-      "fileCategory": "code"
-    },
-    {
       "path": "fronted/src/composables/useAvatarInput.ts",
       "language": "typescript",
       "sizeLines": 224,
-      "fileCategory": "code"
-    },
-    {
-      "path": "fronted/src/composables/useConsoleTheme.ts",
-      "language": "typescript",
-      "sizeLines": 37,
       "fileCategory": "code"
     },
     {
@@ -1265,7 +1210,7 @@
     {
       "path": "fronted/src/main.ts",
       "language": "typescript",
-      "sizeLines": 12,
+      "sizeLines": 11,
       "fileCategory": "code"
     },
     {
@@ -1301,7 +1246,7 @@
     {
       "path": "fronted/src/types/config.ts",
       "language": "typescript",
-      "sizeLines": 240,
+      "sizeLines": 235,
       "fileCategory": "code"
     },
     {
@@ -1349,13 +1294,67 @@
     {
       "path": "fronted/vite.config.ts",
       "language": "typescript",
-      "sizeLines": 74,
+      "sizeLines": 69,
       "fileCategory": "code"
     },
     {
-      "path": "nginx-rtmp-win32/conf/backend-locations.conf",
-      "language": "conf",
-      "sizeLines": 11,
+      "path": "launcher/launcher/__init__.py",
+      "language": "python",
+      "sizeLines": 1,
+      "fileCategory": "code"
+    },
+    {
+      "path": "launcher/launcher/control.py",
+      "language": "python",
+      "sizeLines": 1206,
+      "fileCategory": "code"
+    },
+    {
+      "path": "launcher/launcher/health.py",
+      "language": "python",
+      "sizeLines": 65,
+      "fileCategory": "code"
+    },
+    {
+      "path": "launcher/launcher/i18n.py",
+      "language": "python",
+      "sizeLines": 295,
+      "fileCategory": "code"
+    },
+    {
+      "path": "launcher/launcher/main.py",
+      "language": "python",
+      "sizeLines": 63,
+      "fileCategory": "code"
+    },
+    {
+      "path": "launcher/launcher/models.py",
+      "language": "python",
+      "sizeLines": 138,
+      "fileCategory": "code"
+    },
+    {
+      "path": "launcher/launcher/processes.py",
+      "language": "python",
+      "sizeLines": 216,
+      "fileCategory": "code"
+    },
+    {
+      "path": "launcher/launcher/window.py",
+      "language": "python",
+      "sizeLines": 720,
+      "fileCategory": "code"
+    },
+    {
+      "path": "launcher/pyproject.toml",
+      "language": "toml",
+      "sizeLines": 32,
+      "fileCategory": "config"
+    },
+    {
+      "path": "launcher/tests/test_launcher.py",
+      "language": "python",
+      "sizeLines": 77,
       "fileCategory": "code"
     },
     {
@@ -1373,7 +1372,7 @@
     {
       "path": "nginx-rtmp-win32/conf/nginx.conf",
       "language": "conf",
-      "sizeLines": 69,
+      "sizeLines": 57,
       "fileCategory": "code"
     },
     {
@@ -1475,8 +1474,128 @@
     {
       "path": "README.md",
       "language": "markdown",
-      "sizeLines": 229,
+      "sizeLines": 248,
       "fileCategory": "docs"
+    },
+    {
+      "path": "speech_gateway/.env.example",
+      "language": "config",
+      "sizeLines": 13,
+      "fileCategory": "config"
+    },
+    {
+      "path": "speech_gateway/config.example.yaml",
+      "language": "yaml",
+      "sizeLines": 48,
+      "fileCategory": "config"
+    },
+    {
+      "path": "speech_gateway/pyproject.toml",
+      "language": "toml",
+      "sizeLines": 41,
+      "fileCategory": "config"
+    },
+    {
+      "path": "speech_gateway/speech_gateway/__init__.py",
+      "language": "python",
+      "sizeLines": 1,
+      "fileCategory": "code"
+    },
+    {
+      "path": "speech_gateway/speech_gateway/admin.py",
+      "language": "python",
+      "sizeLines": 123,
+      "fileCategory": "code"
+    },
+    {
+      "path": "speech_gateway/speech_gateway/audio.py",
+      "language": "python",
+      "sizeLines": 18,
+      "fileCategory": "code"
+    },
+    {
+      "path": "speech_gateway/speech_gateway/config.py",
+      "language": "python",
+      "sizeLines": 171,
+      "fileCategory": "code"
+    },
+    {
+      "path": "speech_gateway/speech_gateway/errors.py",
+      "language": "python",
+      "sizeLines": 49,
+      "fileCategory": "code"
+    },
+    {
+      "path": "speech_gateway/speech_gateway/main.py",
+      "language": "python",
+      "sizeLines": 247,
+      "fileCategory": "code"
+    },
+    {
+      "path": "speech_gateway/speech_gateway/metrics.py",
+      "language": "python",
+      "sizeLines": 78,
+      "fileCategory": "code"
+    },
+    {
+      "path": "speech_gateway/speech_gateway/models.py",
+      "language": "python",
+      "sizeLines": 57,
+      "fileCategory": "code"
+    },
+    {
+      "path": "speech_gateway/speech_gateway/providers/__init__.py",
+      "language": "python",
+      "sizeLines": 1,
+      "fileCategory": "code"
+    },
+    {
+      "path": "speech_gateway/speech_gateway/providers/base.py",
+      "language": "python",
+      "sizeLines": 24,
+      "fileCategory": "code"
+    },
+    {
+      "path": "speech_gateway/speech_gateway/providers/edge.py",
+      "language": "python",
+      "sizeLines": 104,
+      "fileCategory": "code"
+    },
+    {
+      "path": "speech_gateway/speech_gateway/providers/openai_compatible.py",
+      "language": "python",
+      "sizeLines": 155,
+      "fileCategory": "code"
+    },
+    {
+      "path": "speech_gateway/speech_gateway/providers/volcano.py",
+      "language": "python",
+      "sizeLines": 209,
+      "fileCategory": "code"
+    },
+    {
+      "path": "speech_gateway/speech_gateway/registry.py",
+      "language": "python",
+      "sizeLines": 205,
+      "fileCategory": "code"
+    },
+    {
+      "path": "speech_gateway/speech_gateway/schemas.py",
+      "language": "python",
+      "sizeLines": 105,
+      "fileCategory": "code"
+    },
+    {
+      "path": "speech_gateway/speech_gateway/secrets.py",
+      "language": "python",
+      "sizeLines": 35,
+      "fileCategory": "code"
+    },
+    {
+      "path": "speech_gateway/tests/test_gateway.py",
+      "language": "python",
+      "sizeLines": 443,
+      "fileCategory": "code"
     },
     {
       "path": "Spout.dll",
@@ -1485,794 +1604,52 @@
       "fileCategory": "code"
     },
     {
+      "path": "start_feinalive.bat",
+      "language": "batch",
+      "sizeLines": 21,
+      "fileCategory": "script"
+    },
+    {
       "path": "THIRD_PARTY_NOTICES.md",
       "language": "markdown",
       "sizeLines": 59,
       "fileCategory": "docs"
     }
   ],
-  "totalFiles": 244,
-  "filteredByIgnore": 180,
+  "totalFiles": 269,
+  "filteredByIgnore": 4,
   "estimatedComplexity": "large",
-  "importMap": {
-    ".ua/.understandignore": [],
-    ".ua/config.json": [],
-    "backend/__init__.py": [],
-    "backend/apps/__init__.py": [],
-    "backend/apps/agent/__init__.py": [
-      "backend/apps/agent/runtime.py"
-    ],
-    "backend/apps/agent/capabilities/__init__.py": [
-      "backend/apps/agent/capabilities/base.py"
-    ],
-    "backend/apps/agent/capabilities/base.py": [
-      "backend/apps/agent/state.py"
-    ],
-    "backend/apps/agent/capabilities/host_speech.py": [
-      "backend/apps/agent/mutual_context.py",
-      "backend/apps/ai/messaging/dynamic_priority.py",
-      "backend/apps/ai/messaging/queue.py",
-      "backend/apps/ai/speech_jobs.py",
-      "backend/apps/config.py",
-      "backend/apps/live/runtime.py"
-    ],
-    "backend/apps/agent/capabilities/mcp_adapter.py": [
-      "backend/apps/agent/scenarios/profile.py",
-      "backend/apps/ai/mcp/client.py",
-      "backend/apps/ai/memory/game_memory.py"
-    ],
-    "backend/apps/agent/capabilities/mcp.py": [
-      "backend/apps/agent/capabilities/base.py",
-      "backend/apps/agent/capabilities/mcp_adapter.py",
-      "backend/apps/agent/mutual_context.py",
-      "backend/apps/agent/scenarios/profile.py",
-      "backend/apps/agent/state.py",
-      "backend/apps/ai/memory/engine.py",
-      "backend/apps/ai/memory/game_memory.py"
-    ],
-    "backend/apps/agent/capabilities/memory.py": [
-      "backend/apps/agent/capabilities/base.py",
-      "backend/apps/agent/state.py",
-      "backend/apps/ai/memory/tools.py"
-    ],
-    "backend/apps/agent/capabilities/registry.py": [
-      "backend/apps/agent/capabilities/base.py",
-      "backend/apps/agent/capabilities/host_speech.py",
-      "backend/apps/agent/capabilities/mcp.py",
-      "backend/apps/agent/capabilities/memory.py",
-      "backend/apps/agent/definition.py",
-      "backend/apps/agent/events.py",
-      "backend/apps/agent/mutual_context.py"
-    ],
-    "backend/apps/agent/commentary.py": [
-      "backend/apps/agent/definition.py",
-      "backend/apps/agent/mutual_context.py",
-      "backend/apps/agent/state.py",
-      "backend/apps/ai/client.py",
-      "backend/apps/ai/prompt.py",
-      "backend/apps/config.py"
-    ],
-    "backend/apps/agent/definition.py": [],
-    "backend/apps/agent/events.py": [
-      "backend/apps/agent/capabilities/base.py",
-      "backend/apps/agent/state.py"
-    ],
-    "backend/apps/agent/graph.py": [
-      "backend/apps/agent/capabilities/base.py",
-      "backend/apps/agent/capabilities/host_speech.py",
-      "backend/apps/agent/commentary.py",
-      "backend/apps/agent/definition.py",
-      "backend/apps/agent/mutual_context.py",
-      "backend/apps/agent/state.py",
-      "backend/apps/ai/client.py",
-      "backend/apps/ai/memory/engine.py",
-      "backend/apps/config.py"
-    ],
-    "backend/apps/agent/manager.py": [
-      "backend/apps/agent/capabilities/base.py",
-      "backend/apps/agent/capabilities/registry.py",
-      "backend/apps/agent/commentary.py",
-      "backend/apps/agent/events.py",
-      "backend/apps/agent/graph.py",
-      "backend/apps/agent/mutual_context.py",
-      "backend/apps/agent/runtime.py",
-      "backend/apps/agent/scenarios/registry.py",
-      "backend/apps/ai/messaging/queue.py",
-      "backend/apps/config.py"
-    ],
-    "backend/apps/agent/mutual_context.py": [],
-    "backend/apps/agent/router.py": [
-      "backend/apps/agent/manager.py",
-      "backend/apps/agent/mutual_context.py",
-      "backend/apps/agent/scenarios/registry.py",
-      "backend/apps/ai/memory/engine.py",
-      "backend/apps/ai/memory/game_memory.py",
-      "backend/apps/config.py"
-    ],
-    "backend/apps/agent/runtime.py": [
-      "backend/apps/agent/capabilities/base.py",
-      "backend/apps/agent/events.py",
-      "backend/apps/agent/graph.py",
-      "backend/apps/agent/state.py",
-      "backend/apps/config.py"
-    ],
-    "backend/apps/agent/scenarios/__init__.py": [],
-    "backend/apps/agent/scenarios/generic_profile.py": [
-      "backend/apps/agent/scenarios/profile.py",
-      "backend/apps/ai/mcp/client.py",
-      "backend/apps/ai/memory/game_memory.py",
-      "backend/apps/config.py"
-    ],
-    "backend/apps/agent/scenarios/generic.py": [
-      "backend/apps/agent/capabilities/mcp_adapter.py",
-      "backend/apps/agent/definition.py"
-    ],
-    "backend/apps/agent/scenarios/profile.py": [
-      "backend/apps/ai/mcp/client.py",
-      "backend/apps/ai/memory/game_memory.py"
-    ],
-    "backend/apps/agent/scenarios/registry.py": [
-      "backend/apps/agent/capabilities/mcp_adapter.py",
-      "backend/apps/agent/definition.py",
-      "backend/apps/agent/scenarios/generic_profile.py",
-      "backend/apps/agent/scenarios/generic.py",
-      "backend/apps/agent/scenarios/profile.py",
-      "backend/apps/agent/scenarios/slay_the_spire_profile.py",
-      "backend/apps/agent/scenarios/slay_the_spire.py",
-      "backend/apps/ai/mcp/client.py",
-      "backend/apps/ai/memory/game_memory.py",
-      "backend/apps/config.py"
-    ],
-    "backend/apps/agent/scenarios/slay_the_spire_profile.py": [
-      "backend/apps/agent/scenarios/profile.py",
-      "backend/apps/ai/mcp/client.py",
-      "backend/apps/ai/memory/game_memory.py",
-      "backend/apps/config.py"
-    ],
-    "backend/apps/agent/scenarios/slay_the_spire.py": [
-      "backend/apps/agent/capabilities/mcp_adapter.py",
-      "backend/apps/agent/definition.py"
-    ],
-    "backend/apps/agent/state.py": [],
-    "backend/apps/ai/__init__.py": [],
-    "backend/apps/ai/admin_commands.py": [
-      "backend/apps/config.py"
-    ],
-    "backend/apps/ai/client.py": [
-      "backend/apps/config.py"
-    ],
-    "backend/apps/ai/embedding.py": [
-      "backend/apps/config.py"
-    ],
-    "backend/apps/ai/history.py": [
-      "backend/apps/config.py"
-    ],
-    "backend/apps/ai/host_brain.py": [
-      "backend/apps/ai/admin_commands.py",
-      "backend/apps/ai/history.py",
-      "backend/apps/ai/messaging/dynamic_priority.py",
-      "backend/apps/ai/messaging/queue.py",
-      "backend/apps/config.py",
-      "backend/apps/live/models.py",
-      "backend/apps/live/runtime.py"
-    ],
-    "backend/apps/ai/host_messages.py": [
-      "backend/apps/agent/mutual_context.py",
-      "backend/apps/ai/memory/engine.py",
-      "backend/apps/ai/messaging/queue.py",
-      "backend/apps/ai/prompt.py",
-      "backend/apps/ai/shared_context.py",
-      "backend/apps/ai/speech_jobs.py",
-      "backend/apps/ai/speech_pipeline.py",
-      "backend/apps/live/models.py",
-      "backend/apps/live/runtime.py"
-    ],
-    "backend/apps/ai/host_runtime.py": [
-      "backend/apps/ai/host_brain.py",
-      "backend/apps/ai/host_messages.py",
-      "backend/apps/ai/messaging/queue.py"
-    ],
-    "backend/apps/ai/mcp/__init__.py": [
-      "backend/apps/ai/mcp/client.py"
-    ],
-    "backend/apps/ai/mcp/client.py": [],
-    "backend/apps/ai/memory_router.py": [
-      "backend/apps/ai/memory/atom.py",
-      "backend/apps/ai/memory/engine.py",
-      "backend/apps/ai/memory/graph_view.py"
-    ],
-    "backend/apps/ai/memory/__init__.py": [
-      "backend/apps/ai/memory/atom_store.py",
-      "backend/apps/ai/memory/atom.py",
-      "backend/apps/ai/memory/engine.py",
-      "backend/apps/ai/memory/game_memory.py",
-      "backend/apps/ai/memory/graph_store.py",
-      "backend/apps/ai/memory/injector.py",
-      "backend/apps/ai/memory/lifecycle.py",
-      "backend/apps/ai/memory/session_memory.py",
-      "backend/apps/ai/memory/summarizer.py",
-      "backend/apps/ai/memory/tools.py",
-      "backend/apps/ai/memory/user_profile.py"
-    ],
-    "backend/apps/ai/memory/atom_store.py": [
-      "backend/apps/ai/memory/atom.py",
-      "backend/apps/ai/memory/graph_store.py",
-      "backend/apps/ai/memory/vector_store.py"
-    ],
-    "backend/apps/ai/memory/atom.py": [],
-    "backend/apps/ai/memory/engine.py": [
-      "backend/apps/ai/client.py",
-      "backend/apps/ai/embedding.py",
-      "backend/apps/ai/memory/atom_store.py",
-      "backend/apps/ai/memory/atom.py",
-      "backend/apps/ai/memory/game_memory.py",
-      "backend/apps/ai/memory/graph_store.py",
-      "backend/apps/ai/memory/injector.py",
-      "backend/apps/ai/memory/lifecycle.py",
-      "backend/apps/ai/memory/session_memory.py",
-      "backend/apps/ai/memory/vector_store.py"
-    ],
-    "backend/apps/ai/memory/game_memory.py": [],
-    "backend/apps/ai/memory/graph_store.py": [
-      "backend/apps/ai/memory/atom.py"
-    ],
-    "backend/apps/ai/memory/graph_view.py": [
-      "backend/apps/ai/memory/atom_store.py"
-    ],
-    "backend/apps/ai/memory/injector.py": [
-      "backend/apps/ai/memory/atom_store.py",
-      "backend/apps/ai/memory/atom.py",
-      "backend/apps/ai/memory/graph_store.py",
-      "backend/apps/ai/memory/session_memory.py",
-      "backend/apps/config.py"
-    ],
-    "backend/apps/ai/memory/lifecycle.py": [
-      "backend/apps/ai/memory/atom_store.py"
-    ],
-    "backend/apps/ai/memory/session_memory.py": [],
-    "backend/apps/ai/memory/summarizer.py": [
-      "backend/apps/ai/memory/user_profile.py",
-      "backend/apps/db.py"
-    ],
-    "backend/apps/ai/memory/tools.py": [
-      "backend/apps/ai/memory/atom.py",
-      "backend/apps/ai/memory/engine.py"
-    ],
-    "backend/apps/ai/memory/user_profile.py": [
-      "backend/apps/config.py",
-      "backend/apps/db.py"
-    ],
-    "backend/apps/ai/memory/vector_store.py": [],
-    "backend/apps/ai/messaging/__init__.py": [
-      "backend/apps/ai/messaging/dynamic_priority.py",
-      "backend/apps/ai/messaging/queue.py",
-      "backend/apps/ai/messaging/rate_limiter.py"
-    ],
-    "backend/apps/ai/messaging/dynamic_priority.py": [
-      "backend/apps/config.py"
-    ],
-    "backend/apps/ai/messaging/queue.py": [
-      "backend/apps/ai/messaging/dynamic_priority.py",
-      "backend/apps/ai/messaging/rate_limiter.py",
-      "backend/apps/config.py",
-      "backend/apps/live/models.py",
-      "backend/apps/live/runtime.py"
-    ],
-    "backend/apps/ai/messaging/rate_limiter.py": [
-      "backend/apps/config.py"
-    ],
-    "backend/apps/ai/playback.py": [],
-    "backend/apps/ai/plugins/__init__.py": [],
-    "backend/apps/ai/prompt.py": [
-      "backend/apps/config.py"
-    ],
-    "backend/apps/ai/router.py": [
-      "backend/apps/ai/admin_commands.py",
-      "backend/apps/ai/host_brain.py",
-      "backend/apps/ai/playback.py",
-      "backend/apps/config.py"
-    ],
-    "backend/apps/ai/shared_context.py": [
-      "backend/apps/config.py"
-    ],
-    "backend/apps/ai/speech_jobs.py": [],
-    "backend/apps/ai/speech_pipeline.py": [
-      "backend/apps/ai/client.py",
-      "backend/apps/ai/playback.py",
-      "backend/apps/ai/tts.py",
-      "backend/apps/config.py",
-      "backend/apps/live/models.py",
-      "backend/apps/live/runtime.py"
-    ],
-    "backend/apps/ai/tools/__init__.py": [
-      "backend/apps/ai/tools/types.py"
-    ],
-    "backend/apps/ai/tools/types.py": [],
-    "backend/apps/ai/tts.py": [
-      "backend/apps/config.py"
-    ],
-    "backend/apps/audio_focus.py": [],
-    "backend/apps/avatar/__init__.py": [
-      "backend/apps/avatar/runtime.py"
-    ],
-    "backend/apps/avatar/router.py": [
-      "backend/apps/ai/playback.py",
-      "backend/apps/avatar/runtime.py"
-    ],
-    "backend/apps/avatar/runtime.py": [
-      "backend/apps/avatar/schemas.py",
-      "backend/apps/config.py"
-    ],
-    "backend/apps/avatar/schemas.py": [
-      "backend/avatar_engine/config.py"
-    ],
-    "backend/apps/config_router.py": [
-      "backend/apps/avatar/schemas.py",
-      "backend/apps/config.py",
-      "backend/apps/storage/secrets.py"
-    ],
-    "backend/apps/config.py": [
-      "backend/apps/storage/secrets.py"
-    ],
-    "backend/apps/db.py": [
-      "backend/apps/config.py",
-      "backend/apps/storage/migrations.py"
-    ],
-    "backend/apps/image/__init__.py": [],
-    "backend/apps/live/__init__.py": [],
-    "backend/apps/live/adapters/__init__.py": [
-      "backend/apps/live/adapters/base.py"
-    ],
-    "backend/apps/live/adapters/base.py": [
-      "backend/apps/live/models.py"
-    ],
-    "backend/apps/live/adapters/bilibili.py": [
-      "backend/apps/config.py",
-      "backend/apps/live/adapters/base.py",
-      "backend/apps/live/models.py"
-    ],
-    "backend/apps/live/adapters/douyin/__init__.py": [
-      "backend/apps/live/adapters/douyin/client.py"
-    ],
-    "backend/apps/live/adapters/douyin/client.py": [
-      "backend/apps/config.py",
-      "backend/apps/live/adapters/base.py",
-      "backend/apps/live/adapters/douyin/protocol.py",
-      "backend/apps/live/adapters/douyin/signing.py",
-      "backend/apps/live/models.py"
-    ],
-    "backend/apps/live/adapters/douyin/protocol.py": [],
-    "backend/apps/live/adapters/douyin/sign.js": [],
-    "backend/apps/live/adapters/douyin/signing.py": [],
-    "backend/apps/live/adapters/douyin/VENDORED_LICENSE": [],
-    "backend/apps/live/adapters/douyin/VENDORED_SOURCE": [],
-    "backend/apps/live/adapters/test.py": [
-      "backend/apps/live/adapters/base.py",
-      "backend/apps/live/models.py"
-    ],
-    "backend/apps/live/danmaku_handler.py": [
-      "backend/apps/ai/admin_commands.py",
-      "backend/apps/ai/host_brain.py",
-      "backend/apps/live/models.py",
-      "backend/apps/live/music_requests.py",
-      "backend/apps/live/runtime.py",
-      "backend/core/websocket.py"
-    ],
-    "backend/apps/live/dispatcher.py": [
-      "backend/apps/ai/admin_commands.py",
-      "backend/apps/ai/messaging/dynamic_priority.py",
-      "backend/apps/ai/messaging/queue.py",
-      "backend/apps/live/danmaku_handler.py",
-      "backend/apps/live/models.py",
-      "backend/apps/live/runtime.py",
-      "backend/core/websocket.py"
-    ],
-    "backend/apps/live/models.py": [],
-    "backend/apps/live/music_requests.py": [
-      "backend/apps/config.py",
-      "backend/apps/music/manager.py",
-      "backend/apps/music/models.py",
-      "backend/apps/music/providers/bilibili.py"
-    ],
-    "backend/apps/live/router.py": [
-      "backend/apps/config.py",
-      "backend/apps/live/dispatcher.py",
-      "backend/apps/live/models.py",
-      "backend/apps/live/runtime.py",
-      "backend/core/websocket.py"
-    ],
-    "backend/apps/live/runtime.py": [
-      "backend/apps/live/adapters/base.py",
-      "backend/apps/live/models.py"
-    ],
-    "backend/apps/music/__init__.py": [
-      "backend/apps/music/manager.py"
-    ],
-    "backend/apps/music/classification/__init__.py": [
-      "backend/apps/music/classification/pipeline.py"
-    ],
-    "backend/apps/music/classification/llm.py": [
-      "backend/apps/ai/client.py",
-      "backend/apps/music/models.py"
-    ],
-    "backend/apps/music/classification/pipeline.py": [
-      "backend/apps/music/classification/llm.py",
-      "backend/apps/music/classification/rules.py",
-      "backend/apps/music/models.py",
-      "backend/apps/music/persistence/repository.py"
-    ],
-    "backend/apps/music/classification/rules.py": [
-      "backend/apps/music/models.py"
-    ],
-    "backend/apps/music/manager.py": [
-      "backend/apps/audio_focus.py",
-      "backend/apps/config.py",
-      "backend/apps/music/classification/llm.py",
-      "backend/apps/music/classification/pipeline.py",
-      "backend/apps/music/classification/rules.py",
-      "backend/apps/music/models.py",
-      "backend/apps/music/persistence/repository.py",
-      "backend/apps/music/providers/base.py",
-      "backend/apps/music/providers/bilibili.py",
-      "backend/apps/music/providers/local.py",
-      "backend/apps/music/providers/registry.py",
-      "backend/apps/music/requests/service.py",
-      "backend/apps/music/runtime.py"
-    ],
-    "backend/apps/music/models.py": [],
-    "backend/apps/music/persistence/__init__.py": [
-      "backend/apps/music/persistence/repository.py"
-    ],
-    "backend/apps/music/persistence/models.py": [
-      "backend/apps/db.py"
-    ],
-    "backend/apps/music/persistence/repository.py": [
-      "backend/apps/db.py",
-      "backend/apps/music/models.py",
-      "backend/apps/music/persistence/models.py"
-    ],
-    "backend/apps/music/providers/__init__.py": [
-      "backend/apps/music/providers/base.py",
-      "backend/apps/music/providers/registry.py"
-    ],
-    "backend/apps/music/providers/base.py": [
-      "backend/apps/music/models.py"
-    ],
-    "backend/apps/music/providers/bilibili.py": [
-      "backend/apps/config.py",
-      "backend/apps/music/models.py",
-      "backend/apps/music/providers/base.py"
-    ],
-    "backend/apps/music/providers/local.py": [
-      "backend/apps/music/models.py",
-      "backend/apps/music/providers/base.py"
-    ],
-    "backend/apps/music/providers/registry.py": [
-      "backend/apps/music/providers/base.py"
-    ],
-    "backend/apps/music/requests/__init__.py": [
-      "backend/apps/music/requests/service.py"
-    ],
-    "backend/apps/music/requests/service.py": [
-      "backend/apps/music/classification/pipeline.py",
-      "backend/apps/music/models.py",
-      "backend/apps/music/persistence/repository.py",
-      "backend/apps/music/providers/base.py",
-      "backend/apps/music/providers/registry.py",
-      "backend/apps/music/runtime.py"
-    ],
-    "backend/apps/music/router.py": [
-      "backend/apps/config.py",
-      "backend/apps/music/manager.py",
-      "backend/apps/music/models.py",
-      "backend/apps/music/runtime.py"
-    ],
-    "backend/apps/music/runtime.py": [
-      "backend/apps/music/models.py",
-      "backend/apps/music/persistence/repository.py"
-    ],
-    "backend/apps/storage/__init__.py": [],
-    "backend/apps/storage/migrations.py": [],
-    "backend/apps/storage/secrets.py": [],
-    "backend/apps/test_router.py": [
-      "backend/apps/live/models.py",
-      "backend/apps/live/runtime.py"
-    ],
-    "backend/avatar_engine/__init__.py": [],
-    "backend/avatar_engine/config.py": [],
-    "backend/avatar_engine/NOTICE.md": [],
-    "backend/avatar_engine/outputs/__init__.py": [
-      "backend/avatar_engine/outputs/preview.py",
-      "backend/avatar_engine/outputs/spout.py"
-    ],
-    "backend/avatar_engine/outputs/base.py": [],
-    "backend/avatar_engine/outputs/preview.py": [],
-    "backend/avatar_engine/outputs/spout.py": [],
-    "backend/avatar_engine/pose.py": [],
-    "backend/avatar_engine/runner.py": [
-      "backend/avatar_engine/config.py",
-      "backend/avatar_engine/outputs/__init__.py",
-      "backend/avatar_engine/outputs/base.py",
-      "backend/avatar_engine/src/composite_input.py",
-      "backend/avatar_engine/src/model_infer_client.py",
-      "backend/avatar_engine/src/utils/preprocess.py",
-      "backend/avatar_engine/src/utils/shared_mem_guard.py",
-      "backend/avatar_engine/windows_runtime.py"
-    ],
-    "backend/avatar_engine/src/__init__.py": [],
-    "backend/avatar_engine/src/args.py": [],
-    "backend/avatar_engine/src/composite_input.py": [
-      "backend/avatar_engine/config.py",
-      "backend/avatar_engine/pose.py",
-      "backend/avatar_engine/src/utils/shared_mem_guard.py",
-      "backend/avatar_engine/src/utils/timer_wait.py"
-    ],
-    "backend/avatar_engine/src/ezvtb_rt_interface.py": [
-      "backend/avatar_engine/src/args.py"
-    ],
-    "backend/avatar_engine/src/model_infer_client.py": [
-      "backend/avatar_engine/config.py",
-      "backend/avatar_engine/src/args.py",
-      "backend/avatar_engine/src/utils/fps.py",
-      "backend/avatar_engine/src/utils/shared_mem_guard.py",
-      "backend/avatar_engine/windows_runtime.py"
-    ],
-    "backend/avatar_engine/src/utils/__init__.py": [],
-    "backend/avatar_engine/src/utils/fps.py": [],
-    "backend/avatar_engine/src/utils/pose_simplify.py": [
-      "backend/avatar_engine/src/args.py"
-    ],
-    "backend/avatar_engine/src/utils/preprocess.py": [],
-    "backend/avatar_engine/src/utils/shared_mem_guard.py": [],
-    "backend/avatar_engine/src/utils/timer_wait.py": [],
-    "backend/avatar_engine/windows_runtime.py": [],
-    "backend/config.example.yaml": [],
-    "backend/core/__init__.py": [],
-    "backend/core/local_boundary.py": [],
-    "backend/core/websocket.py": [],
-    "backend/main.py": [
-      "backend/apps/agent/router.py",
-      "backend/apps/ai/memory_router.py",
-      "backend/apps/ai/router.py",
-      "backend/apps/avatar/router.py",
-      "backend/apps/config_router.py",
-      "backend/apps/config.py",
-      "backend/apps/live/router.py",
-      "backend/apps/music/router.py",
-      "backend/apps/test_router.py",
-      "backend/core/local_boundary.py",
-      "backend/services/nginx_service.py"
-    ],
-    "backend/pyproject.toml": [],
-    "backend/README.md": [],
-    "backend/scripts/migrate_mysql_to_sqlite.py": [
-      "backend/apps/ai/memory/atom_store.py",
-      "backend/apps/ai/memory/atom.py",
-      "backend/apps/config.py",
-      "backend/apps/db.py"
-    ],
-    "backend/services/__init__.py": [],
-    "backend/services/nginx_service.py": [],
-    "backend/test_llm.py": [
-      "backend/apps/ai/client.py",
-      "backend/apps/config.py"
-    ],
-    "backend/tests/.env.example": [],
-    "backend/tests/test_admin_commands.py": [
-      "backend/apps/ai/admin_commands.py",
-      "backend/apps/config.py"
-    ],
-    "backend/tests/test_agent_runtime.py": [
-      "backend/apps/agent/capabilities/base.py",
-      "backend/apps/agent/events.py",
-      "backend/apps/agent/graph.py",
-      "backend/apps/agent/mutual_context.py",
-      "backend/apps/agent/runtime.py",
-      "backend/apps/agent/state.py"
-    ],
-    "backend/tests/test_audio_focus.py": [
-      "backend/apps/audio_focus.py"
-    ],
-    "backend/tests/test_avatar_runtime.py": [
-      "backend/apps/avatar/runtime.py",
-      "backend/apps/avatar/schemas.py",
-      "backend/avatar_engine/config.py",
-      "backend/avatar_engine/pose.py",
-      "backend/avatar_engine/runner.py"
-    ],
-    "backend/tests/test_game_memory_pipeline.py": [
-      "backend/apps/agent/capabilities/mcp.py",
-      "backend/apps/agent/mutual_context.py",
-      "backend/apps/agent/scenarios/profile.py",
-      "backend/apps/agent/state.py",
-      "backend/apps/ai/client.py",
-      "backend/apps/ai/memory/atom.py",
-      "backend/apps/ai/memory/engine.py",
-      "backend/apps/ai/memory/game_memory.py",
-      "backend/apps/ai/memory/session_memory.py"
-    ],
-    "backend/tests/test_host_runtime.py": [
-      "backend/apps/agent/capabilities/host_speech.py",
-      "backend/apps/agent/mutual_context.py",
-      "backend/apps/ai/__init__.py",
-      "backend/apps/ai/host_brain.py",
-      "backend/apps/ai/host_messages.py",
-      "backend/apps/ai/host_runtime.py",
-      "backend/apps/ai/messaging/queue.py",
-      "backend/apps/ai/playback.py",
-      "backend/apps/ai/speech_jobs.py",
-      "backend/apps/ai/speech_pipeline.py",
-      "backend/apps/live/models.py",
-      "backend/apps/live/runtime.py"
-    ],
-    "backend/tests/test_live_adapters.py": [
-      "backend/apps/live/adapters/bilibili.py",
-      "backend/apps/live/adapters/douyin/client.py",
-      "backend/apps/live/adapters/douyin/protocol.py",
-      "backend/apps/live/models.py"
-    ],
-    "backend/tests/test_live_dispatcher.py": [
-      "backend/apps/live/dispatcher.py",
-      "backend/apps/live/models.py",
-      "backend/apps/live/runtime.py"
-    ],
-    "backend/tests/test_live_runtime.py": [
-      "backend/apps/ai/messaging/queue.py",
-      "backend/apps/live/models.py",
-      "backend/apps/live/runtime.py",
-      "backend/core/websocket.py"
-    ],
-    "backend/tests/test_local_music_provider.py": [
-      "backend/apps/music/providers/local.py"
-    ],
-    "backend/tests/test_memory_debug.py": [
-      "backend/apps/ai/memory/atom_store.py",
-      "backend/apps/ai/memory/atom.py",
-      "backend/apps/ai/memory/engine.py",
-      "backend/apps/ai/memory/graph_store.py",
-      "backend/apps/ai/memory/graph_view.py",
-      "backend/apps/ai/memory/injector.py",
-      "backend/apps/ai/memory/session_memory.py",
-      "backend/apps/ai/memory/vector_store.py"
-    ],
-    "backend/tests/test_music_llm_integration.py": [
-      "backend/apps/ai/client.py",
-      "backend/apps/music/classification/llm.py",
-      "backend/apps/music/classification/rules.py",
-      "backend/apps/music/models.py"
-    ],
-    "backend/tests/test_music_requests.py": [
-      "backend/apps/live/music_requests.py"
-    ],
-    "backend/tests/test_music_router.py": [
-      "backend/apps/music/manager.py",
-      "backend/apps/music/models.py",
-      "backend/apps/music/router.py"
-    ],
-    "backend/tests/test_music_runtime.py": [
-      "backend/apps/music/classification/pipeline.py",
-      "backend/apps/music/classification/rules.py",
-      "backend/apps/music/models.py",
-      "backend/apps/music/persistence/repository.py",
-      "backend/apps/music/providers/base.py",
-      "backend/apps/music/providers/registry.py",
-      "backend/apps/music/requests/service.py",
-      "backend/apps/music/runtime.py"
-    ],
-    "backend/tests/test_production_boundary.py": [
-      "backend/core/local_boundary.py"
-    ],
-    "backend/tests/test_scenarios.py": [
-      "backend/apps/agent/capabilities/mcp_adapter.py",
-      "backend/apps/agent/manager.py",
-      "backend/apps/agent/scenarios/profile.py",
-      "backend/apps/agent/scenarios/registry.py"
-    ],
-    "backend/tests/test_test_live_platform_api.py": [
-      "backend/apps/live/models.py",
-      "backend/apps/live/runtime.py",
-      "backend/apps/test_router.py"
-    ],
-    "backend/tests/test_user_memory_summarizer.py": [
-      "backend/apps/ai/memory/__init__.py",
-      "backend/apps/ai/memory/summarizer.py",
-      "backend/apps/db.py",
-      "backend/apps/storage/migrations.py"
-    ],
-    "backend/utils/__init__.py": [],
-    "fronted/.env.console": [],
-    "fronted/.env.live": [],
-    "fronted/env.d.ts": [],
-    "fronted/index.html": [],
-    "fronted/package.json": [],
-    "fronted/postcss.config.js": [],
-    "fronted/src/App.vue": [],
-    "fronted/src/apps/console/ConsoleApp.vue": [],
-    "fronted/src/assets/styles/main.css": [],
-    "fronted/src/components/danmaku/DanmakuItem.vue": [],
-    "fronted/src/components/danmaku/DanmakuPanel.vue": [],
-    "fronted/src/components/infobar/ClockDisplay.vue": [],
-    "fronted/src/components/infobar/InfoBar.vue": [],
-    "fronted/src/components/infobar/MarqueeText.vue": [],
-    "fronted/src/components/infobar/NoticeBadge.vue": [],
-    "fronted/src/components/layout/BottomDecoration.vue": [],
-    "fronted/src/components/layout/TopDecoration.vue": [],
-    "fronted/src/components/mainview/MainView.vue": [],
-    "fronted/src/components/memory/GameMemoryControl.vue": [],
-    "fronted/src/components/memory/MemoryDebugPanel.vue": [],
-    "fronted/src/components/NotificationToast.vue": [],
-    "fronted/src/components/panels/LiveStatsPanel.vue": [],
-    "fronted/src/components/panels/PlaceholderPanel.vue": [],
-    "fronted/src/components/PlayUnlockModal.vue": [],
-    "fronted/src/components/settings/agent/AgentRuntimePanel.vue": [],
-    "fronted/src/components/settings/agent/AgentSettingsPanel.vue": [],
-    "fronted/src/components/settings/agent/CommonAgentSettings.vue": [],
-    "fronted/src/components/settings/agent/GenericScenarioSettings.vue": [],
-    "fronted/src/components/settings/agent/SlayTheSpireSettings.vue": [],
-    "fronted/src/components/settings/music/MusicManagementPanel.vue": [],
-    "fronted/src/components/SettingsPanel.vue": [],
-    "fronted/src/composables/useAvatarInput.ts": [],
-    "fronted/src/composables/useConsoleTheme.ts": [],
-    "fronted/src/composables/useLiveEvents.ts": [
-      "fronted/src/features/music/store.ts",
-      "fronted/src/features/music/types.ts",
-      "fronted/src/stores/livestats.ts",
-      "fronted/src/stores/llm.ts",
-      "fronted/src/utils/notification.ts"
-    ],
-    "fronted/src/features/music/store.ts": [
-      "fronted/src/features/music/types.ts",
-      "fronted/src/utils/notification.ts"
-    ],
-    "fronted/src/features/music/types.ts": [],
-    "fronted/src/main.ts": [
-      "fronted/src/App.vue",
-      "fronted/src/assets/styles/main.css"
-    ],
-    "fronted/src/stores/danmaku.ts": [
-      "fronted/src/composables/useLiveEvents.ts",
-      "fronted/src/types/danmaku.ts"
-    ],
-    "fronted/src/stores/livestats.ts": [],
-    "fronted/src/stores/llm.ts": [
-      "fronted/src/composables/useAvatarInput.ts"
-    ],
-    "fronted/src/stores/memory.ts": [
-      "fronted/src/types/memory.ts",
-      "fronted/src/utils/notification.ts"
-    ],
-    "fronted/src/stores/stream.ts": [],
-    "fronted/src/types/config.ts": [],
-    "fronted/src/types/danmaku.ts": [],
-    "fronted/src/types/memory.ts": [],
-    "fronted/src/utils/notification.ts": [],
-    "fronted/src/vite-env.d.ts": [],
-    "fronted/tailwind.config.js": [],
-    "fronted/tsconfig.json": [],
-    "fronted/tsconfig.node.json": [],
-    "fronted/vite.config.ts": [],
-    "nginx-rtmp-win32/conf/backend-locations.conf": [],
-    "nginx-rtmp-win32/conf/live-locations.conf": [],
-    "nginx-rtmp-win32/conf/mime.types": [],
-    "nginx-rtmp-win32/conf/nginx.conf": [],
-    "nginx-rtmp-win32/html/50x.html": [],
-    "nginx-rtmp-win32/html/crossdomain.xml": [],
-    "nginx-rtmp-win32/html/flashlsOSMF.swf": [],
-    "nginx-rtmp-win32/html/GrindPlayer.swf": [],
-    "nginx-rtmp-win32/html/index.html": [],
-    "nginx-rtmp-win32/html/Main.swf": [],
-    "nginx-rtmp-win32/html/ParsedQueryString.js": [],
-    "nginx-rtmp-win32/html/stat.xsl": [],
-    "nginx-rtmp-win32/html/swfobject.js": [],
-    "nginx-rtmp-win32/html/vod.html": [],
-    "nginx-rtmp-win32/nginx.exe": [],
-    "nginx-rtmp-win32/README.md": [],
-    "nginx-rtmp-win32/stop.bat": [],
-    "nginx-rtmp-win32/temp/temp.txt": [],
-    "nginx-rtmp.conf": [],
-    "PySpout.pyd": [],
-    "README.md": [],
-    "Spout.dll": [],
-    "THIRD_PARTY_NOTICES.md": []
+  "stats": {
+    "filesScanned": 269,
+    "byCategory": {
+      "code": 241,
+      "config": 15,
+      "docs": 6,
+      "markup": 5,
+      "script": 2
+    },
+    "byLanguage": {
+      "unknown": 3,
+      "json": 4,
+      "python": 192,
+      "javascript": 5,
+      "markdown": 5,
+      "yaml": 2,
+      "toml": 3,
+      "config": 4,
+      "typescript": 17,
+      "html": 4,
+      "vue": 14,
+      "css": 1,
+      "conf": 3,
+      "types": 1,
+      "xml": 2,
+      "swf": 3,
+      "exe": 1,
+      "batch": 2,
+      "txt": 1,
+      "pyd": 1,
+      "dll": 1
+    }
   }
 }

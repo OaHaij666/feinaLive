@@ -20,3 +20,6 @@ class MusicProviderRegistry:
 
     def list_ids(self) -> list[str]:
         return sorted(self._providers)
+
+    def values(self) -> list[MusicProvider]:
+        return [self._providers[key] for key in sorted(self._providers)]

@@ -18,6 +18,17 @@ from apps.music.persistence.models import (
     MusicTrackDB,
 )
 
+_VOLATILE_METADATA_KEYS = {
+    "coin_count",
+    "danmaku_count",
+    "favorite_count",
+    "fetched_at",
+    "like_count",
+    "play_count",
+    "reply_count",
+    "view_count",
+}
+
 
 class MusicRepository:
     async def initialize(self) -> None:
@@ -30,7 +41,11 @@ class MusicRepository:
                 "title": track.title,
                 "artists": track.artists,
                 "duration": track.duration_seconds,
-                "metadata": track.metadata,
+                "metadata": {
+                    key: value
+                    for key, value in track.metadata.items()
+                    if key not in _VOLATILE_METADATA_KEYS
+                },
             },
             ensure_ascii=False,
             sort_keys=True,
@@ -87,13 +102,13 @@ class MusicRepository:
                     MusicClassificationDB.source_id == track.source_id,
                     MusicClassificationDB.fingerprint == fingerprint,
                 )
-                .order_by(MusicClassificationDB.manual.desc(), MusicClassificationDB.id.desc())
+                .order_by(MusicClassificationDB.id.desc())
             )
             row = result.scalars().first()
             return ClassificationDecision.model_validate_json(row.decision_json) if row else None
 
     async def save_classification(
-        self, track: Track, decision: ClassificationDecision, *, manual: bool = False
+        self, track: Track, decision: ClassificationDecision
     ) -> None:
         fingerprint = self.fingerprint(track)
         async with get_db_session() as session:
@@ -113,10 +128,9 @@ class MusicRepository:
                 )
                 session.add(row)
             row.decision_json = decision.model_dump_json()
-            row.manual = manual
             await session.commit()
 
-    async def add_library(self, track: Track, *, manually_approved: bool = True) -> None:
+    async def add_library(self, track: Track) -> None:
         track = await self.save_track(track)
         async with get_db_session() as session:
             row = await session.get(MusicLibraryEntryDB, track.id)
@@ -124,7 +138,6 @@ class MusicRepository:
                 row = MusicLibraryEntryDB(track_id=track.id)
                 session.add(row)
             row.enabled = True
-            row.manually_approved = manually_approved
             await session.commit()
 
     async def set_library_enabled(self, track_id: str, enabled: bool) -> bool:
@@ -142,17 +155,42 @@ class MusicRepository:
             return False
         async with get_db_session() as session:
             row = await session.get(MusicLibraryEntryDB, stored.id)
-            return bool(row and row.enabled and row.manually_approved)
+            return bool(row and row.enabled)
 
-    async def list_library(self) -> list[Track]:
+    async def list_library(self, provider: str | None = None) -> list[Track]:
         async with get_db_session() as session:
-            result = await session.execute(
+            statement = (
                 select(MusicTrackDB)
                 .join(MusicLibraryEntryDB, MusicLibraryEntryDB.track_id == MusicTrackDB.id)
                 .where(MusicLibraryEntryDB.enabled.is_(True))
-                .order_by(MusicTrackDB.title)
             )
+            if provider:
+                statement = statement.where(MusicTrackDB.provider == provider)
+            result = await session.execute(statement.order_by(MusicTrackDB.title))
             return [_track_from_row(row) for row in result.scalars().all()]
+
+    async def search_library(
+        self,
+        query: str,
+        *,
+        provider: str | None = None,
+        require_llm_review: bool = False,
+        limit: int = 20,
+    ) -> list[Track]:
+        terms = [value for value in query.casefold().split() if value]
+        ranked: list[tuple[int, Track]] = []
+        for track in await self.list_library(provider=provider):
+            text = f"{track.title} {' '.join(track.artists)}".casefold()
+            score = sum(2 if term in track.title.casefold() else 1 for term in terms if term in text)
+            if terms and score == 0:
+                continue
+            if require_llm_review:
+                decision = await self.get_classification(track)
+                if decision is None or not decision.reviewed_by_llm:
+                    continue
+            ranked.append((score, track))
+        ranked.sort(key=lambda item: (-item[0], item[1].title.casefold()))
+        return [track for _, track in ranked[:limit]]
 
     async def random_library_track(self) -> Track | None:
         tracks = await self.list_library()
@@ -187,7 +225,12 @@ class MusicRepository:
             await session.commit()
 
     async def replace_runtime_state(
-        self, current: QueueEntry | None, queue: list[QueueEntry], paused: bool, volume: float
+        self,
+        current: QueueEntry | None,
+        queue: list[QueueEntry],
+        paused: bool,
+        volume: float,
+        ducking_enabled: bool,
     ) -> None:
         entries = ([current] if current else []) + queue
         for entry in entries:
@@ -215,6 +258,7 @@ class MusicRepository:
                 session.add(setting)
             setting.paused = paused
             setting.volume = volume
+            setting.ducking_enabled = ducking_enabled
             await session.commit()
 
     async def append_history(self, entry: QueueEntry) -> None:
@@ -241,7 +285,9 @@ class MusicRepository:
             )
             await session.commit()
 
-    async def load_runtime_state(self) -> tuple[QueueEntry | None, list[QueueEntry], bool, float]:
+    async def load_runtime_state(
+        self, *, default_ducking_enabled: bool = True
+    ) -> tuple[QueueEntry | None, list[QueueEntry], bool, float, bool]:
         async with get_db_session() as session:
             result = await session.execute(
                 select(MusicQueueEntryDB, MusicTrackDB)
@@ -266,12 +312,13 @@ class MusicRepository:
             setting = await session.get(MusicPlaybackSettingDB, 1)
             paused = bool(setting.paused) if setting else False
             volume = float(setting.volume) if setting else 1.0
+            ducking_enabled = bool(setting.ducking_enabled) if setting else default_ducking_enabled
         current = entries[0] if entries and entries[0].status in {
             QueueEntryStatus.PLAYING,
             QueueEntryStatus.PAUSED,
         } else None
         queue = entries[1:] if current else entries
-        return current, queue, paused, volume
+        return current, queue, paused, volume, ducking_enabled
 
     async def load_history(self, limit: int = 100) -> list[QueueEntry]:
         async with get_db_session() as session:

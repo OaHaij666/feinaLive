@@ -19,7 +19,7 @@ announcement: "AI主播是小笨蛋不要欺负她喵。输入 点歌 歌名 进
 
 # 独立音乐系统
 music:
-  default_provider: "bilibili"
+  default_provider: "auto"
   min_duration_seconds: 60
   max_duration_seconds: 480
   queue_capacity: 5
@@ -30,9 +30,9 @@ music:
   llm_min_confidence: 0.75
   search_candidates: 5
   ducking_factor: 0.2
-  library_seed:
-    - provider: "bilibili"
-      source_id: "BVxxxxxxxxx"
+  ducking_enabled: true
+  local_directories:
+    - "D:/Music"
 
 # ============================================================
 # LLM 配置

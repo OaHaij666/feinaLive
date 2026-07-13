@@ -487,7 +487,7 @@ class Config:
 
     @property
     def music_default_provider(self) -> str:
-        return str(self._data.get("music", {}).get("default_provider", "bilibili"))
+        return str(self._data.get("music", {}).get("default_provider", "auto"))
 
     @property
     def music_min_duration_seconds(self) -> int:
@@ -530,8 +530,12 @@ class Config:
         return float(self._data.get("music", {}).get("ducking_factor", 0.2))
 
     @property
-    def music_library_seed(self) -> list[dict]:
-        return list(self._data.get("music", {}).get("library_seed", []))
+    def music_ducking_enabled(self) -> bool:
+        return bool(self._data.get("music", {}).get("ducking_enabled", True))
+
+    @property
+    def music_local_directories(self) -> list[str]:
+        return [str(value) for value in self._data.get("music", {}).get("local_directories", [])]
 
     # ---- 记忆系统 (memory) ----
 

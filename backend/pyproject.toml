@@ -28,6 +28,7 @@ dependencies = [
     "pynput",
     "opencv-python",
     "Pillow",
+    "mutagen>=1.47.0",
     "pyopengl",
     "onnx",
     "onnxruntime-gpu>=1.21.0,<1.23.0",

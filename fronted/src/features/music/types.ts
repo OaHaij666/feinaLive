@@ -38,6 +38,7 @@ export interface MusicState {
   paused: boolean
   volume: number
   ducking_factor: number
+  ducking_enabled: boolean
   effective_volume: number
   playback_owner_id?: string | null
 }

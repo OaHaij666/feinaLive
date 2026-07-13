@@ -353,8 +353,20 @@
                 <div class="form-group">
                   <label>默认 Provider</label>
                   <select v-model="cfg.music.default_provider">
+                    <option value="auto">聚合所有可用源</option>
                     <option value="bilibili">Bilibili</option>
+                    <option value="local">本地音乐</option>
                   </select>
+                </div>
+                <div class="form-group">
+                  <label>本地音乐目录 <span class="hint">(每行一个，重启后生效)</span></label>
+                  <textarea
+                    class="textarea-field"
+                    rows="4"
+                    :value="cfg.music.local_directories.join('\n')"
+                    @input="setLocalDirectories"
+                    placeholder="D:/Music"
+                  ></textarea>
                 </div>
                 <div class="section-title">点歌策略</div>
                 <div class="form-row-2">
@@ -373,6 +385,7 @@
                   <div class="form-group"><label>规则拒绝阈值</label><input type="number" v-model.number="cfg.music.reject_score" min="-100" max="0" /></div>
                   <div class="form-group"><label>LLM 最低置信度</label><input type="number" v-model.number="cfg.music.llm_min_confidence" min="0" max="1" step="0.05" /></div>
                   <div class="form-group"><label>主播说话压低比例</label><input type="number" v-model.number="cfg.music.ducking_factor" min="0" max="1" step="0.05" /></div>
+                  <div class="form-group"><label class="checkbox-label"><input type="checkbox" v-model="cfg.music.ducking_enabled" /> 默认启用自动压低</label></div>
                 </div>
               </div>
 
@@ -433,6 +446,9 @@
                   <button class="cmd-btn purple" @click="sendCommand('/next')">下一首</button>
                   <button class="cmd-btn purple" @click="sendCommand('/pause 1')" :disabled="adminState.isPaused">暂停音乐</button>
                   <button class="cmd-btn purple" @click="sendCommand('/pause 0')" :disabled="!adminState.isPaused">恢复音乐</button>
+                  <button class="cmd-btn purple" @click="musicStore.setDuckingEnabled(!musicState.ducking_enabled)">
+                    自动压低：{{ musicState.ducking_enabled ? '开' : '关' }}
+                  </button>
                   <button class="cmd-btn red" @click="sendCommand('/rm')">移除当前</button>
                 </div>
                 <div class="command-line">
@@ -483,6 +499,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, watch, reactive } from 'vue'
+import { storeToRefs } from 'pinia'
 import type { FullConfig } from '../types/config'
 import { MASKED } from '../types/config'
 import { useNotification } from '@/utils/notification'
@@ -501,6 +518,7 @@ const emit = defineEmits<{ close: []; saved: [roomId: number] }>()
 const llmStore = useLLMStore()
 const danmakuStore = useDanmakuStore()
 const musicStore = useMusicStore()
+const { state: musicState } = storeToRefs(musicStore)
 
 // ---- 连接状态（配置仅从后端获取，前端不缓存） ----
 const connected = ref(false)
@@ -522,6 +540,13 @@ const tabs = [
 const activeTab = ref('host')
 const characters = ref<{ name: string }[]>([])
 const saveStatus = ref('')
+
+function setLocalDirectories(event: Event) {
+  cfg.music.local_directories = (event.target as HTMLTextAreaElement).value
+    .split(/\r?\n/)
+    .map(value => value.trim())
+    .filter(Boolean)
+}
 const saveStatusText = ref('')
 const vectorStatus = reactive({ available: false, vector_count: 0 })
 
@@ -540,7 +565,7 @@ function initCfgShape() {
     easyvtuber: { enabled: true, character: 'feina00', input: { type: 'debug', osf_address: '127.0.0.1:11573', mouse_range: '0,0,1920,1080' }, model: { version: 'v3', precision: 'half', separable: true, use_tensorrt: true, use_eyebrow: true }, performance: { frame_rate: 30, interpolation: 'x2', super_resolution: 'off', ram_cache: '2gb', vram_cache: '2gb' }, output: { websocket: { enabled: true, port: 8765, host: 'localhost' } } },
     ai: { max_history_per_session: 16, summary_interval: 10, summary_idle_seconds: 300.0, summary_scan_interval_seconds: 60.0, max_recent_messages: 16, poll_interval_seconds: 10.0 },
     messaging: { danmaku_starvation_seconds: 30.0, danmaku_flood_threshold: 5, danmaku_flood_window: 20.0, gift_starvation_seconds: 60.0, gift_flood_threshold: 3, gift_flood_window: 30.0, gift_value_highest: 10000, gift_value_high: 5000, gift_value_normal: 1000, gift_value_low: 100, user_cooldown_seconds: 3.0, default_ttl_seconds: 30.0, rate_limit_commentary: 4.0, rate_limit_danmaku: 3.0, rate_limit_gift: 10.0 },
-    music: { default_provider: 'bilibili', min_duration_seconds: 60, max_duration_seconds: 480, queue_capacity: 5, per_user_limit: 2, allow_bare_bv: false, accept_score: 60, reject_score: -50, llm_min_confidence: 0.75, search_candidates: 5, ducking_factor: 0.2 },
+    music: { default_provider: 'auto', min_duration_seconds: 60, max_duration_seconds: 480, queue_capacity: 5, per_user_limit: 2, allow_bare_bv: false, accept_score: 60, reject_score: -50, llm_min_confidence: 0.75, search_candidates: 5, ducking_factor: 0.2, ducking_enabled: true, local_directories: [] },
     storage: { sqlite_path: 'data/feinalive.db', chroma_path: 'data/chroma', chroma_collection: 'memory_atoms' },
     announcement: '',
     admin: { uid: 378810242, username: '' },

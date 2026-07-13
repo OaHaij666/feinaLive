@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import random
 
 from apps.audio_focus import get_audio_focus_coordinator
 from apps.config import config
@@ -9,9 +10,6 @@ from apps.music.classification.llm import LLMMusicClassifier
 from apps.music.classification.pipeline import MusicClassificationPipeline
 from apps.music.classification.rules import RuleMusicClassifier
 from apps.music.models import (
-    ClassificationDecision,
-    ClassificationVerdict,
-    DecisionSource,
     MusicRequest,
     MusicRequestResult,
     MusicState,
@@ -20,7 +18,9 @@ from apps.music.models import (
     Track,
 )
 from apps.music.persistence.repository import MusicRepository
+from apps.music.providers.base import ProviderTrustPolicy
 from apps.music.providers.bilibili import BilibiliMusicProvider
+from apps.music.providers.local import LocalMusicProvider
 from apps.music.providers.registry import MusicProviderRegistry
 from apps.music.requests.service import MusicRequestService
 from apps.music.runtime import MusicRuntime
@@ -51,10 +51,12 @@ class MusicManager:
                 return
             await self._repository.initialize()
             self._providers.register(BilibiliMusicProvider())
+            self._providers.register(LocalMusicProvider(config.music_local_directories))
             self._runtime = MusicRuntime(
                 self._repository,
                 queue_capacity=config.music_queue_capacity,
                 per_user_limit=config.music_per_user_limit,
+                ducking_enabled=config.music_ducking_enabled,
             )
             await self._runtime.initialize()
             self._runtime.set_state_callback(self._broadcast_state)
@@ -76,7 +78,6 @@ class MusicManager:
                 max_duration_seconds=config.music_max_duration_seconds,
                 search_candidates=config.music_search_candidates,
             )
-            await self._seed_library()
             await self._ensure_fallback(await self._runtime.snapshot())
             self._initialized = True
             logger.info("MusicManager initialized with providers=%s", self._providers.list_ids())
@@ -90,6 +91,7 @@ class MusicManager:
             state.queue,
             state.paused,
             state.volume,
+            state.ducking_enabled,
         )
 
     async def submit(self, request: MusicRequest) -> MusicRequestResult:
@@ -104,6 +106,10 @@ class MusicManager:
     async def list_providers(self) -> list[str]:
         await self.initialize()
         return self._providers.list_ids()
+
+    async def search_provider(self, provider_id: str, query: str, limit: int = 20):
+        await self.initialize()
+        return await self._providers.get(provider_id).search(query, limit=limit)
 
     async def skip(self, *, remove_from_library: bool = False) -> MusicState:
         await self.initialize()
@@ -125,6 +131,10 @@ class MusicManager:
         await self.initialize()
         factor = config.music_ducking_factor if active else 1.0
         return await self.runtime.set_ducking(factor)
+
+    async def set_ducking_enabled(self, enabled: bool) -> MusicState:
+        await self.initialize()
+        return await self.runtime.set_ducking_enabled(enabled)
 
     async def playback_event(
         self,
@@ -155,30 +165,25 @@ class MusicManager:
         provider = self._providers.get(state.current.track.provider)
         return await provider.resolve_stream(state.current.track.source_id)
 
-    async def add_library(
-        self, provider_id: str, source_id: str, *, manually_approved: bool = True
-    ) -> Track:
+    async def add_library(self, provider_id: str, source_id: str) -> Track:
         await self.initialize()
-        track = await self._providers.get(provider_id).inspect(source_id)
-        track = await self._repository.save_track(track)
-        await self._repository.add_library(track, manually_approved=manually_approved)
-        if manually_approved:
-            await self._repository.save_classification(
-                track,
-                ClassificationDecision(
-                    verdict=ClassificationVerdict.ACCEPT,
-                    source=DecisionSource.MANUAL,
-                    title=track.title,
-                    artists=track.artists,
-                    reason="管理员加入曲库",
-                ),
-                manual=True,
-            )
+        assert self._requests is not None
+        track, _ = await self._requests.add_to_catalog(provider_id, source_id)
         return track
 
     async def list_library(self) -> list[Track]:
         await self.initialize()
-        return await self._repository.list_library()
+        tracks = await self._repository.list_library()
+        trusted: list[Track] = []
+        for track in tracks:
+            provider = self._providers.get(track.provider)
+            if provider.trust_policy == ProviderTrustPolicy.NATIVE_MUSIC:
+                trusted.append(track)
+                continue
+            decision = await self._repository.get_classification(track)
+            if decision and decision.reviewed_by_llm:
+                trusted.append(track)
+        return trusted
 
     async def history(self, limit: int = 100) -> list[QueueEntry]:
         await self.initialize()
@@ -199,31 +204,15 @@ class MusicManager:
     async def _ensure_fallback(self, state: MusicState) -> MusicState:
         if state.current is not None or state.queue:
             return state
-        fallback = await self._repository.random_library_track()
-        if fallback is None:
+        library = await self.list_library()
+        if not library:
             return state
+        fallback = random.choice(library)
         try:
             await self.runtime.enqueue(fallback, requested_by="system")
         except Exception:
             logger.warning("Unable to enqueue fallback music", exc_info=True)
         return await self.runtime.snapshot()
-
-    async def _seed_library(self) -> None:
-        if await self._repository.list_library():
-            return
-        for item in config.music_library_seed:
-            provider_id = str(item.get("provider") or config.music_default_provider)
-            source_id = str(item.get("source_id") or "")
-            if not source_id:
-                continue
-            try:
-                provider = self._providers.get(provider_id)
-                track = await provider.inspect(source_id)
-                await self._repository.add_library(track, manually_approved=True)
-            except Exception:
-                logger.warning(
-                    "Unable to seed music track %s/%s", provider_id, source_id, exc_info=True
-                )
 
     @staticmethod
     async def _broadcast_state(state: MusicState) -> None:

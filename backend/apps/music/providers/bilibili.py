@@ -9,12 +9,14 @@ from bilibili_api import Credential, search, video
 
 from apps.config import config
 from apps.music.models import AudioStream, ProviderSearchResult, Track
+from apps.music.providers.base import ProviderTrustPolicy
 
 logger = logging.getLogger(__name__)
 
 
 class BilibiliMusicProvider:
     id = "bilibili"
+    trust_policy = ProviderTrustPolicy.REVIEW_REQUIRED
     SOURCE_PATTERN = re.compile(r"BV[a-zA-Z0-9]{10}")
 
     def __init__(self) -> None:

@@ -20,14 +20,12 @@ def parse_music_request(text: str, user: str, *, request_id: str = "") -> MusicR
     source_id = BilibiliMusicProvider.extract_source_id(payload)
     if not explicit and not (config.music_allow_bare_bv and source_id):
         return None
-    if not payload:
-        return None
     query = payload.replace(source_id, "").strip() if source_id else payload
     return MusicRequest(
         query=query or source_id or "",
         requested_by=user,
         request_id=request_id or str(uuid4()),
-        provider=config.music_default_provider,
+        provider="bilibili" if source_id else config.music_default_provider,
         direct_source_id=source_id,
     )
 

@@ -19,10 +19,10 @@ class ClassificationVerdict(str, Enum):
 
 
 class DecisionSource(str, Enum):
-    MANUAL = "manual"
     CACHE = "cache"
     RULES = "rules"
     LLM = "llm"
+    PROVIDER = "provider"
 
 
 class QueueEntryStatus(str, Enum):
@@ -56,6 +56,7 @@ class ClassificationDecision(BaseModel):
     has_conflict: bool = False
     confidence: float | None = None
     source: DecisionSource = DecisionSource.RULES
+    reviewed_by_llm: bool = False
     title: str = ""
     artists: list[str] = Field(default_factory=list)
     reason: str = ""
@@ -92,6 +93,7 @@ class MusicState(BaseModel):
     paused: bool
     volume: float
     ducking_factor: float
+    ducking_enabled: bool
     effective_volume: float
     playback_owner_id: str | None = None
 
@@ -99,10 +101,9 @@ class MusicState(BaseModel):
 class MusicRequest(BaseModel):
     query: str
     requested_by: str
-    provider: str = "bilibili"
+    provider: str = "auto"
     request_id: str = Field(default_factory=lambda: str(uuid4()))
     direct_source_id: str | None = None
-    bypass_review: bool = False
 
 
 class MusicRequestResult(BaseModel):
@@ -124,7 +125,8 @@ class ProviderSearchResult(BaseModel):
 
 
 class AudioStream(BaseModel):
-    url: str
+    url: str = ""
+    local_path: str = ""
     media_type: str = "audio/mp4"
     headers: dict[str, str] = Field(default_factory=dict)
     allowed_host_suffixes: list[str] = Field(default_factory=list)

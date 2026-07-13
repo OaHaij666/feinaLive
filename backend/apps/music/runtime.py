@@ -29,6 +29,7 @@ class MusicRuntime:
         per_user_limit: int,
         history_capacity: int = 100,
         owner_ttl_seconds: float = 20.0,
+        ducking_enabled: bool = True,
     ) -> None:
         self._repository = repository
         self._queue_capacity = queue_capacity
@@ -39,6 +40,7 @@ class MusicRuntime:
         self._paused = False
         self._volume = 1.0
         self._ducking_factor = 1.0
+        self._ducking_enabled = ducking_enabled
         self._revision = 0
         self._lock = asyncio.Lock()
         self._callback: StateCallback | None = None
@@ -47,13 +49,16 @@ class MusicRuntime:
         self._owner_ttl_seconds = owner_ttl_seconds
 
     async def initialize(self) -> None:
-        current, queue, paused, volume = await self._repository.load_runtime_state()
+        current, queue, paused, volume, ducking_enabled = await self._repository.load_runtime_state(
+            default_ducking_enabled=self._ducking_enabled
+        )
         history = await self._repository.load_history(limit=self._history.maxlen or 100)
         async with self._lock:
             self._current = current
             self._queue = deque(queue)
             self._paused = paused
             self._volume = volume
+            self._ducking_enabled = ducking_enabled
             self._history = deque(history, maxlen=self._history.maxlen)
             if self._current:
                 self._current.status = (
@@ -162,6 +167,13 @@ class MusicRuntime:
             self._ducking_factor = max(0.0, min(1.0, factor))
             self._revision += 1
             state = self._snapshot_locked()
+        await self._notify(state)
+        return state
+
+    async def set_ducking_enabled(self, enabled: bool) -> MusicState:
+        async with self._lock:
+            self._ducking_enabled = enabled
+            state = await self._commit_locked()
         await self._notify(state)
         return state
 
@@ -283,6 +295,7 @@ class MusicRuntime:
             list(self._queue),
             self._paused,
             self._volume,
+            self._ducking_enabled,
         )
         return self._snapshot_locked()
 
@@ -295,7 +308,9 @@ class MusicRuntime:
             paused=self._paused,
             volume=self._volume,
             ducking_factor=self._ducking_factor,
-            effective_volume=self._volume * self._ducking_factor,
+            ducking_enabled=self._ducking_enabled,
+            effective_volume=self._volume
+            * (self._ducking_factor if self._ducking_enabled else 1.0),
             playback_owner_id=owner,
         )
 

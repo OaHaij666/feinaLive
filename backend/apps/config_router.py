@@ -165,7 +165,7 @@ class MessagingConfig(BaseModel):
 
 
 class MusicConfigModel(BaseModel):
-    default_provider: str = "bilibili"
+    default_provider: str = "auto"
     min_duration_seconds: int = Field(default=60, ge=1, le=86400)
     max_duration_seconds: int = Field(default=480, ge=1, le=86400)
     queue_capacity: int = Field(default=5, ge=1, le=1000)
@@ -176,6 +176,8 @@ class MusicConfigModel(BaseModel):
     llm_min_confidence: float = Field(default=0.75, ge=0, le=1)
     search_candidates: int = Field(default=5, ge=1, le=20)
     ducking_factor: float = Field(default=0.2, ge=0, le=1)
+    ducking_enabled: bool = True
+    local_directories: list[str] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def validate_ranges(self):
@@ -371,6 +373,8 @@ async def get_full_config():
             llm_min_confidence=config.music_llm_min_confidence,
             search_candidates=config.music_search_candidates,
             ducking_factor=config.music_ducking_factor,
+            ducking_enabled=config.music_ducking_enabled,
+            local_directories=config.music_local_directories,
         ),
         storage=StorageConfig(
             sqlite_path=config.app_db_path,
@@ -602,6 +606,8 @@ async def update_full_config(config_data: FullConfig, response: Response):
         flat["music.llm_min_confidence"] = mc.llm_min_confidence
         flat["music.search_candidates"] = mc.search_candidates
         flat["music.ducking_factor"] = mc.ducking_factor
+        flat["music.ducking_enabled"] = mc.ducking_enabled
+        flat["music.local_directories"] = mc.local_directories
 
         storage = config_data.storage
         flat["storage.sqlite_path"] = storage.sqlite_path

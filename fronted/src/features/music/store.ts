@@ -33,6 +33,7 @@ export const useMusicStore = defineStore('music', () => {
     paused: false,
     volume: 1,
     ducking_factor: 1,
+    ducking_enabled: true,
     effective_volume: 1,
     playback_owner_id: null,
   })
@@ -233,29 +234,16 @@ export const useMusicStore = defineStore('music', () => {
     }))
   }
 
-  function applyExternalState(next: MusicState) {
-    applyState(next)
+  async function setDuckingEnabled(enabled: boolean) {
+    applyState(await request<MusicState>('/commands/ducking', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled }),
+    }))
   }
 
-  async function addSong(sourceId: string, requestedBy = 'admin') {
-    try {
-      const result = await request<{ accepted: boolean; error?: string }>('/requests', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          query: sourceId,
-          source_id: sourceId,
-          provider: 'bilibili',
-          requested_by: requestedBy,
-        }),
-      })
-      if (!result.accepted) notification.error(result.error || '点歌未通过审核')
-      await fetchState()
-      return result.accepted
-    } catch (cause) {
-      notification.error(`点歌失败: ${String(cause)}`)
-      return false
-    }
+  function applyExternalState(next: MusicState) {
+    applyState(next)
   }
 
   async function removeFromQueue(entryId: string) {
@@ -292,7 +280,7 @@ export const useMusicStore = defineStore('music', () => {
     togglePlay,
     skipCurrent,
     setVolume,
-    addSong,
+    setDuckingEnabled,
     removeFromQueue,
     seekTo,
   }

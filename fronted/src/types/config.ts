@@ -175,6 +175,8 @@ export interface MusicConfigModel {
   llm_min_confidence: number
   search_candidates: number
   ducking_factor: number
+  ducking_enabled: boolean
+  local_directories: string[]
 }
 
 export interface StorageConfig {

@@ -43,7 +43,6 @@ class MusicClassificationDB(Base):
     source_id: Mapped[str] = mapped_column(String(160), index=True)
     fingerprint: Mapped[str] = mapped_column(String(64), index=True)
     decision_json: Mapped[str] = mapped_column(Text)
-    manual: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=func.now())
 
 
@@ -54,7 +53,6 @@ class MusicLibraryEntryDB(Base):
         String(36), ForeignKey("music_tracks.id", ondelete="CASCADE"), primary_key=True
     )
     enabled: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
-    manually_approved: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=func.now())
 
 
@@ -93,6 +91,7 @@ class MusicPlaybackSettingDB(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, default=1)
     paused: Mapped[bool] = mapped_column(Boolean, default=False)
     volume: Mapped[float] = mapped_column(Float, default=1.0)
+    ducking_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
 
 
 class MusicPlayHistoryDB(Base):

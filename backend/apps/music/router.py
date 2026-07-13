@@ -4,7 +4,7 @@ from urllib.parse import urljoin, urlparse
 
 import httpx
 from fastapi import APIRouter, HTTPException, Query, Request, Response
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, Field
 from starlette.background import BackgroundTask
 
@@ -31,6 +31,15 @@ class VolumeRequest(BaseModel):
     volume: float = Field(ge=0.0, le=1.0)
 
 
+class DuckingRequest(BaseModel):
+    enabled: bool
+
+
+class CatalogAdmissionRequest(BaseModel):
+    provider: str
+    source_id: str
+
+
 class PlayerRequest(BaseModel):
     player_id: str = Field(min_length=8, max_length=100)
 
@@ -49,6 +58,14 @@ async def get_state() -> MusicState:
 @router.get("/providers")
 async def providers() -> dict[str, list[str]]:
     return {"providers": await get_music_manager().list_providers()}
+
+
+@router.get("/providers/{provider}/search")
+async def search_provider(provider: str, query: str = "", limit: int = Query(20, ge=1, le=100)):
+    try:
+        return {"items": await get_music_manager().search_provider(provider, query, limit)}
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @router.post("/requests", response_model=MusicRequestResult)
@@ -78,6 +95,11 @@ async def volume(body: VolumeRequest) -> MusicState:
     return await get_music_manager().set_volume(body.volume)
 
 
+@router.post("/commands/ducking", response_model=MusicState)
+async def ducking(body: DuckingRequest) -> MusicState:
+    return await get_music_manager().set_ducking_enabled(body.enabled)
+
+
 @router.delete("/queue/{entry_id}")
 async def remove_queue_entry(entry_id: str) -> dict[str, bool]:
     removed = await get_music_manager().remove_queue_entry(entry_id)
@@ -101,10 +123,10 @@ async def history(limit: int = Query(default=100, ge=1, le=500)):
     return {"items": await get_music_manager().history(limit)}
 
 
-@router.post("/library/{provider}/{source_id}")
-async def add_library(provider: str, source_id: str):
+@router.post("/library")
+async def add_library(body: CatalogAdmissionRequest):
     try:
-        return await get_music_manager().add_library(provider, source_id)
+        return await get_music_manager().add_library(body.provider, body.source_id)
     except Exception as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
@@ -163,6 +185,12 @@ async def stream_audio(
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    if stream.local_path:
+        return FileResponse(
+            stream.local_path,
+            media_type=stream.media_type,
+            headers={"Cache-Control": "no-store"},
+        )
     headers = dict(stream.headers)
     if range_header := request.headers.get("range"):
         headers["Range"] = range_header

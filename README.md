@@ -52,6 +52,31 @@ feinaLive/
 
 ## 快速开始
 
+### 推荐：桌面控制中心一键启动
+
+完成下方配置后，双击仓库根目录的 `start_feinalive.bat`。首次运行会自动创建 Launcher 独立虚拟环境并安装 PySide6，随后打开 FeinaLive Control Center：
+
+- 自动启动 Speech Gateway 和 Backend，并由 Backend 启动 Nginx；
+- 首次缺少前端依赖或生产构建时，自动执行安装与构建；
+- 集中显示 Bifrost、Speech Gateway、Backend、MCP、双前端、FeinaAvatar、直播平台 Runtime 和 Agent Runtime 的健康状态；
+- 集中收集托管进程日志到 `launcher/logs/`，支持模块筛选、搜索与自动滚动；
+- 支持单模块启动、停止、重启，以及打开直播端和运营控制台。
+
+Bifrost 默认由外部独立管理。若希望控制中心同时托管它，可在启动 BAT 前设置完整启动命令，例如：
+
+```powershell
+$env:BIFROST_START_COMMAND = '你的 Bifrost 启动命令'
+.\start_feinalive.bat
+```
+
+只打开控制中心、不自动启动服务，可使用：
+
+```powershell
+uv run --project launcher python -m launcher.main --no-autostart
+```
+
+以下步骤保留用于首次配置、开发调试和手动启动。
+
 ### 1. 后端依赖
 
 ```powershell

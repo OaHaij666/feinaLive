@@ -4,7 +4,7 @@ import asyncio
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import JSONResponse
@@ -269,6 +269,20 @@ async def health():
     }
 
 
+@app.post("/system/shutdown", status_code=status.HTTP_202_ACCEPTED)
+async def shutdown(request: Request):
+    """Ask the local Uvicorn server to run its normal lifespan shutdown."""
+    client_host = request.client.host if request.client else ""
+    if client_host not in {"127.0.0.1", "::1", "testclient"} or request.headers.get("origin"):
+        raise HTTPException(status_code=403, detail="local launcher only")
+
+    server = getattr(request.app.state, "uvicorn_server", None)
+    if server is None:
+        raise HTTPException(status_code=503, detail="server lifecycle is not managed")
+    server.should_exit = True
+    return {"status": "shutting_down"}
+
+
 @app.get("/stream/status")
 async def stream_status():
     nginx = get_nginx_service()
@@ -280,4 +294,8 @@ async def stream_status():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="127.0.0.1", port=9191, access_log=False)
+
+    server_config = uvicorn.Config(app, host="127.0.0.1", port=9191, access_log=False)
+    server = uvicorn.Server(server_config)
+    app.state.uvicorn_server = server
+    server.run()

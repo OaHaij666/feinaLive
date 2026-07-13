@@ -7,7 +7,7 @@ from collections import deque
 from datetime import datetime
 from pathlib import Path
 
-from PySide6.QtCore import QProcess, QSettings, Qt, QTimer, QUrl, Signal
+from PySide6.QtCore import QByteArray, QProcess, QSettings, Qt, QTimer, QUrl, Signal
 from PySide6.QtGui import QCloseEvent, QDesktopServices, QFont, QTextCursor
 from PySide6.QtNetwork import QNetworkAccessManager, QNetworkReply, QNetworkRequest
 from PySide6.QtWidgets import (
@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
     QFrame,
     QGridLayout,
     QHBoxLayout,
+    QInputDialog,
     QLabel,
     QLineEdit,
     QMainWindow,
@@ -87,7 +88,7 @@ class ModuleCard(QFrame):
 
         actions = QHBoxLayout()
         actions.setSpacing(7)
-        if spec.managed:
+        if spec.controllable:
             self.start_button = self._button("启动", lambda: self.start_requested.emit(spec.id))
             self.restart_button = self._button("重启", lambda: self.restart_requested.emit(spec.id))
             self.stop_button = self._button("停止", lambda: self.stop_requested.emit(spec.id))
@@ -102,6 +103,7 @@ class ModuleCard(QFrame):
             )
         actions.addStretch(1)
         layout.addLayout(actions)
+        self.set_state("unknown")
 
     def _button(self, text: str, callback) -> QPushButton:
         button = QPushButton(text)
@@ -117,23 +119,28 @@ class ModuleCard(QFrame):
         if detail:
             self.detail.setText(detail)
         if self.start_button:
-            running = state in {"starting", "running", "healthy", "degraded", "idle"}
+            running = state in {"starting", "running", "healthy", "degraded"}
+            can_stop = self.spec.managed or bool(self.spec.stop_url)
             self.start_button.setEnabled(not running)
-            self.restart_button.setEnabled(running)
-            self.stop_button.setEnabled(running)
+            self.restart_button.setEnabled(running and can_stop)
+            self.stop_button.setEnabled(running and can_stop)
 
 
 class LauncherWindow(QMainWindow):
     def __init__(self, root: Path, autostart: bool = True) -> None:
         super().__init__()
         self.root = root
-        self.specs = build_specs(root)
+        self.settings = QSettings("feinaLive", "Launcher")
+        command_overrides = {
+            module_id: str(self.settings.value(f"commands/{module_id}", ""))
+            for module_id in ("bifrost", "mcp")
+        }
+        self.specs = build_specs(root, command_overrides)
         self.spec_by_id = {spec.id: spec for spec in self.specs}
         self.cards: dict[str, ModuleCard] = {}
         self.process_states: dict[str, str] = {}
         self.health_states: dict[str, HealthResult] = {}
         self.log_records: deque[tuple[str, str, str, str]] = deque(maxlen=5000)
-        self.settings = QSettings("feinaLive", "Launcher")
         self.theme = str(self.settings.value("theme", "dark"))
         self.language = str(self.settings.value("language", "zh"))
         self.network = QNetworkAccessManager(self)
@@ -217,9 +224,9 @@ class LauncherWindow(QMainWindow):
         cards_layout.setVerticalSpacing(10)
         for index, spec in enumerate(self.specs):
             card = ModuleCard(spec)
-            card.start_requested.connect(self.processes.start)
-            card.restart_requested.connect(self.processes.restart)
-            card.stop_requested.connect(self.processes.stop)
+            card.start_requested.connect(self._start_module)
+            card.restart_requested.connect(self._restart_module)
+            card.stop_requested.connect(self._stop_module)
             self.cards[spec.id] = card
             cards_layout.addWidget(card, index // 3, index % 3)
         for column in range(3):
@@ -283,6 +290,89 @@ class LauncherWindow(QMainWindow):
         self.log_filter.currentIndexChanged.connect(self.render_logs)
         self.log_search.textChanged.connect(self.render_logs)
 
+    def _start_module(self, module_id: str) -> None:
+        spec = self.spec_by_id[module_id]
+        if spec.managed:
+            self.processes.start(module_id)
+            return
+        if spec.start_url:
+            self._api_control(module_id, spec.start_url, "starting")
+            return
+        if not spec.command_env:
+            return
+        title = "Configure startup command" if self.language == "en" else "配置启动命令"
+        prompt = (
+            f"Enter the command used to start {spec.name}:"
+            if self.language == "en"
+            else f"请输入用于启动 {spec.name} 的完整命令："
+        )
+        command, accepted = QInputDialog.getText(self, title, prompt)
+        command = command.strip()
+        if not accepted or not command:
+            return
+        self.settings.setValue(f"commands/{module_id}", command)
+        updated = self.processes.configure_command(module_id, command)
+        self.spec_by_id[module_id] = updated
+        self.cards[module_id].spec = updated
+        self.specs = [updated if item.id == module_id else item for item in self.specs]
+        self.processes.start(module_id)
+
+    def _stop_module(self, module_id: str) -> None:
+        spec = self.spec_by_id[module_id]
+        if spec.managed:
+            self.processes.stop(module_id)
+        elif spec.stop_url:
+            self._api_control(module_id, spec.stop_url, "stopping")
+
+    def _restart_module(self, module_id: str) -> None:
+        spec = self.spec_by_id[module_id]
+        if spec.managed:
+            self.processes.restart(module_id)
+        elif spec.stop_url and spec.start_url:
+            self._api_control(
+                module_id,
+                spec.stop_url,
+                "stopping",
+                after=lambda: self._api_control(module_id, spec.start_url, "starting"),
+            )
+
+    def _api_control(
+        self,
+        module_id: str,
+        url: str,
+        transition: str,
+        after=None,
+    ) -> None:
+        self.on_process_state(module_id, transition)
+        request = QNetworkRequest(QUrl(url))
+        request.setTransferTimeout(10000)
+        request.setHeader(QNetworkRequest.KnownHeaders.ContentTypeHeader, "application/json")
+        reply = self.network.post(request, QByteArray(b"{}"))
+
+        def finished() -> None:
+            status = int(reply.attribute(QNetworkRequest.Attribute.HttpStatusCodeAttribute) or 0)
+            body = bytes(reply.readAll()).decode("utf-8", errors="replace")
+            if 200 <= status < 300:
+                final_state = "running" if transition == "starting" else "stopped"
+                self.on_process_state(module_id, final_state)
+                action = "started" if transition == "starting" else "stopped"
+                message = (
+                    f"Module {action} through lifecycle API"
+                    if self.language == "en"
+                    else f"已通过生命周期 API {'启动' if transition == 'starting' else '停止'}模块"
+                )
+                self.append_log(module_id, "system", message)
+                if after:
+                    QTimer.singleShot(250, after)
+            else:
+                self.on_process_state(module_id, "error")
+                message = body[:500] or reply.errorString()
+                self.append_log(module_id, "error", message)
+            reply.deleteLater()
+            QTimer.singleShot(300, self.check_health)
+
+        reply.finished.connect(finished)
+
     def start_all(self) -> None:
         self.append_log("launcher", "system", "开始启动 feinaLive 运行栈")
         if self.spec_by_id["bifrost"].managed:
@@ -294,11 +384,13 @@ class LauncherWindow(QMainWindow):
                 "Bifrost 由外部管理；设置 BIFROST_START_COMMAND 后可由启动器托管",
             )
         self.processes.start("speech")
+        if self.spec_by_id["mcp"].managed:
+            self.processes.start("mcp")
         self._ensure_frontend_then_start_backend()
 
     def stop_all(self) -> None:
         self.append_log("launcher", "system", "正在停止启动器托管的模块")
-        for module_id in ("backend", "speech", "bifrost"):
+        for module_id in ("backend", "speech", "mcp", "bifrost"):
             if self.spec_by_id[module_id].managed:
                 self.processes.stop(module_id)
 

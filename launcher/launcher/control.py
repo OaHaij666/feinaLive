@@ -491,6 +491,7 @@ class ConfigPage(QWidget):
         choices: list[tuple[str, str]] | None = None,
     ) -> QWidget:
         label = FIELD_LABELS.get(path[-1], path[-1].replace("_", " ").title())
+        choices = choices or self._choices_for_path(path)
         if choices:
             widget: QWidget = QComboBox()
             for text, stored_value in choices:
@@ -520,6 +521,31 @@ class ConfigPage(QWidget):
         self.fields[path] = (widget, type(value))
         form.addRow(label, widget)
         return widget
+
+    @staticmethod
+    def _choices_for_path(path: tuple[str, ...]) -> list[tuple[str, str]] | None:
+        options: dict[tuple[str, ...], list[tuple[str, str]]] = {
+            ("avatar", "motion", "source"): [
+                ("混合（推荐）", "hybrid"),
+                ("自主动作", "autonomous"),
+                ("浏览器控制", "browser"),
+            ],
+            ("avatar", "lip_sync", "source"): [
+                ("浏览器音频", "browser_audio"),
+                ("禁用口型", "disabled"),
+            ],
+            ("avatar", "renderer", "model"): [
+                ("THA3", "tha3"),
+                ("THA4", "tha4"),
+                ("THA4 Student", "tha4_student"),
+            ],
+            ("avatar", "renderer", "backend"): [
+                ("ONNX Runtime", "onnxruntime"),
+                ("TensorRT", "tensorrt"),
+            ],
+            ("avatar", "renderer", "precision"): [("FP32", "fp32"), ("FP16", "fp16")],
+        }
+        return options.get(path)
 
     def _select_section(self, row: int) -> None:
         if row >= 0:

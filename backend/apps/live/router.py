@@ -27,6 +27,21 @@ async def live_state():
     }
 
 
+@router.post("/start")
+async def start_live_runtime():
+    context = await get_live_runtime().start(
+        LivePlatform(config.live_platform),
+        config.live_room_id,
+    )
+    return {"success": True, "context": context.to_dict()}
+
+
+@router.post("/stop")
+async def stop_live_runtime():
+    await get_live_runtime().stop()
+    return {"success": True}
+
+
 @router.get("/platforms/bilibili/verify")
 async def verify_bilibili_credentials():
     if not config.bilibili_sessdata:

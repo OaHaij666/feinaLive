@@ -138,7 +138,7 @@ avatar:
   enabled: true
   character: "feina00"
   motion:
-    source: "autonomous"  # autonomous | browser
+    source: "hybrid"  # hybrid | autonomous | browser
     allow_browser_control: true
   lip_sync:
     source: "browser_audio"

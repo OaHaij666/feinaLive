@@ -14,7 +14,7 @@ class LipSyncConfig:
 @dataclass(frozen=True)
 class EngineConfig:
     character: str = "feina00"
-    motion_source: str = "autonomous"
+    motion_source: str = "hybrid"
     model_family: str = "tha3"
     backend: str = "onnxruntime"
     precision: str = "fp32"

@@ -62,6 +62,7 @@ feinaLive/
 - 集中显示 Bifrost、Speech Gateway、Backend、MCP、直播展示端、FeinaAvatar、直播平台 Runtime 和 Agent Runtime 的健康状态；
 - 集中收集托管进程日志到 `launcher/logs/`，支持模块筛选、搜索与自动滚动；
 - 支持单模块启动、停止、重启、打开直播端，并在同一窗口使用原生运营控制台。
+- Nginx、FeinaAvatar、直播平台 Runtime 与 Agent 使用生命周期 API 独立启停；Bifrost/MCP 可在首次启动时配置外部启动命令并交由窗口托管。
 - 桌面窗口支持中文 / English 即时切换以及亮色 / 暗色主题，选择会自动保存。
 
 Bifrost 默认由外部独立管理。若希望控制中心同时托管它，可在启动 BAT 前设置完整启动命令，例如：
@@ -127,6 +128,8 @@ Copy-Item backend\config.example.yaml backend\config.yaml
 - `tts.gateway_url`、模型路由、音色和音频格式
 - `agent.enabled`、`agent.scenario_id`、`agent.mcp_url`
 - `avatar` 数字人角色、输入、输出和性能配置
+
+FeinaAvatar 的动作来源使用下拉选项，默认 `hybrid`：平时采用自主动作，管理员切换到鼠标追踪时临时接管；也可选择始终自主或始终使用浏览器控制。
 
 敏感凭据通过运营控制台写入系统密钥库，也可使用环境变量；`backend/config.yaml` 只保存非敏感运行参数，仍不应提交个人配置。
 

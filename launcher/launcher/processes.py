@@ -7,6 +7,7 @@ import re
 import subprocess
 import urllib.error
 import urllib.request
+from dataclasses import replace
 from pathlib import Path
 
 from PySide6.QtCore import QObject, QProcess, QProcessEnvironment, QTimer, Signal
@@ -37,6 +38,17 @@ class ProcessController(QObject):
     def is_running(self, module_id: str) -> bool:
         process = self.processes.get(module_id)
         return process is not None and process.state() != QProcess.ProcessState.NotRunning
+
+    def configure_command(self, module_id: str, command: str) -> ModuleSpec:
+        spec = replace(
+            self.specs[module_id],
+            managed=True,
+            program=os.environ.get("COMSPEC", "cmd.exe"),
+            arguments=("/d", "/s", "/c", command),
+            working_directory=self.root,
+        )
+        self.specs[module_id] = spec
+        return spec
 
     def start(self, module_id: str) -> None:
         spec = self.specs[module_id]

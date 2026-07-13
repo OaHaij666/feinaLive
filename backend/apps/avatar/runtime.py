@@ -105,9 +105,15 @@ class AvatarRuntime:
         self._state = "stopped"
 
     def set_face_mode(self, mode: str) -> None:
-        self._browser_motion = (
-            mode == "mouse_tracking" and self._settings.motion.allow_browser_control
-        )
+        source = self._settings.motion.source
+        if source == "browser":
+            self._browser_motion = True
+        elif source == "hybrid":
+            self._browser_motion = (
+                mode == "mouse_tracking" and self._settings.motion.allow_browser_control
+            )
+        else:
+            self._browser_motion = False
         if self._engine is not None:
             self._engine.set_browser_motion(self._browser_motion)
 

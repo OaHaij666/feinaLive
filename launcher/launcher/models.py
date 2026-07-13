@@ -21,15 +21,25 @@ class ModuleSpec:
     open_url: str = ""
     health_kind: str = "http"
     autostart: bool = False
+    start_url: str = ""
+    stop_url: str = ""
+    command_env: str = ""
+
+    @property
+    def controllable(self) -> bool:
+        return self.managed or bool(self.start_url and self.stop_url) or bool(self.command_env)
 
 
 def executable(name: str) -> str:
     return shutil.which(name) or name
 
 
-def build_specs(root: Path) -> list[ModuleSpec]:
+def build_specs(root: Path, command_overrides: dict[str, str] | None = None) -> list[ModuleSpec]:
     uv = executable("uv")
-    bifrost_command = os.getenv("BIFROST_START_COMMAND", "").strip()
+    overrides = command_overrides or {}
+    bifrost_command = (
+        os.getenv("BIFROST_START_COMMAND", "") or overrides.get("bifrost", "")
+    ).strip()
     bifrost_managed = bool(bifrost_command)
     bifrost_program = os.environ.get("COMSPEC", "cmd.exe") if bifrost_managed else ""
     bifrost_args = ("/d", "/s", "/c", bifrost_command) if bifrost_managed else ()
@@ -46,6 +56,7 @@ def build_specs(root: Path) -> list[ModuleSpec]:
             working_directory=root,
             health_kind="bifrost",
             autostart=bifrost_managed,
+            command_env="BIFROST_START_COMMAND",
         ),
         ModuleSpec(
             id="speech",
@@ -77,6 +88,16 @@ def build_specs(root: Path) -> list[ModuleSpec]:
             description="可选的游戏或 Computer Use 能力服务",
             health_url="http://127.0.0.1:8080/health",
             health_kind="external",
+            managed=bool((os.getenv("MCP_START_COMMAND", "") or overrides.get("mcp", "")).strip()),
+            program=os.environ.get("COMSPEC", "cmd.exe"),
+            arguments=(
+                "/d",
+                "/s",
+                "/c",
+                (os.getenv("MCP_START_COMMAND", "") or overrides.get("mcp", "")).strip(),
+            ),
+            working_directory=root,
+            command_env="MCP_START_COMMAND",
         ),
         ModuleSpec(
             id="nginx_live",
@@ -84,6 +105,8 @@ def build_specs(root: Path) -> list[ModuleSpec]:
             description="Nginx 生产直播画面",
             health_url="http://127.0.0.1:8088/",
             open_url="http://127.0.0.1:8088/",
+            start_url="http://127.0.0.1:9191/stream/start",
+            stop_url="http://127.0.0.1:9191/stream/stop",
         ),
         ModuleSpec(
             id="avatar",
@@ -91,6 +114,8 @@ def build_specs(root: Path) -> list[ModuleSpec]:
             description="数字人推理、预览和 Spout 输出",
             health_url="http://127.0.0.1:9191/avatar/status",
             health_kind="avatar",
+            start_url="http://127.0.0.1:9191/avatar/start",
+            stop_url="http://127.0.0.1:9191/avatar/stop",
         ),
         ModuleSpec(
             id="live",
@@ -98,6 +123,8 @@ def build_specs(root: Path) -> list[ModuleSpec]:
             description="唯一房间与统一直播事件入口",
             health_url="http://127.0.0.1:9191/live/state",
             health_kind="live",
+            start_url="http://127.0.0.1:9191/live/start",
+            stop_url="http://127.0.0.1:9191/live/stop",
         ),
         ModuleSpec(
             id="agent",
@@ -105,5 +132,7 @@ def build_specs(root: Path) -> list[ModuleSpec]:
             description="场景能力、MCP 与解说请求",
             health_url="http://127.0.0.1:9191/agent/status",
             health_kind="agent",
+            start_url="http://127.0.0.1:9191/agent/start",
+            stop_url="http://127.0.0.1:9191/agent/stop",
         ),
     ]

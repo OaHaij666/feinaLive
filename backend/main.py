@@ -288,6 +288,18 @@ async def stream_status():
     }
 
 
+@app.post("/stream/start")
+async def stream_start():
+    await start_nginx()
+    return await stream_status()
+
+
+@app.post("/stream/stop")
+async def stream_stop():
+    await stop_nginx()
+    return await stream_status()
+
+
 if __name__ == "__main__":
     import uvicorn
 

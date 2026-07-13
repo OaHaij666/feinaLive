@@ -13,7 +13,23 @@ from apps.ai.messaging.queue import Message, PriorityMessageQueue
 from apps.ai.playback import PlaybackCoordinator
 from apps.ai.speech_jobs import SpeechJobCoordinator, SpeechJobStatus
 from apps.ai.speech_pipeline import SpeechPipeline, SpeechResult
-from apps.live.room_session import RoomSessionContext
+from apps.live.models import LivePlatform, LiveSessionContext
+from apps.live.runtime import get_live_runtime, reset_live_runtime
+
+
+@pytest.fixture(autouse=True)
+async def active_test_live_runtime():
+    runtime = reset_live_runtime()
+    await runtime.start(LivePlatform.TEST, "test")
+    yield runtime
+    await runtime.stop()
+    reset_live_runtime()
+
+
+def current_context() -> LiveSessionContext:
+    context = get_live_runtime().active_context
+    assert context is not None
+    return context
 
 
 class FakeBrain:
@@ -55,6 +71,10 @@ class FakeProcessor:
         self.ready.set()
 
     async def handle_gift(self, message):
+        self.processed.append(message.id)
+        self.ready.set()
+
+    async def handle_live_notice(self, message):
         self.processed.append(message.id)
         self.ready.set()
 
@@ -100,9 +120,15 @@ async def test_host_runtime_start_is_idempotent():
 
 @pytest.mark.asyncio
 async def test_host_brain_marks_messages_answered_only_after_queue_accepts(monkeypatch):
-    context = RoomSessionContext.test_room()
+    context = current_context()
     brain = AIHostBrain()
-    danmaku = DanmakuInput(context=context, msg_id="m1", user="viewer", content="hello")
+    danmaku = DanmakuInput(
+        context=context,
+        msg_id="m1",
+        user_id="test:viewer",
+        user="viewer",
+        content="hello",
+    )
     marked: list[list[str]] = []
 
     class History:
@@ -201,7 +227,7 @@ async def test_speech_pipeline_enforces_reply_limit_before_tts(monkeypatch):
     result = await SpeechPipeline(broadcaster=broadcast, playback=playback).stream_reply(
         "system",
         "user",
-        RoomSessionContext.test_room(),
+        current_context(),
     )
 
     assert result is not None
@@ -252,7 +278,7 @@ async def test_speak_text_bypasses_llm_and_waits_for_playback(monkeypatch):
     monkeypatch.setattr("apps.ai.speech_pipeline.get_tts_client", lambda: TTS())
     result = await SpeechPipeline(broadcaster=broadcast, playback=Playback()).speak_text(
         "这是 Agent 已经写好的最终解说。",
-        RoomSessionContext.test_room(),
+        current_context(),
     )
 
     assert result is not None and result.played
@@ -287,7 +313,7 @@ async def test_prepared_speech_handler_plays_final_text_without_llm():
             msg_type="prepared_speech",
             content="最终解说",
             data={"speech_job_id": job.job_id},
-            context=RoomSessionContext.test_room().to_dict(),
+            context=current_context().to_dict(),
         )
     )
 
@@ -298,7 +324,7 @@ async def test_prepared_speech_handler_plays_final_text_without_llm():
 
 @pytest.mark.asyncio
 async def test_agent_speech_capability_enqueues_and_waits_for_ack(monkeypatch):
-    context = RoomSessionContext.test_room()
+    context = current_context()
     messages = []
     jobs = SpeechJobCoordinator()
 
@@ -314,7 +340,7 @@ async def test_agent_speech_capability_enqueues_and_waits_for_ack(monkeypatch):
         active_context = context
 
     monkeypatch.setattr(
-        "apps.agent.capabilities.host_speech.get_room_session_manager",
+        "apps.agent.capabilities.host_speech.get_live_runtime",
         lambda: Rooms(),
     )
     capability = HostSpeechCapability(MutualContext(), queue=Queue(), jobs=jobs)

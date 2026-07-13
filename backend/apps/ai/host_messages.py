@@ -19,7 +19,8 @@ from apps.ai.speech_jobs import (
     get_speech_job_coordinator,
 )
 from apps.ai.speech_pipeline import SpeechPipeline
-from apps.live.room_session import RoomSessionContext, get_room_session_manager
+from apps.live.models import LiveSessionContext
+from apps.live.runtime import get_live_runtime
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +55,15 @@ GIFT_THANKS_PROMPT = """{host_personality}
 - 长度控制在15-30字
 - 感谢要真诚不油腻"""
 
+LIVE_NOTICE_PROMPT = """{host_personality}
+
+【你刚才的互动】
+{host_history}
+
+直播间发生了事件：{notice}
+
+请自然地简短回应，控制在10-25字。"""
+
 
 @dataclass
 class DanmakuReplyPlan:
@@ -80,8 +90,7 @@ class HostPromptPlanner:
 
     async def danmaku(self, message: Message) -> DanmakuReplyPlan:
         user = message.data.get("user", "unknown")
-        uid = message.data.get("uid")
-        memory_user_id = str(uid) if uid else user
+        memory_user_id = message.user_id or str(message.data.get("user_id") or user)
         memory_sections: list[str] = []
         profile = None
 
@@ -124,6 +133,14 @@ class HostPromptPlanner:
             host_personality=get_host_system_prompt(),
             host_history=host_history or "（暂无）",
             gift_info=message.data.get("gift_info", message.content),
+        )
+
+    async def live_notice(self, message: Message) -> str:
+        host_history = await self._recent_context(5)
+        return LIVE_NOTICE_PROMPT.format(
+            host_personality=get_host_system_prompt(),
+            host_history=host_history or "（暂无）",
+            notice=message.content,
         )
 
 
@@ -272,6 +289,22 @@ class HostMessageProcessor:
         )
         await self._notify(spoken)
 
+    async def handle_live_notice(self, message: Message) -> None:
+        result = await self._speech.stream_reply(
+            await self._planner.live_notice(message),
+            "请决定是否回应直播事件。",
+            self.context_for(message),
+        )
+        if not result or not result.played:
+            return
+        await self._mutual_context.record(
+            "host",
+            "spoken",
+            result.text,
+            {"source": "live_event", "event_type": message.data.get("event_type", "")},
+        )
+        await self._notify(result.text)
+
     async def fail(self, message: Message, error: Exception) -> None:
         if message.msg_type == "prepared_speech":
             await self._speech_jobs.finish(
@@ -282,12 +315,12 @@ class HostMessageProcessor:
         logger.debug("Host message failed: type=%s error=%s", message.msg_type, error)
 
     @staticmethod
-    def context_for(message: Message) -> RoomSessionContext | None:
+    def context_for(message: Message) -> LiveSessionContext | None:
         """Never replace malformed routing context with the current room."""
 
         if message.context:
-            return RoomSessionContext.from_mapping(message.context)
-        return get_room_session_manager().active_context
+            return LiveSessionContext.from_mapping(message.context)
+        return get_live_runtime().active_context
 
     async def _notify(self, spoken: str) -> None:
         if self._on_reply:

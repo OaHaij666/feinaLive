@@ -1,0 +1,6 @@
+sign.js is vendored from:
+https://github.com/404area/DouyinLiveRecorder_WebFetcher
+commit 111f9f604c01839746d5939383e899a082c6b277
+
+Only the signing asset is vendored. The async adapter and minimal protobuf
+schema in this directory are maintained as part of feinaLive.

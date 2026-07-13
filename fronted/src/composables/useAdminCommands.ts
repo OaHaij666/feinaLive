@@ -1,9 +1,6 @@
 import { ref } from 'vue'
 import { useNotification } from '@/utils/notification'
 
-const ADMIN_UID = 378810242
-const ADMIN_USERNAME = 'RongR0Ng'
-
 interface AdminCommandResult {
   success: boolean
   message: string
@@ -14,7 +11,6 @@ interface AdminCommandResult {
     is_voice_mode: boolean
     is_hide_admin: boolean
     is_agent_running: boolean
-    is_test_room_enabled: boolean
   }
 }
 
@@ -29,7 +25,6 @@ export function useAdminCommands() {
       isVoiceMode: state.is_voice_mode,
       isHideAdmin: state.is_hide_admin,
       isAgentRunning: state.is_agent_running,
-      isTestRoomEnabled: state.is_test_room_enabled,
     }
   }
 
@@ -43,7 +38,6 @@ export function useAdminCommands() {
         is_voice_mode: !!state.is_voice_mode,
         is_hide_admin: !!state.is_hide_admin,
         is_agent_running: !!state.is_agent_running,
-        is_test_room_enabled: !!state.is_test_room_enabled,
       })
     } catch (error) {
       // 后端不可用时静默失败，避免打断前端流程
@@ -92,39 +86,8 @@ export function useAdminCommands() {
     }
   }
 
-  async function toggleTestRoom(): Promise<boolean> {
-    try {
-      const newState = !adminState.value.isTestRoomEnabled
-      const cmd = newState ? '/testroom 1' : '/testroom 0'
-      const res = await fetch('/test/admin/command', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ command: cmd }),
-      })
-      const data = await res.json()
-      if (data.success) {
-        const { success } = useNotification()
-        success(data.message, 3000)
-        await refreshAdminState()
-        return true
-      } else {
-        const { warning } = useNotification()
-        warning(data.message || '操作失败', 3000)
-        return false
-      }
-    } catch (e) {
-      const { error } = useNotification()
-      error('网络请求失败', 3000)
-      console.error('TestRoom toggle failed:', e)
-      return false
-    }
-  }
-
-  function shouldHideDanmaku(uid: number, username: string): boolean {
-    if (adminState.value.isHideAdmin) {
-      return uid === ADMIN_UID || username === ADMIN_USERNAME
-    }
-    return false
+  function shouldHideDanmaku(isAdmin: boolean): boolean {
+    return adminState.value.isHideAdmin && isAdmin
   }
 
   startAdminStateSync(refreshAdminState)
@@ -136,7 +99,6 @@ export function useAdminCommands() {
     shouldHideDanmaku,
     refreshAdminState,
     toggleAgent,
-    toggleTestRoom,
   }
 }
 
@@ -146,7 +108,6 @@ const _adminState = ref({
   isVoiceMode: false,
   isHideAdmin: false,
   isAgentRunning: false,
-  isTestRoomEnabled: false,
 })
 
 let _syncStarted = false

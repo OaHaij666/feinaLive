@@ -216,14 +216,14 @@ class MusicManager:
 
     @staticmethod
     async def _broadcast_state(state: MusicState) -> None:
-        from apps.live.room_session import get_room_session_manager
+        from apps.live.runtime import get_live_runtime
         from core.websocket import manager as websocket_manager
 
-        context = get_room_session_manager().active_context
+        context = get_live_runtime().active_context
         if context is None:
             return
         await websocket_manager.send_message(
-            context.room_id,
+            context.routing_key,
             {
                 "type": "music_state",
                 "data": state.model_dump(mode="json"),

@@ -49,7 +49,7 @@
             <span class="metric-icon">💎</span>
             <span>价值</span>
           </div>
-          <span class="metric-value">{{ formatNumber(giftTotalCoin) }}</span>
+          <span class="metric-value">¥{{ formatMoney(giftValueMinor) }}</span>
         </div>
       </div>
 
@@ -76,10 +76,14 @@ import { storeToRefs } from 'pinia'
 import { useLiveStatsStore } from '@/stores/livestats'
 
 const liveStatsStore = useLiveStatsStore()
-const { popularity, danmakuCount, giftCount, giftTotalCoin, runtimeFormatted, topGifts } = storeToRefs(liveStatsStore)
+const { popularity, danmakuCount, giftCount, giftValueMinor, runtimeFormatted, topGifts } = storeToRefs(liveStatsStore)
 
 function formatNumber(n: number): string {
   return n.toLocaleString('en-US')
+}
+
+function formatMoney(minor: number): string {
+  return (minor / 100).toFixed(2)
 }
 
 onMounted(() => {

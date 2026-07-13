@@ -4,11 +4,18 @@ export interface BilibiliConfig {
   room_id: number
   sessdata: string
   uid: number
-  use_test_room: boolean
+}
+
+export interface DouyinConfig {
+  web_rid: string
+  cookie: string
+}
+
+export interface LiveConfig {
+  platform: 'bilibili' | 'douyin' | 'test'
 }
 
 export interface HostConfig {
-  room_id: number
   reply_interval: number
   max_reply_length: number
   api_url: string
@@ -186,8 +193,8 @@ export interface StorageConfig {
 }
 
 export interface AdminConfig {
-  uid: number
   username: string
+  identities: Record<string, string>
 }
 
 export interface EmbeddingConfig {
@@ -201,7 +208,9 @@ export interface EmbeddingConfig {
 }
 
 export interface FullConfig {
+  live: LiveConfig
   bilibili: BilibiliConfig
+  douyin: DouyinConfig
   host: HostConfig
   llm: LLMConfig
   tts: TTSConfig

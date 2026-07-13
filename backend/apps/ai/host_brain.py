@@ -9,7 +9,8 @@ from apps.ai.history import get_session
 from apps.ai.messaging.dynamic_priority import get_priority_manager
 from apps.ai.messaging.queue import Message, get_message_queue
 from apps.config import config
-from apps.live.room_session import RoomSessionContext, get_room_session_manager
+from apps.live.models import LiveSessionContext
+from apps.live.runtime import get_live_runtime
 
 logger = logging.getLogger(__name__)
 
@@ -17,28 +18,28 @@ logger = logging.getLogger(__name__)
 class DanmakuInput:
     def __init__(
         self,
-        context: RoomSessionContext,
+        context: LiveSessionContext,
         msg_id: str = "",
+        user_id: str = "",
         user: str = "",
         content: str = "",
         timestamp: float = 0,
-        uid: int = 0,
     ):
         self.context = context
         self.msg_id = msg_id
+        self.user_id = user_id
         self.user = user
         self.content = content
         self.timestamp = timestamp or time.time()
-        self.uid = uid
 
     def to_dict(self) -> dict:
         return {
             "context": self.context.to_dict(),
             "msg_id": self.msg_id,
+            "user_id": self.user_id,
             "user": self.user,
             "content": self.content,
             "timestamp": self.timestamp,
-            "uid": self.uid,
         }
 
 
@@ -53,41 +54,41 @@ class AIHostBrain:
 
     def push_danmaku(
         self,
-        context: RoomSessionContext,
+        context: LiveSessionContext,
         msg_id: str,
+        user_id: str,
         user: str,
         content: str,
-        uid: int = 0,
     ) -> bool:
-        if not get_room_session_manager().is_current(context):
+        if not get_live_runtime().is_current(context):
             logger.debug("Rejected stale danmaku at HostBrain boundary: %s", context)
             return False
         if content.strip() == "/clear":
             from apps.ai.memory import clear_user_profile
-            clear_user_profile(str(uid) if uid else user)
+            clear_user_profile(user_id)
             logger.info(f"用户 {user} 清除了自己的记忆")
             return False
 
-        cmd_result = self._admin_handler.sync_handle(uid, user, content)
+        cmd_result = self._admin_handler.sync_handle(user_id, user, content)
         if cmd_result:
             logger.info(f"Admin command executed: {cmd_result.message}")
             return False
 
-        if not self._admin_handler.should_process_danmaku(uid, user):
+        if not self._admin_handler.should_process_danmaku(user_id, user):
             logger.debug(f"弹幕被过滤 (sleep模式): [{user}] {content}")
             return False
 
         danmaku = DanmakuInput(
             context=context,
             msg_id=msg_id,
+            user_id=user_id,
             user=user,
             content=content,
-            uid=uid,
         )
         self._danmaku_buffer = [
             item
             for item in self._danmaku_buffer
-            if get_room_session_manager().is_current(item.context)
+            if get_live_runtime().is_current(item.context)
         ]
         self._danmaku_buffer.append(danmaku)
         if len(self._danmaku_buffer) > 20:
@@ -129,7 +130,7 @@ class AIHostBrain:
 
         unanswered = [
             d for d in self.get_unanswered()
-            if self._admin_handler.should_process_danmaku(d.uid, d.user)
+            if self._admin_handler.should_process_danmaku(d.user_id, d.user)
         ]
         if not unanswered:
             return
@@ -139,7 +140,7 @@ class AIHostBrain:
     def get_unanswered(self) -> list[DanmakuInput]:
         unanswered = []
         for d in self._danmaku_buffer:
-            if not get_room_session_manager().is_current(d.context):
+            if not get_live_runtime().is_current(d.context):
                 continue
             history = get_session(d.context.session_id)
             if not history.is_answered(d.msg_id):
@@ -152,7 +153,7 @@ class AIHostBrain:
 
         unanswered = [
             d for d in self.get_unanswered()
-            if self._admin_handler.should_process_danmaku(d.uid, d.user)
+            if self._admin_handler.should_process_danmaku(d.user_id, d.user)
         ]
         if not unanswered:
             return False
@@ -165,7 +166,7 @@ class AIHostBrain:
 
         first = unanswered[0]
         context = first.context
-        if not get_room_session_manager().is_current(context):
+        if not get_live_runtime().is_current(context):
             return False
         user = first.user
         combined_contents = [first.content]
@@ -188,9 +189,13 @@ class AIHostBrain:
             source="danmaku",
             msg_type="danmaku",
             content=combined_text,
-            data={"user": user, "uid": first.uid, "msg_id": first.msg_id},
+            data={
+                "user": user,
+                "user_id": first.user_id,
+                "msg_id": first.msg_id,
+            },
             context=context.to_dict(),
-            user_id=str(first.uid),
+            user_id=first.user_id,
             expire_at=time.time() + 60,
         ))
 

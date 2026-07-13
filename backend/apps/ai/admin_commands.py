@@ -39,7 +39,6 @@ class AdminState:
     volume: float = 1.0
     is_paused: bool = False
     is_agent_running: bool = False
-    is_test_room_enabled: bool = False
 
 
 @dataclass
@@ -56,7 +55,6 @@ class AdminCommandHandler:
 
     def __init__(self):
         self._state = AdminState()
-        self._state.is_test_room_enabled = config.bilibili_use_test_room
         self._face_mode_callbacks: list[Callable[[FaceMode], None]] = []
         self._state_change_callbacks: list[Callable[[dict], None]] = []
         self._volume_change_callbacks: list[Callable[[float], None]] = []
@@ -136,11 +134,21 @@ class AdminCommandHandler:
             except Exception as e:
                 logger.error(f"agent_change callback error: {e}")
 
-    def is_admin(self, uid: int) -> bool:
-        return uid == config.admin_uid
+    def is_admin(self, user_id: str | int, username: str = "") -> bool:
+        value = str(user_id)
+        canonical = {
+            f"{platform}:{platform_user_id}"
+            for platform, platform_user_id in config.admin_identities.items()
+        }
+        return (
+            value in canonical
+            or value in config.admin_identities.values()
+            or self.is_admin_by_username(username)
+        )
 
     def is_admin_by_username(self, username: str) -> bool:
-        return username == config.admin_username
+        configured = config.admin_username.strip()
+        return bool(configured and username and username == configured)
 
     def parse_command(self, content: str) -> tuple[Optional[str], Optional[str]]:
         match = self.COMMAND_PATTERN.match(content.strip())
@@ -152,8 +160,8 @@ class AdminCommandHandler:
         cmd, _ = self.parse_command(content)
         return cmd in self.ADMIN_COMMANDS
 
-    def sync_handle(self, uid: int, username: str, content: str) -> Optional[CommandResult]:
-        if not self.is_admin(uid) and not self.is_admin_by_username(username):
+    def sync_handle(self, uid: str | int, username: str, content: str) -> Optional[CommandResult]:
+        if not self.is_admin(uid, username):
             return None
 
         cmd, value = self.parse_command(content)
@@ -185,8 +193,8 @@ class AdminCommandHandler:
         else:
             return None
 
-    async def handle(self, uid: int, username: str, content: str) -> Optional[CommandResult]:
-        if not self.is_admin(uid) and not self.is_admin_by_username(username):
+    async def handle(self, uid: str | int, username: str, content: str) -> Optional[CommandResult]:
+        if not self.is_admin(uid, username):
             return None
 
         cmd, value = self.parse_command(content)
@@ -453,13 +461,6 @@ class AdminCommandHandler:
     async def _handle_agent_async(self, value: Optional[str]) -> CommandResult:
         return self._handle_agent(value)
 
-    def set_test_room(self, enabled: bool):
-        """由配置系统调用，非管理员指令"""
-        self._state.is_test_room_enabled = enabled
-        self.notify_state_change()
-        msg = "测试房间已启用" if enabled else "测试房间已禁用"
-        logger.info(f"Config: test_room {enabled} -> {msg}")
-
     def _handle_help(self) -> CommandResult:
         state = self.get_state()
         help_text = """【管理员指令列表】
@@ -509,25 +510,24 @@ AgentRuntime: {}""".format(
             "volume": self._state.volume,
             "is_paused": self._state.is_paused,
             "is_agent_running": self._state.is_agent_running,
-            "is_test_room_enabled": self._state.is_test_room_enabled,
         }
 
-    def should_filter_admin_danmaku(self, uid: int, username: str) -> bool:
+    def should_filter_admin_danmaku(self, uid: str | int, username: str) -> bool:
         if not self._state.is_hide_admin:
             return False
-        return self.is_admin(uid) or self.is_admin_by_username(username)
+        return self.is_admin(uid, username)
 
-    def should_process_danmaku(self, uid: int, username: str) -> bool:
+    def should_process_danmaku(self, uid: str | int, username: str) -> bool:
         if self._state.is_sleeping:
             return False
-        if self._state.is_voice_mode and not (self.is_admin(uid) or self.is_admin_by_username(username)):
+        if self._state.is_voice_mode and not self.is_admin(uid, username):
             return False
         return True
 
-    def is_voice_mode(self, uid: int, username: str) -> bool:
+    def is_voice_mode(self, uid: str | int, username: str) -> bool:
         if not self._state.is_voice_mode:
             return False
-        return self.is_admin(uid) or self.is_admin_by_username(username)
+        return self.is_admin(uid, username)
 
 
 _admin_handler: Optional[AdminCommandHandler] = None

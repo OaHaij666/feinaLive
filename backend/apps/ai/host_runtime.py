@@ -45,6 +45,7 @@ class HostRuntime:
             "prepared_speech": self._processor.handle_prepared_speech,
             "danmaku": self._processor.handle_danmaku,
             "gift_thanks": self._processor.handle_gift,
+            "live_notice": self._processor.handle_live_notice,
         }
 
     @property

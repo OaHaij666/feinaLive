@@ -16,7 +16,7 @@ from apps.config import config
 from apps.config_router import router as config_router
 from apps.easyvtuber.router import router as easyvtuber_router
 from apps.exceptions import AppException
-from apps.live.bilibili.router import router as bilibili_router
+from apps.live.router import router as live_router
 from apps.music.router import router as music_router
 from apps.test_router import router as test_router
 from services.nginx_service import get_nginx_service, start_nginx, stop_nginx
@@ -49,7 +49,8 @@ async def lifespan(app: FastAPI):
     )
     from apps.ai.memory.engine import init_memory_engine
     from apps.easyvtuber import get_easyvtuber_manager
-    from apps.live.room_session import get_room_session_manager
+    from apps.live.models import LivePlatform
+    from apps.live.runtime import get_live_runtime
     from apps.music.manager import get_music_manager
 
     music_manager = get_music_manager()
@@ -97,11 +98,14 @@ async def lifespan(app: FastAPI):
     await host_runtime.start()
     logger.info("主播 Runtime 启动成功（弹幕处理流水线就绪）")
 
-    if config.bilibili_room_id > 0:
+    if config.live_room_id:
         try:
-            await get_room_session_manager().activate(config.bilibili_room_id)
+            await get_live_runtime().start(
+                LivePlatform(config.live_platform),
+                config.live_room_id,
+            )
         except Exception as e:
-            logger.error("Bilibili room startup failed: %s", e, exc_info=True)
+            logger.error("Live platform startup failed: %s", e, exc_info=True)
 
     await start_nginx()
 
@@ -144,7 +148,7 @@ async def lifespan(app: FastAPI):
     yield
 
     logger.info("Application shutting down...")
-    await get_room_session_manager().stop()
+    await get_live_runtime().stop()
 
     # Stop producers and consumers before their memory/output dependencies.
     from apps.agent.manager import get_agent_manager
@@ -187,7 +191,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(bilibili_router, prefix="/bilibili", tags=["Bilibili"])
+app.include_router(live_router)
 app.include_router(music_router)
 app.include_router(config_router, tags=["Config"])
 app.include_router(ai_router, tags=["AI"])

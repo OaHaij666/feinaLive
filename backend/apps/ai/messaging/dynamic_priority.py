@@ -14,7 +14,7 @@
     - 很久没读弹幕 → 升级到 2 (高)
     - 最近读太多 → 降级到 4 (低) 或 5 (可丢弃)
   - 礼物: 动态调整
-    - 根据礼物价值调整 (total_coin: 金瓜子数量)
+    - 根据跨平台统一价值调整 (value_minor: 人民币分)
       - >= 10000 (100元+): 1 (最高)
       - >= 5000 (50元+): 2 (高)
       - >= 1000 (10元+): 3 (普通)
@@ -120,9 +120,9 @@ class DynamicPriorityManager:
         self._danmaku_priority_override = None
         return PRIORITY_NORMAL
 
-    def get_gift_priority(self, total_coin: int = 0) -> int:
+    def get_gift_priority(self, value_minor: int = 0) -> int:
         now = time.time()
-        value_priority = self._get_gift_value_priority(total_coin)
+        value_priority = self._get_gift_value_priority(value_minor)
 
         if value_priority == PRIORITY_HIGHEST:
             return PRIORITY_HIGHEST
@@ -143,14 +143,14 @@ class DynamicPriorityManager:
         self._gift_priority_override = None
         return value_priority
 
-    def _get_gift_value_priority(self, total_coin: int) -> int:
-        if total_coin >= config.messaging_gift_value_highest:
+    def _get_gift_value_priority(self, value_minor: int) -> int:
+        if value_minor >= config.messaging_gift_value_highest:
             return PRIORITY_HIGHEST
-        elif total_coin >= config.messaging_gift_value_high:
+        elif value_minor >= config.messaging_gift_value_high:
             return PRIORITY_HIGH
-        elif total_coin >= config.messaging_gift_value_normal:
+        elif value_minor >= config.messaging_gift_value_normal:
             return PRIORITY_NORMAL
-        elif total_coin >= config.messaging_gift_value_low:
+        elif value_minor >= config.messaging_gift_value_low:
             return PRIORITY_LOW
         else:
             return PRIORITY_DISPOSABLE

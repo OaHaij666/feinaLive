@@ -7,8 +7,9 @@ from typing import Awaitable, Callable, Optional
 
 from apps.ai.admin_commands import get_admin_handler
 from apps.ai.host_brain import get_host_brain
+from apps.live.models import LiveSessionContext
 from apps.live.music_requests import process_music_danmaku
-from apps.live.room_session import RoomSessionContext, get_room_session_manager
+from apps.live.runtime import get_live_runtime
 from core.websocket import manager
 
 logger = logging.getLogger(__name__)
@@ -17,10 +18,11 @@ logger = logging.getLogger(__name__)
 @dataclass
 class DanmakuData:
     msg_id: str
+    user_id: str
     user: str
     content: str
-    uid: int
     timestamp: int = 0
+    is_admin: bool = False
 
 
 @dataclass
@@ -34,31 +36,28 @@ class DanmakuProcessResult:
 
 async def process_danmaku(
     danmaku: DanmakuData,
-    context: RoomSessionContext,
+    context: LiveSessionContext,
     broadcast_fn: Optional[Callable[[dict], Awaitable[None]]] = None,
 ) -> DanmakuProcessResult:
-    if not get_room_session_manager().is_current(context):
+    if not get_live_runtime().is_current(context):
         logger.debug("Dropped stale danmaku before processing: %s", context)
         return DanmakuProcessResult(success=False, intercepted=True)
 
     admin_handler = get_admin_handler()
-    is_admin = (
-        admin_handler.is_admin(danmaku.uid)
-        or admin_handler.is_admin_by_username(danmaku.user)
-    )
+    is_admin = danmaku.is_admin or admin_handler.is_admin(danmaku.user_id, danmaku.user)
     is_admin_command = admin_handler.is_admin_command(danmaku.content)
 
     if is_admin and is_admin_command:
         logger.info("[管理员指令] %s: %s", danmaku.user, danmaku.content)
         asyncio.create_task(
-            admin_handler.handle(danmaku.uid, danmaku.user, danmaku.content)
+            admin_handler.handle(danmaku.user_id, danmaku.user, danmaku.content)
         )
         return DanmakuProcessResult(success=True, intercepted=True)
 
     if (
         is_admin
         and not is_admin_command
-        and admin_handler.should_filter_admin_danmaku(danmaku.uid, danmaku.user)
+        and admin_handler.should_filter_admin_danmaku(danmaku.user_id, danmaku.user)
     ):
         return DanmakuProcessResult(success=True, intercepted=True)
 
@@ -67,7 +66,7 @@ async def process_danmaku(
         danmaku.user,
         request_id=danmaku.msg_id,
     )
-    if not get_room_session_manager().is_current(context):
+    if not get_live_runtime().is_current(context):
         logger.debug("Dropped danmaku after slow processing because session changed: %s", context)
         return DanmakuProcessResult(success=False, intercepted=True)
 
@@ -99,25 +98,12 @@ async def process_danmaku(
             music_error=music_result.error,
         )
 
-    await _broadcast_to_session(context, {
-        "type": "danmaku",
-        "data": {
-            "id": danmaku.msg_id,
-            "uid": danmaku.uid,
-            "user": danmaku.user,
-            "uname": danmaku.user,
-            "content": danmaku.content,
-            "msg": danmaku.content,
-            "timestamp": danmaku.timestamp or 0,
-        },
-    }, broadcast_fn)
-
     accepted = get_host_brain().push_danmaku(
         context=context,
         msg_id=danmaku.msg_id,
+        user_id=danmaku.user_id,
         user=danmaku.user,
         content=danmaku.content,
-        uid=danmaku.uid,
     )
     return DanmakuProcessResult(
         success=True,
@@ -127,15 +113,15 @@ async def process_danmaku(
 
 
 async def _broadcast_to_session(
-    context: RoomSessionContext,
+    context: LiveSessionContext,
     message: dict,
     broadcast_fn: Optional[Callable[[dict], Awaitable[None]]] = None,
 ) -> None:
-    if not get_room_session_manager().is_current(context):
+    if not get_live_runtime().is_current(context):
         logger.debug("Dropped stale broadcast: %s", context)
         return
     message.setdefault("context", context.to_dict())
     if broadcast_fn:
         await broadcast_fn(message)
     else:
-        await manager.send_message(context.room_id, message)
+        await manager.send_message(context.routing_key, message)

@@ -104,7 +104,8 @@ const showSessdataWarning = ref(false)
 const sessdataError = ref('')
 const sessdataIgnored = ref(false)
 const showSettings = ref(false)
-const bilibiliRoomId = ref<number | null>(null)
+const liveConfigured = ref(false)
+const activeLivePlatform = ref<'bilibili' | 'douyin' | 'test'>('bilibili')
 
 async function fetchConfig() {
   try {
@@ -114,8 +115,12 @@ async function fetchConfig() {
       return
     }
     const data = await res.json()
-    const roomId = data.bilibili?.room_id || data.host?.room_id || null
-    bilibiliRoomId.value = roomId
+    activeLivePlatform.value = data.live?.platform || 'bilibili'
+    liveConfigured.value = activeLivePlatform.value === 'test' || (
+      activeLivePlatform.value === 'douyin'
+        ? !!data.douyin?.web_rid
+        : Number(data.bilibili?.room_id || 0) > 0
+    )
   } catch (e) {
     console.error('[App] Failed to fetch config:', e)
   }
@@ -125,17 +130,14 @@ function toggleSettings() {
   showSettings.value = !showSettings.value
 }
 
-function handleConfigSaved(roomId: number) {
-  bilibiliRoomId.value = roomId > 0 ? roomId : null
-  danmakuStore.disconnectFromRoom()
-  if (bilibiliRoomId.value) {
-    danmakuStore.connectToRoom(bilibiliRoomId.value)
-  }
+function handleConfigSaved() {
+  void fetchConfig()
 }
 
 async function checkSessdata() {
   try {
-    const res = await fetch('/bilibili/sessdata/verify')
+    if (activeLivePlatform.value !== 'bilibili') return
+    const res = await fetch('/live/platforms/bilibili/verify')
     const data = await res.json()
     if (!data.valid) {
       sessdataError.value = data.error || 'SESSDATA无效'
@@ -143,7 +145,7 @@ async function checkSessdata() {
         showSessdataWarning.value = true
       }
     } else {
-      console.log('[SESSDATA] 验证成功:', data.uname)
+      console.log('[SESSDATA] 验证成功:', data.username)
     }
   } catch (e) {
     console.error('[SESSDATA] 验证请求失败:', e)
@@ -157,31 +159,18 @@ function handleSessdataIgnore() {
 
 async function handleSessdataUpdate(data: { sessdata: string; uid: number | null }) {
   try {
-    const sessRes = await fetch('/bilibili/sessdata/update', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sessdata: data.sessdata }),
-    })
-    const sessResult = await sessRes.json()
-    if (!sessResult.success) {
-      alert('SESSDATA更新失败: ' + (sessResult.error || '未知错误'))
-      return
-    }
-
+    const cfgRes = await fetch('/config')
+    const cfg = await cfgRes.json()
+    cfg.bilibili.sessdata = data.sessdata
     if (data.uid !== null) {
-      const cfgRes = await fetch('/config')
-      const cfg = await cfgRes.json()
       cfg.bilibili.uid = data.uid
-      const saveRes = await fetch('/config', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(cfg),
-      })
-      if (!saveRes.ok) {
-        alert('UID更新失败')
-        return
-      }
     }
+    const saveRes = await fetch('/config', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(cfg),
+    })
+    if (!saveRes.ok) throw new Error('Bilibili 凭据保存失败')
 
     showSessdataWarning.value = false
     sessdataIgnored.value = false
@@ -236,12 +225,10 @@ onMounted(() => {
   streamStore.fetchConfig()
   updateScale()
   window.addEventListener('resize', updateScale)
-  checkSessdata()
   avatarInput.connect()
   fetchConfig().then(() => {
-    if (bilibiliRoomId.value && bilibiliRoomId.value > 0) {
-      danmakuStore.connectToRoom(bilibiliRoomId.value)
-    }
+    if (liveConfigured.value) danmakuStore.connectToLive()
+    if (activeLivePlatform.value === 'bilibili') void checkSessdata()
   })
   window.addEventListener('keydown', handleGlobalKeydown)
 })
@@ -251,7 +238,7 @@ onUnmounted(() => {
   window.removeEventListener('keydown', handleGlobalKeydown)
   streamStore.stopClock()
   avatarInput.disconnect()
-  danmakuStore.disconnectFromRoom()
+  danmakuStore.disconnectFromLive()
 })
 </script>
 

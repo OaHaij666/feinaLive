@@ -15,11 +15,12 @@ from apps.ai.client import ChatMessage, ChatRequest, get_ai_client
 from apps.ai.playback import PlaybackCoordinator, get_playback_coordinator
 from apps.ai.tts import get_tts_client
 from apps.config import config
-from apps.live.room_session import RoomSessionContext, get_room_session_manager
+from apps.live.models import LiveSessionContext
+from apps.live.runtime import get_live_runtime
 
 logger = logging.getLogger(__name__)
 
-ChunkBroadcaster = Callable[[RoomSessionContext, dict[str, Any]], Awaitable[None]]
+ChunkBroadcaster = Callable[[LiveSessionContext, dict[str, Any]], Awaitable[None]]
 PlaybackStartedCallback = Callable[[str], Awaitable[None]]
 
 
@@ -95,7 +96,7 @@ class SpeechPipeline:
         self,
         system_content: str,
         user_content: str,
-        context: RoomSessionContext | None,
+        context: LiveSessionContext | None,
     ) -> SpeechResult | None:
         if context is None or not self._is_current(context):
             logger.debug("Skipped reply generation without a current room session")
@@ -281,7 +282,7 @@ class SpeechPipeline:
     async def speak_text(
         self,
         text: str,
-        context: RoomSessionContext | None,
+        context: LiveSessionContext | None,
         *,
         on_playback_started: PlaybackStartedCallback | None = None,
     ) -> SpeechResult | None:
@@ -418,7 +419,7 @@ class SpeechPipeline:
     async def _broadcast(
         self,
         chunk: dict[str, Any],
-        context: RoomSessionContext,
+        context: LiveSessionContext,
     ) -> None:
         if not self._is_current(context):
             logger.debug("Dropped reply chunk outside the current room session")
@@ -428,12 +429,12 @@ class SpeechPipeline:
 
     @staticmethod
     async def _default_broadcast(
-        context: RoomSessionContext,
+        context: LiveSessionContext,
         chunk: dict[str, Any],
     ) -> None:
         from core.websocket import manager as ws_manager
 
-        await ws_manager.send_message(context.room_id, chunk)
+        await ws_manager.send_message(context.routing_key, chunk)
 
     @staticmethod
     async def _cancel_pending(tasks: list[asyncio.Task[SpeechChunk | None]]) -> None:
@@ -444,5 +445,5 @@ class SpeechPipeline:
             await asyncio.gather(*pending, return_exceptions=True)
 
     @staticmethod
-    def _is_current(context: RoomSessionContext) -> bool:
-        return get_room_session_manager().is_current(context)
+    def _is_current(context: LiveSessionContext) -> bool:
+        return get_live_runtime().is_current(context)

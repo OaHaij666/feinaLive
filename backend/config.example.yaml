@@ -9,10 +9,26 @@ storage:
   chroma_path: "data/chroma"
   chroma_collection: "memory_atoms"
 
+# 同一进程只启动一个直播平台；平台、房间或凭据修改后重启生效
+live:
+  platform: "bilibili"  # bilibili / douyin / test
+
 # B站直播配置
 bilibili:
   sessdata: ""  # B站登录凭证，从浏览器 Cookie 获取
   room_id: 0    # 直播间 ID
+  uid: 0
+
+# 抖音直播配置（web_rid 是 live.douyin.com/ 后的部分）
+douyin:
+  web_rid: ""
+  cookie: ""  # 敏感配置，保存后进入系统密钥库
+
+admin:
+  username: ""
+  identities:
+    bilibili: ""
+    douyin: ""
 
 # 直播间公告（显示在直播间标题下方）
 announcement: "AI主播是小笨蛋不要欺负她喵。输入 点歌 歌名 进行点歌。输入/clear 清除AI对你的记忆。"

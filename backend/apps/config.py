@@ -74,8 +74,31 @@ class Config:
         return int(self._data.get("bilibili", {}).get("uid", 0))
 
     @property
-    def bilibili_use_test_room(self) -> bool:
-        return bool(self._data.get("bilibili", {}).get("use_test_room", False))
+    def live_platform(self) -> str:
+        return str(self._data.get("live", {}).get("platform", "bilibili"))
+
+    @property
+    def live_room_id(self) -> str:
+        if self.live_platform == "test":
+            return "test"
+        if self.live_platform == "douyin":
+            return self.douyin_web_rid
+        return str(self.bilibili_room_id) if self.bilibili_room_id > 0 else ""
+
+    @property
+    def douyin_web_rid(self) -> str:
+        return str(
+            os.getenv("DOUYIN_WEB_RID")
+            or self._data.get("douyin", {}).get("web_rid", "")
+        ).strip()
+
+    @property
+    def douyin_cookie(self) -> str | None:
+        return (
+            os.getenv("DOUYIN_COOKIE")
+            or secret_store.get("douyin.cookie")
+            or self._data.get("douyin", {}).get("cookie")
+        )
 
     @property
     def llm_api_url(self) -> str:
@@ -251,10 +274,6 @@ class Config:
         return int(os.getenv("AGENT_MEMORY_EAGERNESS") or self._data.get("agent", {}).get("memory_eagerness", 3))
 
     @property
-    def default_room_id(self) -> int:
-        return int(os.getenv("DEFAULT_ROOM_ID") or self._data.get("host", {}).get("room_id", 0))
-
-    @property
     def announcement(self) -> str:
         return self._data.get("announcement", "直播间24小时随机刷新开播。AI主播是小笨蛋不要欺负她喵。白天基本上是无人直播间喵，夜间可能会真人代播。直播间指令：输入 点歌 歌名 或者 点歌 BVid进行点歌，推荐使用BV号点歌。输入/clear 清除AI对你的记忆。")
 
@@ -331,12 +350,18 @@ class Config:
         return self._data.get("easyvtuber", {}).get("output", {}).get("websocket", {}).get("host", "localhost")
 
     @property
-    def admin_uid(self) -> int:
-        return int(self._data.get("admin", {}).get("uid", 378810242))
-
-    @property
     def admin_username(self) -> str:
         return self._data.get("admin", {}).get("username", "RongR0Ng")
+
+    @property
+    def admin_identities(self) -> dict[str, str]:
+        configured = self._data.get("admin", {}).get("identities", {})
+        identities = {
+            str(platform): str(user_id)
+            for platform, user_id in configured.items()
+            if str(user_id).strip()
+        }
+        return identities
 
     @property
     def agent_enabled(self) -> bool:

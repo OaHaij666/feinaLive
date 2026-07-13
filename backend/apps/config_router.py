@@ -24,11 +24,24 @@ class BilibiliConfig(BaseModel):
     room_id: int = 0
     sessdata: str = ""
     uid: int = 0
-    use_test_room: bool = False
+
+
+class DouyinConfig(BaseModel):
+    web_rid: str = ""
+    cookie: str = ""
+
+
+class LiveConfig(BaseModel):
+    platform: str = "bilibili"
+
+    @model_validator(mode="after")
+    def validate_platform(self):
+        if self.platform not in {"bilibili", "douyin", "test"}:
+            raise ValueError("直播平台只支持 bilibili、douyin 或 test")
+        return self
 
 
 class HostConfig(BaseModel):
-    room_id: int = 0
     reply_interval: int = 5
     max_reply_length: int = 100
     api_url: str = ""
@@ -193,8 +206,8 @@ class StorageConfig(BaseModel):
 
 
 class AdminConfig(BaseModel):
-    uid: int = 378810242
     username: str = "RongR0Ng"
+    identities: dict[str, str] = Field(default_factory=dict)
 
 
 class EmbeddingConfig(BaseModel):
@@ -208,7 +221,9 @@ class EmbeddingConfig(BaseModel):
 
 
 class FullConfig(BaseModel):
+    live: LiveConfig = LiveConfig()
     bilibili: BilibiliConfig = BilibiliConfig()
+    douyin: DouyinConfig = DouyinConfig()
     host: HostConfig = HostConfig()
     llm: LLMConfig = LLMConfig()
     tts: TTSConfig = TTSConfig()
@@ -242,14 +257,19 @@ async def get_full_config():
 
     return FullConfig(
         restart_required=get_agent_manager().needs_restart,
+        live=LiveConfig(
+            platform=config.live_platform,
+        ),
         bilibili=BilibiliConfig(
             room_id=config.bilibili_room_id,
             sessdata=_mask_sensitive(config.bilibili_sessdata or ""),
             uid=config.bilibili_uid,
-            use_test_room=config.bilibili_use_test_room,
+        ),
+        douyin=DouyinConfig(
+            web_rid=config.douyin_web_rid,
+            cookie=_mask_sensitive(config.douyin_cookie or ""),
         ),
         host=HostConfig(
-            room_id=config.default_room_id,
             reply_interval=config.host_reply_interval,
             max_reply_length=config.host_max_reply_length,
             api_url=config.host_api_url,
@@ -383,8 +403,8 @@ async def get_full_config():
         ),
         announcement=config.announcement,
         admin=AdminConfig(
-            uid=config.admin_uid,
             username=config.admin_username,
+            identities=config.admin_identities,
         ),
         embedding=EmbeddingConfig(
             provider=config.embedding_provider,
@@ -402,6 +422,7 @@ async def get_full_config():
 
 SENSITIVE_KEYS = {
     "bilibili.sessdata",
+    "douyin.cookie",
     "llm.api_key",
     "agent.api_key",
     "volcano.access_token",
@@ -456,26 +477,32 @@ def _atomic_write_yaml(data: dict) -> None:
 @router.put("", response_model=FullConfig)
 async def update_full_config(config_data: FullConfig, response: Response):
     try:
-        old_bilibili_room_id = config.bilibili_room_id
+        old_live = (
+            config.live_platform,
+            config.live_room_id,
+            config.bilibili_sessdata,
+            config.douyin_cookie,
+        )
         with open(CONFIG_FILE, "r", encoding="utf-8") as f:
             data = yaml.safe_load(f) or {}
 
         flat: dict[str, object] = {}
+
+        flat["live.platform"] = config_data.live.platform
+        _deep_delete(data, ["live", "test_mode"])
+        _deep_delete(data, ["bilibili", "use_test_room"])
 
         # bilibili
         if config_data.bilibili:
             flat["bilibili.room_id"] = config_data.bilibili.room_id
             flat["bilibili.uid"] = config_data.bilibili.uid
             _store_secret(data, "bilibili.sessdata", config_data.bilibili.sessdata)
-            flat["bilibili.use_test_room"] = config_data.bilibili.use_test_room
 
-            from apps.ai.admin_commands import get_admin_handler
-            admin = get_admin_handler()
-            admin.set_test_room(config_data.bilibili.use_test_room)
+        flat["douyin.web_rid"] = config_data.douyin.web_rid.strip()
+        _store_secret(data, "douyin.cookie", config_data.douyin.cookie)
 
         # host
         h = config_data.host
-        flat["host.room_id"] = h.room_id
         flat["host.reply_interval"] = h.reply_interval
         flat["host.max_reply_length"] = h.max_reply_length
         flat["host.api_url"] = h.api_url
@@ -641,27 +668,17 @@ async def update_full_config(config_data: FullConfig, response: Response):
         from apps.agent.manager import get_agent_manager
 
         restart_required = get_agent_manager().needs_restart
-        response.headers["X-Restart-Required"] = "true" if restart_required else "false"
-
-        from apps.live.room_session import get_room_session_manager
-
-        room_sessions = get_room_session_manager()
-        room_changed = config.bilibili_room_id != old_bilibili_room_id
-        room_missing = (
-            config.bilibili_room_id > 0
-            and room_sessions.active_room_id != str(config.bilibili_room_id)
+        live_changed = old_live != (
+            config.live_platform,
+            config.live_room_id,
+            config.bilibili_sessdata,
+            config.douyin_cookie,
         )
-        if room_changed or room_missing:
-            from core.websocket import manager as websocket_manager
-
-            if config.bilibili_room_id > 0:
-                context = await room_sessions.activate(config.bilibili_room_id)
-                await websocket_manager.disconnect_other_rooms(context.room_id)
-            else:
-                await room_sessions.stop()
-                await websocket_manager.disconnect_other_rooms("")
-
-        return await get_full_config()
+        restart_required = restart_required or live_changed
+        response.headers["X-Restart-Required"] = "true" if restart_required else "false"
+        result = await get_full_config()
+        result.restart_required = restart_required
+        return result
 
     except Exception as e:
         logger.error(f"更新配置失败: {e}")
@@ -675,7 +692,7 @@ async def list_sections():
     """返回所有配置 section 的 key 和描述"""
     return {
         "sections": [
-            {"key": "bilibili", "label": "B站直播", "description": "直播间 ID 和 SESSDATA"},
+            {"key": "live", "label": "直播平台", "description": "Bilibili / 抖音直播接入"},
             {"key": "host", "label": "AI主播", "description": "主播回复参数和模型"},
             {"key": "llm", "label": "通用LLM", "description": "通用大语言模型配置"},
             {"key": "tts", "label": "语音合成", "description": "TTS 语音输出配置"},

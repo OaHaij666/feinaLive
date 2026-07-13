@@ -30,10 +30,9 @@ async def get_status():
 async def send_admin_command(request: AdminCommandRequest):
     """发送管理员指令（用于测试）"""
     handler = get_admin_handler()
+    raw_id = config.admin_identities.get(config.live_platform, "internal")
     result = await handler.handle(
-        uid=config.admin_uid,
-        username=config.admin_username,
-        content=request.command
+        f"{config.live_platform}:{raw_id}", config.admin_username, request.command
     )
     if result:
         return {

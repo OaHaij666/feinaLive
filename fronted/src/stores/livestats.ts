@@ -5,7 +5,7 @@ export const useLiveStatsStore = defineStore('livestats', () => {
   const popularity = ref(0)
   const danmakuCount = ref(0)
   const giftCount = ref(0)
-  const giftTotalCoin = ref(0)
+  const giftValueMinor = ref(0)
   const giftNameCounts = ref<Record<string, number>>({})
 
   const runtimeSeconds = ref(0)
@@ -35,10 +35,10 @@ export const useLiveStatsStore = defineStore('livestats', () => {
     danmakuCount.value++
   }
 
-  function addGift(totalCoin: number, giftName: string) {
+  function addGift(valueMinor: number, giftName: string, count = 1) {
     giftCount.value++
-    giftTotalCoin.value += totalCoin
-    giftNameCounts.value[giftName] = (giftNameCounts.value[giftName] || 0) + 1
+    giftValueMinor.value += valueMinor
+    giftNameCounts.value[giftName] = (giftNameCounts.value[giftName] || 0) + count
   }
 
   function startTimer() {
@@ -59,7 +59,7 @@ export const useLiveStatsStore = defineStore('livestats', () => {
     popularity.value = 0
     danmakuCount.value = 0
     giftCount.value = 0
-    giftTotalCoin.value = 0
+    giftValueMinor.value = 0
     giftNameCounts.value = {}
     runtimeSeconds.value = 0
   }
@@ -72,7 +72,7 @@ export const useLiveStatsStore = defineStore('livestats', () => {
     popularity,
     danmakuCount,
     giftCount,
-    giftTotalCoin,
+    giftValueMinor,
     runtimeSeconds,
     runtimeFormatted,
     topGifts,

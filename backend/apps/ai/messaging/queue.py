@@ -25,7 +25,8 @@ from apps.ai.messaging.dynamic_priority import (
 )
 from apps.ai.messaging.rate_limiter import RateLimiter, get_rate_limiter
 from apps.config import config
-from apps.live.room_session import RoomSessionContext, get_room_session_manager
+from apps.live.models import LiveSessionContext
+from apps.live.runtime import get_live_runtime
 
 logger = logging.getLogger(__name__)
 
@@ -95,8 +96,8 @@ class PriorityMessageQueue:
 
     async def put(self, msg: Message) -> bool:
         if msg.context:
-            context = RoomSessionContext.from_mapping(msg.context)
-            if context is None or not get_room_session_manager().is_current(context):
+            context = LiveSessionContext.from_mapping(msg.context)
+            if context is None or not get_live_runtime().is_current(context):
                 logger.debug("Dropped message outside the active room session: %s", msg.context)
                 self._total_dropped += 1
                 return False
@@ -178,12 +179,12 @@ class PriorityMessageQueue:
                 logger.debug(f"消息已过期，跳过: {msg.content[:20]}")
                 self._total_dropped += 1
                 continue
-            context = RoomSessionContext.from_mapping(msg.context)
+            context = LiveSessionContext.from_mapping(msg.context)
             if msg.context and context is None:
                 logger.debug("Dropped queued message with malformed context: %s", msg.context)
                 self._total_dropped += 1
                 continue
-            if context is not None and not get_room_session_manager().is_current(context):
+            if context is not None and not get_live_runtime().is_current(context):
                 logger.debug("Dropped stale queued message: %s", msg.context)
                 self._total_dropped += 1
                 continue
@@ -209,11 +210,11 @@ class PriorityMessageQueue:
             if msg.is_expired and msg.allow_skip:
                 self._total_dropped += 1
                 return None
-            context = RoomSessionContext.from_mapping(msg.context)
+            context = LiveSessionContext.from_mapping(msg.context)
             if msg.context and context is None:
                 self._total_dropped += 1
                 return None
-            if context is not None and not get_room_session_manager().is_current(context):
+            if context is not None and not get_live_runtime().is_current(context):
                 self._total_dropped += 1
                 return None
             self._total_consumed += 1

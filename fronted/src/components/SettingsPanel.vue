@@ -2,7 +2,7 @@
   <Teleport to="body">
     <Transition name="modal">
       <div v-if="visible" class="settings-overlay" @click.self="close">
-        <div :class="['settings-panel', { 'settings-panel-wide': activeTab === 'memory' || activeTab === 'agent_params' }]">
+        <div :class="['settings-panel', { 'settings-panel-wide': ['memory', 'agent_params', 'monitor'].includes(activeTab) }]">
           <div class="settings-header">
             <h2>集中配置</h2>
             <button class="close-btn" @click="close">&times;</button>
@@ -264,7 +264,7 @@
                   <tr><td><label>饥饿时间 <span class="hint">(秒)</span></label></td><td><input type="number" v-model.number="cfg.messaging.gift_starvation_seconds" min="10" max="600" /></td></tr>
                   <tr><td><label>洪流阈值 <span class="hint">(条)</span></label></td><td><input type="number" v-model.number="cfg.messaging.gift_flood_threshold" min="1" max="20" /></td></tr>
                   <tr><td><label>洪流窗口 <span class="hint">(秒)</span></label></td><td><input type="number" v-model.number="cfg.messaging.gift_flood_window" min="10" max="180" /></td></tr>
-                  <tr><td><label>最高档价值 <span class="hint">(金瓜子)</span></label></td><td><input type="number" v-model.number="cfg.messaging.gift_value_highest" min="100" /></td></tr>
+                  <tr><td><label>最高档价值 <span class="hint">(人民币分，100=1元)</span></label></td><td><input type="number" v-model.number="cfg.messaging.gift_value_highest" min="100" /></td></tr>
                   <tr><td><label>高档价值</label></td><td><input type="number" v-model.number="cfg.messaging.gift_value_high" min="100" /></td></tr>
                   <tr><td><label>普通档价值</label></td><td><input type="number" v-model.number="cfg.messaging.gift_value_normal" min="10" /></td></tr>
                   <tr><td><label>低档价值</label></td><td><input type="number" v-model.number="cfg.messaging.gift_value_low" min="1" /></td></tr>
@@ -391,24 +391,42 @@
 
               <!-- Tab: 直播 -->
               <div v-if="activeTab === 'live'" class="tab-content">
-                <div class="section-title">B站直播</div>
+                <div class="section-title">直播平台 <span class="hint">(修改后重启生效)</span></div>
                 <div class="form-group">
-                  <label class="checkbox-label">
-                    <input type="checkbox" v-model="cfg.bilibili.use_test_room" />
-                    使用测试房间 <span class="hint">(勾选后使用内置测试房间代替真实B站直播间)</span>
-                  </label>
+                  <label>当前平台</label>
+                  <select v-model="cfg.live.platform">
+                    <option value="bilibili">Bilibili</option>
+                    <option value="douyin">抖音</option>
+                    <option value="test">测试平台</option>
+                  </select>
                 </div>
+                <template v-if="cfg.live.platform === 'bilibili'">
+                  <div class="section-title">Bilibili</div>
+                  <div class="form-row-2">
+                    <div class="form-group"><label>直播间 ID</label><input type="number" v-model.number="cfg.bilibili.room_id" /></div>
+                    <div class="form-group"><label>登录 UID</label><input type="number" v-model.number="cfg.bilibili.uid" placeholder="留空则不登录" /></div>
+                  </div>
+                  <div class="form-group"><label>SESSDATA <span v-if="cfg.bilibili.sessdata.includes(MASKED)" class="hint">(隐藏)</span></label>
+                    <input :type="cfg.bilibili.sessdata.includes(MASKED) ? 'password' : 'text'" v-model="cfg.bilibili.sessdata" /></div>
+                </template>
+                <template v-else-if="cfg.live.platform === 'douyin'">
+                  <div class="section-title">抖音</div>
+                  <div class="form-group"><label>Web RID <span class="hint">(live.douyin.com/ 后的部分)</span></label><input type="text" v-model.trim="cfg.douyin.web_rid" /></div>
+                  <div class="form-group"><label>Cookie <span v-if="cfg.douyin.cookie.includes(MASKED)" class="hint">(隐藏)</span></label>
+                    <input :type="cfg.douyin.cookie.includes(MASKED) ? 'password' : 'text'" v-model="cfg.douyin.cookie" /></div>
+                </template>
+                <template v-else>
+                  <div class="section-title">测试平台</div>
+                  <p class="section-desc">由项目内部模拟标准弹幕、礼物和直播事件，不需要房间或平台凭据。修改后需重启。</p>
+                </template>
+                <div class="section-title">平台管理员身份</div>
                 <div class="form-row-2">
-                  <div class="form-group" :class="{ dimmed: cfg.bilibili.use_test_room }"><label>直播间 ID</label><input type="number" v-model.number="cfg.bilibili.room_id" :disabled="cfg.bilibili.use_test_room" /></div>
-                  <div class="form-group"><label>登录 UID</label><input type="number" v-model.number="cfg.bilibili.uid" placeholder="留空则不登录" /></div>
+                  <div class="form-group"><label>Bilibili UID</label><input type="text" v-model.trim="cfg.admin.identities.bilibili" /></div>
+                  <div class="form-group"><label>抖音用户 ID / sec_uid</label><input type="text" v-model.trim="cfg.admin.identities.douyin" /></div>
+                  <div class="form-group"><label>测试平台用户 ID</label><input type="text" v-model.trim="cfg.admin.identities.test" /></div>
                 </div>
-                <div class="form-group"><label>SESSDATA <span v-if="cfg.bilibili.sessdata.includes(MASKED)" class="hint">(隐藏)</span></label>
-                  <input :type="cfg.bilibili.sessdata.includes(MASKED) ? 'password' : 'text'" v-model="cfg.bilibili.sessdata" /></div>
                 <div class="section-title">管理员</div>
-                <div class="form-row-2">
-                  <div class="form-group"><label>UID</label><input type="number" v-model.number="cfg.admin.uid" /></div>
-                  <div class="form-group"><label>用户名</label><input type="text" v-model="cfg.admin.username" /></div>
-                </div>
+                <div class="form-group"><label>用户名兜底</label><input type="text" v-model="cfg.admin.username" /></div>
                 <div class="section-title">公告</div>
                 <div class="form-group"><textarea v-model="cfg.announcement" rows="3" class="textarea-field" /></div>
                 <div class="section-title">数据存储</div>
@@ -429,7 +447,7 @@
                   <div class="status-item"><span class="s-label">管理员弹幕</span><span :class="['s-value', adminState.isHideAdmin ? 'warning' : '']">{{ adminState.isHideAdmin ? '隐藏' : '显示' }}</span></div>
                   <div class="status-item"><span class="s-label">音乐音量</span><span class="s-value">{{ Math.round(adminState.volume * 10) }}/10</span></div>
                   <div class="status-item"><span class="s-label">播放状态</span><span :class="['s-value', adminState.isPaused ? 'warning' : 'on']">{{ adminState.isPaused ? '暂停' : '播放中' }}</span></div>
-                  <div class="status-item"><span class="s-label">测试房间</span><span :class="['s-value', adminState.isTestRoomEnabled ? 'on' : 'off']">{{ adminState.isTestRoomEnabled ? '已启用' : '已禁用' }}</span></div>
+                  <div class="status-item"><span class="s-label">运行平台</span><span :class="['s-value', liveState.running ? 'on' : 'off']">{{ liveState.running ? liveState.platform : '未启动' }}</span></div>
                 </div>
                 <button @click="refreshStatus" class="small-btn">刷新</button>
 
@@ -458,12 +476,39 @@
                   <button class="cmd-btn green" :disabled="!bvidInput" @click="addMusic">添加</button>
                 </div>
 
-                <div class="section-title">测试弹幕 <span v-if="!adminState.isTestRoomEnabled" class="hint">(需先启用测试房间)</span></div>
+                <div class="section-title">测试平台事件 <span v-if="!testPlatformActive" class="hint">(当前运行平台不是 test，修改配置后请重启)</span></div>
                 <div class="command-line">
-                  <label>用户:</label><input v-model="danmakuUser" class="small-input" style="width:100px" :disabled="!adminState.isTestRoomEnabled" />
-                  <label>UID:</label><input v-model.number="danmakuUid" type="number" class="small-input" style="width:80px" :disabled="!adminState.isTestRoomEnabled" />
-                  <input v-model="danmakuContent" placeholder="内容" class="flex-input" @keyup.enter="sendDanmaku" :disabled="!adminState.isTestRoomEnabled" />
-                  <button class="cmd-btn blue" :disabled="!danmakuContent || !adminState.isTestRoomEnabled" @click="sendDanmaku">发送</button>
+                  <label>类型:</label>
+                  <select v-model="testEventType" class="small-input" :disabled="!testPlatformActive">
+                    <option value="danmaku">弹幕</option>
+                    <option value="gift">礼物</option>
+                    <option value="super_chat">醒目留言</option>
+                    <option value="membership">会员</option>
+                    <option value="follow">关注</option>
+                    <option value="viewer_enter">进场</option>
+                    <option value="like">点赞</option>
+                    <option value="room_stats">房间统计</option>
+                    <option value="live_ended">直播结束</option>
+                  </select>
+                  <template v-if="testEventNeedsUser">
+                    <label>用户:</label><input v-model="testUser" class="small-input" style="width:100px" :disabled="!testPlatformActive" />
+                    <label>用户 ID:</label><input v-model="testUserId" type="text" class="small-input" style="width:110px" :disabled="!testPlatformActive" />
+                  </template>
+                </div>
+                <div v-if="testEventHasContent" class="command-line">
+                  <label>内容:</label><input v-model="testContent" placeholder="弹幕或留言内容" class="flex-input" :disabled="!testPlatformActive" @keyup.enter="sendTestEvent" />
+                </div>
+                <div v-if="testEventHasGift" class="command-line">
+                  <label>礼物:</label><input v-model="testGiftName" class="small-input" />
+                  <label>数量:</label><input v-model.number="testGiftCount" type="number" min="1" class="small-input" />
+                  <label>价值(元):</label><input v-model.number="testGiftValueYuan" type="number" min="0" step="0.01" class="small-input" />
+                </div>
+                <div v-if="testEventHasStats" class="command-line">
+                  <label>{{ testEventType === 'room_stats' ? '观看人数:' : '数量:' }}</label>
+                  <input v-model.number="testStatValue" type="number" min="0" class="small-input" />
+                </div>
+                <div class="command-line">
+                  <button class="cmd-btn blue" :disabled="!canSendTestEvent" @click="sendTestEvent">发送标准事件</button>
                 </div>
 
                 <div class="section-title">实时日志</div>
@@ -498,25 +543,20 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, watch, reactive } from 'vue'
+import { computed, ref, onMounted, onUnmounted, watch, reactive } from 'vue'
 import { storeToRefs } from 'pinia'
 import type { FullConfig } from '../types/config'
 import { MASKED } from '../types/config'
 import { useNotification } from '@/utils/notification'
-import { useLLMStore } from '@/stores/llm'
-import { useDanmakuStore } from '@/stores/danmaku'
 import { useMusicStore } from '@/features/music/store'
-import { DanmakuType } from '@/types/danmaku'
 import MemoryDebugPanel from '@/components/memory/MemoryDebugPanel.vue'
 import AgentSettingsPanel from '@/components/settings/agent/AgentSettingsPanel.vue'
 
 interface Props { visible: boolean }
 const props = defineProps<Props>()
-const emit = defineEmits<{ close: []; saved: [roomId: number] }>()
+const emit = defineEmits<{ close: []; saved: [] }>()
 
 // ---- 依赖 ----
-const llmStore = useLLMStore()
-const danmakuStore = useDanmakuStore()
 const musicStore = useMusicStore()
 const { state: musicState } = storeToRefs(musicStore)
 
@@ -556,8 +596,10 @@ const cfg = reactive<FullConfig>({} as FullConfig)
 function initCfgShape() {
   // 初始化 Vue reactive 所需的结构（值会被后端覆盖）
   const s: Record<string, any> = {
-    bilibili: { room_id: 0, sessdata: '', uid: 0, use_test_room: false },
-    host: { room_id: 0, reply_interval: 5, max_reply_length: 100, api_url: '', api_key: '', model: '', temperature: 0.7, top_p: 0.9, max_tokens: 200, disable_thinking: true },
+    live: { platform: 'bilibili' },
+    bilibili: { room_id: 0, sessdata: '', uid: 0 },
+    douyin: { web_rid: '', cookie: '' },
+    host: { reply_interval: 5, max_reply_length: 100, api_url: '', api_key: '', model: '', temperature: 0.7, top_p: 0.9, max_tokens: 200, disable_thinking: true },
     llm: { api_url: '', api_key: '', model: '', temperature: 0.1, top_p: 0.9, max_tokens: 200, disable_thinking: true },
     tts: { provider: 'volcano', voice: 'zh-CN-XiaoxiaoNeural', encoding: 'wav', speed_ratio: 1.0 },
     volcano: { appid: '', access_token: '', speaker_id: '' },
@@ -568,7 +610,7 @@ function initCfgShape() {
     music: { default_provider: 'auto', min_duration_seconds: 60, max_duration_seconds: 480, queue_capacity: 5, per_user_limit: 2, allow_bare_bv: false, accept_score: 60, reject_score: -50, llm_min_confidence: 0.75, search_candidates: 5, ducking_factor: 0.2, ducking_enabled: true, local_directories: [] },
     storage: { sqlite_path: 'data/feinalive.db', chroma_path: 'data/chroma', chroma_collection: 'memory_atoms' },
     announcement: '',
-    admin: { uid: 378810242, username: '' },
+    admin: { username: '', identities: { bilibili: '', douyin: '', test: 'internal' } },
     embedding: { provider: 'openai', model: '', api_url: '', api_key: '', dimensions: null, user_graph_enabled: true, game_graph_enabled: true },
   }
   Object.assign(cfg, s)
@@ -645,7 +687,7 @@ async function saveConfig() {
       saveStatusText.value = data.restart_required || res.headers.get('X-Restart-Required') === 'true'
         ? '已保存；场景、MCP 或能力配置需重启应用后生效'
         : '已保存'
-      emit('saved', cfg.bilibili.room_id)
+      emit('saved')
     } else {
       const errText = await res.text()
       saveStatus.value = 'err'
@@ -664,14 +706,34 @@ function close() {
 
 // ---- 直播状况（运行时监测，不受连接状态影响） ----
 interface LogItem { time: string; content: string; type: 'danmaku' | 'reply' | 'system' | 'error' }
-const danmakuUser = ref('测试用户')
-const danmakuUid = ref(123456)
-const danmakuContent = ref('')
+type TestEventType = 'danmaku' | 'gift' | 'super_chat' | 'membership' | 'follow' | 'viewer_enter' | 'like' | 'room_stats' | 'live_ended'
+const testEventType = ref<TestEventType>('danmaku')
+const testUser = ref('测试观众')
+const testUserId = ref('viewer-123456')
+const testContent = ref('')
+const testGiftName = ref('小花花')
+const testGiftCount = ref(1)
+const testGiftValueYuan = ref(0)
+const testStatValue = ref(1)
 const volumeInput = ref(10)
 const bvidInput = ref('')
-const adminState = ref({ isSleeping: false, faceMode: 'wandering', isVoiceMode: false, isHideAdmin: false, volume: 1.0, isPaused: false, isTestRoomEnabled: false })
+const adminState = ref({ isSleeping: false, faceMode: 'wandering', isVoiceMode: false, isHideAdmin: false, volume: 1.0, isPaused: false })
+const liveState = reactive({ running: false, platform: '' })
+const testPlatformActive = computed(() => liveState.running && liveState.platform === 'test')
+const testEventNeedsUser = computed(() => !['room_stats', 'live_ended'].includes(testEventType.value))
+const testEventHasContent = computed(() => ['danmaku', 'super_chat'].includes(testEventType.value))
+const testEventHasGift = computed(() => ['gift', 'super_chat', 'membership'].includes(testEventType.value))
+const testEventHasStats = computed(() => ['like', 'room_stats'].includes(testEventType.value))
+const canSendTestEvent = computed(() => {
+  if (!testPlatformActive.value) return false
+  if (testEventNeedsUser.value && (!testUser.value.trim() || !testUserId.value.trim())) return false
+  if (testEventType.value === 'danmaku' && !testContent.value.trim()) return false
+  return true
+})
 const logs = ref<LogItem[]>([])
 let ws: WebSocket | null = null
+let wsReconnectTimer: ReturnType<typeof setTimeout> | null = null
+let shouldReconnect = true
 
 function addLog(content: string, type: LogItem['type'] = 'system') {
   const now = new Date()
@@ -681,18 +743,26 @@ function addLog(content: string, type: LogItem['type'] = 'system') {
 }
 
 function connectWebSocket() {
+  if (!shouldReconnect) return
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-  ws = new WebSocket(`${protocol}//${window.location.host}/test/ws/test`)
+  ws = new WebSocket(`${protocol}//${window.location.host}/live/ws`)
   ws.onopen = () => addLog('WebSocket 已连接', 'system')
   ws.onmessage = (event) => {
     try {
       const msg = JSON.parse(event.data)
-      if (msg.type === 'danmaku') addLog(`[弹幕] ${msg.data.user}: ${msg.data.content}`, 'danmaku')
-      else if (msg.type === 'start') { addLog('[AI] 开始生成回复...', 'system'); if (adminState.value.isTestRoomEnabled && !llmStore.isPlaybackOwner) llmStore.handleExternalChunk(msg) }
-      else if (msg.type === 'text') { addLog(`[AI] ${msg.text ?? msg.data?.text ?? ''}`, 'reply'); if (adminState.value.isTestRoomEnabled && !llmStore.isPlaybackOwner) llmStore.handleExternalChunk(msg) }
-      else if (msg.type === 'audio') { addLog('[AI] 音频已生成', 'system'); if (adminState.value.isTestRoomEnabled && !llmStore.isPlaybackOwner) llmStore.handleExternalChunk(msg) }
-      else if (msg.type === 'end') { addLog('[AI] 回复完成', 'system'); if (adminState.value.isTestRoomEnabled && !llmStore.isPlaybackOwner) llmStore.handleExternalChunk(msg) }
-      else if (msg.type === 'error') { addLog(`[错误] ${msg.data?.text || ''}`, 'error'); if (adminState.value.isTestRoomEnabled) llmStore.handleExternalChunk(msg) }
+      if (msg.type === 'live_event') {
+        const liveEvent = msg.data
+        const user = liveEvent.user?.display_name ? `${liveEvent.user.display_name}: ` : ''
+        const detail = liveEvent.gift
+          ? `${liveEvent.gift.name} x${liveEvent.gift.count}`
+          : liveEvent.content || JSON.stringify(liveEvent.stats || {})
+        addLog(`[${liveEvent.type}] ${user}${detail}`, liveEvent.type === 'danmaku' ? 'danmaku' : 'system')
+      }
+      else if (msg.type === 'start') addLog('[AI] 开始生成回复...', 'system')
+      else if (msg.type === 'text') addLog(`[AI] ${msg.text ?? msg.data?.text ?? ''}`, 'reply')
+      else if (msg.type === 'audio') addLog('[AI] 音频已生成', 'system')
+      else if (msg.type === 'end') addLog('[AI] 回复完成', 'system')
+      else if (msg.type === 'error') addLog(`[错误] ${msg.data?.text || ''}`, 'error')
       else if (msg.type === 'music_state') {
         musicStore.applyExternalState(msg.data)
         addLog(`[音乐] 状态更新 #${msg.data.revision}`, 'system')
@@ -701,21 +771,43 @@ function connectWebSocket() {
     } catch { /* */ }
   }
   ws.onerror = () => addLog('WebSocket 连接错误', 'error')
-  ws.onclose = () => { addLog('WebSocket 已断开', 'system'); setTimeout(connectWebSocket, 3000) }
+  ws.onclose = () => {
+    addLog('WebSocket 已断开', 'system')
+    ws = null
+    if (shouldReconnect) wsReconnectTimer = setTimeout(connectWebSocket, 3000)
+  }
 }
 
-async function sendDanmaku() {
-  if (!danmakuContent.value) return
+async function sendTestEvent() {
+  if (!canSendTestEvent.value) return
+  const stats = testEventType.value === 'room_stats'
+    ? { viewer_count: testStatValue.value }
+    : testEventType.value === 'like'
+      ? { count: testStatValue.value }
+      : {}
   try {
-    const res = await fetch('/test/danmaku', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ user: danmakuUser.value, content: danmakuContent.value, uid: danmakuUid.value }) })
+    const res = await fetch('/test/live/event', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type: testEventType.value,
+        user: testUser.value,
+        user_id: testUserId.value,
+        content: testContent.value,
+        gift_name: testGiftName.value,
+        gift_count: testGiftCount.value,
+        value_minor: Math.max(0, Math.round(testGiftValueYuan.value * 100)),
+        stats,
+      }),
+    })
     const result = await res.json()
-    if (result.success) {
-      addLog(`[发送] ${result.user}: ${result.content}`, 'danmaku')
-      danmakuStore.addDanmaku({ id: result.msg_id || `test-${Date.now()}`, user: result.user || danmakuUser.value, content: result.content || '', timestamp: new Date(), type: DanmakuType.NORMAL, uid: result.uid || danmakuUid.value || 0 })
-    }
-    danmakuContent.value = ''
+    if (!res.ok || !result.success) throw new Error(result.detail || '事件被拒绝')
+    addLog(`[已提交] ${result.event.type} ${result.event.event_id}`, 'system')
+    if (testEventType.value === 'danmaku') testContent.value = ''
     refreshStatus()
-  } catch { useNotification().error('发送弹幕失败') }
+  } catch (error) {
+    useNotification().error(error instanceof Error ? error.message : '发送测试事件失败')
+  }
 }
 
 async function sendCommand(command: string) {
@@ -723,7 +815,7 @@ async function sendCommand(command: string) {
     const res = await fetch('/test/admin/command', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ command }) })
     const result = await res.json()
     if (result.success) {
-      if (result.state) adminState.value = { isSleeping: result.state.is_sleeping, faceMode: result.state.face_mode, isVoiceMode: result.state.is_voice_mode, isHideAdmin: result.state.is_hide_admin, volume: result.state.volume ?? 1.0, isPaused: result.state.is_paused ?? false, isTestRoomEnabled: !!result.state.is_test_room_enabled }
+      if (result.state) adminState.value = { isSleeping: result.state.is_sleeping, faceMode: result.state.face_mode, isVoiceMode: result.state.is_voice_mode, isHideAdmin: result.state.is_hide_admin, volume: result.state.volume ?? 1.0, isPaused: result.state.is_paused ?? false }
       addLog(`[指令] ${command} -> ${result.message}`, 'system')
     } else addLog(`[错误] ${command} -> ${result.message}`, 'error')
   } catch { useNotification().error('发送指令失败') }
@@ -731,9 +823,15 @@ async function sendCommand(command: string) {
 
 async function refreshStatus() {
   try {
-    const res = await fetch('/test/admin/state')
-    const data = await res.json()
-    adminState.value = { isSleeping: data.is_sleeping, faceMode: data.face_mode, isVoiceMode: data.is_voice_mode, isHideAdmin: data.is_hide_admin, volume: data.volume ?? 1.0, isPaused: data.is_paused ?? false, isTestRoomEnabled: !!data.is_test_room_enabled }
+    const [adminResponse, liveResponse] = await Promise.all([
+      fetch('/test/admin/state'),
+      fetch('/live/state'),
+    ])
+    const data = await adminResponse.json()
+    const currentLiveState = await liveResponse.json()
+    adminState.value = { isSleeping: data.is_sleeping, faceMode: data.face_mode, isVoiceMode: data.is_voice_mode, isHideAdmin: data.is_hide_admin, volume: data.volume ?? 1.0, isPaused: data.is_paused ?? false }
+    liveState.running = !!currentLiveState.running
+    liveState.platform = currentLiveState.context?.platform || ''
     volumeInput.value = Math.round((data.volume ?? 1.0) * 10)
   } catch { /* */ }
 }
@@ -763,6 +861,8 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  shouldReconnect = false
+  if (wsReconnectTimer) clearTimeout(wsReconnectTimer)
   window.removeEventListener('keydown', handleKeydown)
   if (ws) ws.close()
 })

@@ -7,10 +7,19 @@ from apps.ai.admin_commands import (
     CommandResult,
     FaceMode,
 )
+from apps.config import config
 
 
 @pytest.fixture
-def handler():
+def handler(monkeypatch):
+    monkeypatch.setitem(
+        config._data,
+        "admin",
+        {
+            "username": "RongR0Ng",
+            "identities": {"bilibili": "378810242", "douyin": "douyin-admin"},
+        },
+    )
     return AdminCommandHandler()
 
 

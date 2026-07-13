@@ -13,7 +13,7 @@ from apps.ai.speech_jobs import (
     get_speech_job_coordinator,
 )
 from apps.config import config
-from apps.live.room_session import get_room_session_manager
+from apps.live.runtime import get_live_runtime
 
 
 class HostSpeechCapability:
@@ -35,7 +35,7 @@ class HostSpeechCapability:
         *,
         started: asyncio.Event | None = None,
     ) -> SpeechJob | None:
-        context = get_room_session_manager().active_context
+        context = get_live_runtime().active_context
         final_text = text.strip()
         if not final_text or context is None:
             return None

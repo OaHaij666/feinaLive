@@ -52,6 +52,7 @@ def migrate_legacy_secrets(config_path: str | Path) -> int:
     data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
     secret_paths = (
         "bilibili.sessdata",
+        "douyin.cookie",
         "llm.api_key",
         "host.api_key",
         "agent.api_key",

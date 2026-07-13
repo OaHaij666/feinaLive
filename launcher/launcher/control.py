@@ -143,6 +143,10 @@ FIELD_LABELS = {
     "outputs": "输出",
     "spout": "Spout 输出",
     "preview": "预览",
+    "provider": "提供者",
+    "voice": "音色",
+    "encoding": "音频编码",
+    "speed_ratio": "语速倍率",
 }
 
 MODEL_FIELDS = {
@@ -219,6 +223,7 @@ class ConfigPage(QWidget):
         self.api = api
         self.language = language
         self.data: dict[str, Any] = {}
+        self.options: dict[str, Any] = {}
         self.fields: dict[tuple[str, ...], tuple[QWidget, type]] = {}
 
         layout = QVBoxLayout(self)
@@ -260,6 +265,10 @@ class ConfigPage(QWidget):
             self.status.setText(f"{prefix}: {error}")
             return
         self.data = data
+        self.api.send("GET", "/config/options", None, self._options_loaded)
+
+    def _options_loaded(self, ok: bool, data: Any, _error: str) -> None:
+        self.options = data if ok and isinstance(data, dict) else {}
         self._build_forms()
         self.status.setText(translate("配置已同步", self.language))
         localize_widget_tree(self, self.language)
@@ -488,27 +497,38 @@ class ConfigPage(QWidget):
         form: QFormLayout,
         path: tuple[str, ...],
         value: Any,
-        choices: list[tuple[str, str]] | None = None,
+        choices: list[tuple[str, Any]] | None = None,
     ) -> QWidget:
         label = FIELD_LABELS.get(path[-1], path[-1].replace("_", " ").title())
-        choices = choices or self._choices_for_path(path)
+        choices = choices or self._choices_for_path(path, value)
         if choices:
             widget: QWidget = QComboBox()
             for text, stored_value in choices:
                 widget.addItem(text, stored_value)
             index = widget.findData(value)
-            widget.setCurrentIndex(max(0, index))
+            if path == ("tts", "voice"):
+                widget.setEditable(True)
+                if index < 0:
+                    widget.setEditText(str(value or ""))
+                else:
+                    widget.setCurrentIndex(index)
+            else:
+                widget.setCurrentIndex(max(0, index))
         elif isinstance(value, bool):
             widget: QWidget = QCheckBox()
             widget.setChecked(value)
         elif isinstance(value, int):
             widget = QSpinBox()
-            widget.setRange(-2_000_000_000, 2_000_000_000)
+            minimum, maximum, step, _ = self._numeric_range(path, value)
+            widget.setRange(int(minimum), int(maximum))
+            widget.setSingleStep(max(1, int(step)))
             widget.setValue(value)
         elif isinstance(value, float):
             widget = QDoubleSpinBox()
-            widget.setDecimals(4)
-            widget.setRange(-1_000_000_000, 1_000_000_000)
+            minimum, maximum, step, decimals = self._numeric_range(path, value)
+            widget.setDecimals(decimals)
+            widget.setRange(float(minimum), float(maximum))
+            widget.setSingleStep(float(step))
             widget.setValue(value)
         elif isinstance(value, (list, dict)):
             widget = QPlainTextEdit(json.dumps(value, ensure_ascii=False, indent=2))
@@ -522,9 +542,49 @@ class ConfigPage(QWidget):
         form.addRow(label, widget)
         return widget
 
+    def _choices_for_path(self, path: tuple[str, ...], value: Any) -> list[tuple[str, Any]] | None:
+        dynamic: list[tuple[str, Any]] = []
+        if path == ("tts", "provider"):
+            values = self.options.get("speech_providers") or ["edge", "volcano", "local"]
+            dynamic = [(str(item), str(item)) for item in values]
+        elif path == ("tts", "model"):
+            values = self.options.get("speech_routes") or ["host_voice"]
+            dynamic = [(str(item), str(item)) for item in values]
+        elif path in {("tts", "response_format"), ("tts", "encoding")}:
+            values = self.options.get("speech_formats") or ["mp3", "wav", "pcm", "ogg_opus"]
+            dynamic = [(str(item).upper(), str(item)) for item in values]
+        elif path == ("tts", "voice"):
+            values = self.options.get("speech_voices") or [
+                "zh-CN-XiaoxiaoNeural",
+                "zh-CN-YunxiNeural",
+                "default",
+            ]
+            dynamic = [(str(item), str(item)) for item in values]
+        elif path == ("music", "default_provider"):
+            values = ["auto", *(self.options.get("music_providers") or ["bilibili", "local"])]
+            dynamic = [(str(item), str(item)) for item in dict.fromkeys(values)]
+        elif path == ("agent", "scenario_id"):
+            scenarios = self.options.get("agent_scenarios") or [
+                {"label": "通用 MCP", "value": "generic_mcp"},
+                {"label": "杀戮尖塔", "value": "slay_the_spire"},
+                {"label": "事件驱动助手", "value": "event_assistant"},
+            ]
+            dynamic = [
+                (str(item.get("label", item.get("value", ""))), str(item.get("value", "")))
+                for item in scenarios
+            ]
+        elif path == ("avatar", "character"):
+            values = self.options.get("avatar_characters") or ["feina00"]
+            dynamic = [(str(item), str(item)) for item in values]
+        if dynamic:
+            if value not in {stored for _, stored in dynamic}:
+                dynamic.append((str(value), value))
+            return dynamic
+        return self._static_choices_for_path(path)
+
     @staticmethod
-    def _choices_for_path(path: tuple[str, ...]) -> list[tuple[str, str]] | None:
-        options: dict[tuple[str, ...], list[tuple[str, str]]] = {
+    def _static_choices_for_path(path: tuple[str, ...]) -> list[tuple[str, Any]] | None:
+        options: dict[tuple[str, ...], list[tuple[str, Any]]] = {
             ("avatar", "motion", "source"): [
                 ("混合（推荐）", "hybrid"),
                 ("直播定点（轻微晃动）", "broadcast_idle"),
@@ -545,8 +605,55 @@ class ConfigPage(QWidget):
                 ("TensorRT", "tensorrt"),
             ],
             ("avatar", "renderer", "precision"): [("FP32", "fp32"), ("FP16", "fp16")],
+            ("avatar", "renderer", "engine"): [("FeinaAvatar", "feina_avatar")],
+            ("avatar", "renderer", "interpolation"): [("1×", 1), ("2×", 2), ("4×", 4)],
+            ("avatar", "renderer", "super_resolution"): [("1×", 1), ("2×", 2), ("4×", 4)],
         }
         return options.get(path)
+
+    @staticmethod
+    def _numeric_range(
+        path: tuple[str, ...], value: int | float
+    ) -> tuple[float, float, float, int]:
+        path_ranges: dict[tuple[str, ...], tuple[float, float, float, int]] = {
+            ("avatar", "renderer", "frame_rate"): (10, 60, 1, 0),
+            ("avatar", "outputs", "preview", "frame_rate"): (1, 30, 1, 0),
+        }
+        if path in path_ranges:
+            return path_ranges[path]
+        key = path[-1]
+        ranges: dict[str, tuple[float, float, float, int]] = {
+            "temperature": (0, 2, 0.05, 2),
+            "top_p": (0, 1, 0.05, 2),
+            "speed": (0.25, 4, 0.05, 2),
+            "speed_ratio": (0.25, 4, 0.05, 2),
+            "timeout_seconds": (1, 300, 1, 1),
+            "llm_min_confidence": (0, 1, 0.05, 2),
+            "ducking_factor": (0, 1, 0.05, 2),
+            "sensitivity": (0.1, 10, 0.1, 2),
+            "noise_gate": (0, 0.5, 0.005, 3),
+            "attack_ms": (1, 1000, 5, 1),
+            "release_ms": (1, 2000, 5, 1),
+            "frame_rate": (1, 60, 1, 0),
+            "quality": (20, 100, 1, 0),
+            "ram_cache_mb": (0, 32768, 128, 0),
+            "vram_cache_mb": (0, 32768, 128, 0),
+            "accept_score": (0, 100, 1, 0),
+            "reject_score": (-100, 0, 1, 0),
+            "search_candidates": (1, 20, 1, 0),
+            "queue_capacity": (1, 1000, 1, 0),
+            "per_user_limit": (1, 100, 1, 0),
+            "min_duration_seconds": (1, 86400, 1, 0),
+            "max_duration_seconds": (1, 86400, 1, 0),
+            "reply_interval": (1, 60, 1, 0),
+            "max_reply_length": (50, 500, 10, 0),
+            "max_tokens": (1, 100000, 100, 0),
+        }
+        if key in ranges:
+            return ranges[key]
+        if isinstance(value, int):
+            return (0, 2_000_000_000, 1, 0)
+        return (0, 1_000_000_000, 0.1, 4)
 
     def _select_section(self, row: int) -> None:
         if row >= 0:
@@ -578,8 +685,10 @@ class ConfigPage(QWidget):
         if isinstance(widget, QPlainTextEdit):
             return json.loads(widget.toPlainText())
         if isinstance(widget, QComboBox):
-            return widget.currentData()
+            return widget.currentText() if widget.isEditable() else widget.currentData()
         if isinstance(widget, QLineEdit):
+            if value_type is type(None):
+                return int(widget.text()) if widget.text().strip() else None
             return widget.text()
         raise TypeError(f"不支持的配置控件：{value_type.__name__}")
 

@@ -1,5 +1,6 @@
 """配置管理 API"""
 
+import asyncio
 import logging
 import os
 from pathlib import Path
@@ -609,6 +610,49 @@ async def list_sections():
             {"key": "admin", "label": "管理员", "description": "管理员身份标识"},
             {"key": "embedding", "label": "向量模型", "description": "Embedding / 向量检索模型配置"},
         ]
+    }
+
+
+@router.get("/options")
+async def config_ui_options():
+    """Return runtime catalogs for finite-choice desktop configuration fields."""
+    from apps.agent.scenarios.registry import list_scenarios
+    from apps.avatar import AVATAR_ENGINE_DIR
+    from apps.music.manager import get_music_manager
+    from apps.speech import get_speech_gateway_client
+
+    music_providers = await get_music_manager().list_providers()
+    speech_config: dict = {}
+    try:
+        speech_config = await asyncio.wait_for(
+            get_speech_gateway_client().get_admin_config(),
+            timeout=1.0,
+        )
+    except Exception:
+        logger.info("Speech Gateway catalog unavailable; using built-in UI choices")
+
+    providers = speech_config.get("providers", {})
+    voices = []
+    for provider in providers.values():
+        voice = str(provider.get("values", {}).get("default_voice", "")).strip()
+        if voice and "****" not in voice:
+            voices.append(voice)
+    return {
+        "agent_scenarios": [
+            {
+                "value": item["scenario_id"],
+                "label": item.get("display_name") or item["scenario_id"],
+            }
+            for item in list_scenarios()
+        ],
+        "music_providers": music_providers,
+        "speech_providers": sorted(providers),
+        "speech_routes": sorted(speech_config.get("routes", {})),
+        "speech_voices": sorted(set(voices)),
+        "speech_formats": ["mp3", "wav", "pcm", "ogg_opus"],
+        "avatar_characters": sorted(
+            item.stem for item in (AVATAR_ENGINE_DIR / "data" / "images").glob("*.png")
+        ),
     }
 
 

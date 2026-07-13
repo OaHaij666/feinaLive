@@ -6,6 +6,7 @@ from starlette.requests import Request
 
 from apps.agent.router import router as agent_router
 from apps.avatar.router import router as avatar_router
+from apps.config_router import router as config_router
 from apps.live.router import router as live_router
 from main import app, shutdown
 
@@ -50,7 +51,7 @@ async def test_shutdown_rejects_remote_or_browser_requests(host, origin):
 
 def test_internal_runtime_lifecycle_routes_are_exposed():
     paths = {route.path for route in app.routes if hasattr(route, "path")}
-    for router in (agent_router, avatar_router, live_router):
+    for router in (agent_router, avatar_router, live_router, config_router):
         paths.update(route.path for route in router.routes if hasattr(route, "path"))
     assert {
         "/stream/start",
@@ -61,4 +62,5 @@ def test_internal_runtime_lifecycle_routes_are_exposed():
         "/live/stop",
         "/agent/start",
         "/agent/stop",
+        "/config/options",
     } <= paths

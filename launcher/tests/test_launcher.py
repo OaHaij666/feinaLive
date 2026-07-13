@@ -52,7 +52,7 @@ def test_desktop_i18n_switches_business_labels_both_ways():
 
 
 def test_avatar_motion_source_uses_a_hybrid_dropdown():
-    choices = ConfigPage._choices_for_path(("avatar", "motion", "source"))
+    choices = ConfigPage._static_choices_for_path(("avatar", "motion", "source"))
     assert choices is not None
     assert [value for _, value in choices] == [
         "hybrid",
@@ -60,3 +60,16 @@ def test_avatar_motion_source_uses_a_hybrid_dropdown():
         "autonomous",
         "browser",
     ]
+
+
+def test_all_bounded_avatar_and_speech_values_have_ui_constraints():
+    assert ConfigPage._static_choices_for_path(("avatar", "renderer", "backend"))
+    assert ConfigPage._static_choices_for_path(("avatar", "renderer", "precision"))
+    assert ConfigPage._static_choices_for_path(("avatar", "renderer", "interpolation"))
+    assert ConfigPage._static_choices_for_path(("avatar", "lip_sync", "source"))
+    assert ConfigPage._numeric_range(("tts", "speed_ratio"), -5.0)[:2] == (0.25, 4)
+    assert ConfigPage._numeric_range(("music", "llm_min_confidence"), 0.75)[:2] == (0, 1)
+    assert ConfigPage._numeric_range(("avatar", "renderer", "frame_rate"), 30)[:2] == (
+        10,
+        60,
+    )

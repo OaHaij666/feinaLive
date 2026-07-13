@@ -65,16 +65,13 @@ class LLMConfig(BaseModel):
 
 
 class TTSConfig(BaseModel):
-    provider: str = "volcano"
+    gateway_url: str = "http://127.0.0.1:8091/v1"
+    api_key: str = ""
+    model: str = "edge/edge-tts"
     voice: str = "zh-CN-XiaoxiaoNeural"
-    encoding: str = "wav"
-    speed_ratio: float = 1.0
-
-
-class VolcanoConfig(BaseModel):
-    appid: str = ""
-    access_token: str = ""
-    speaker_id: str = ""
+    response_format: str = "mp3"
+    speed: float = Field(default=1.0, ge=0.25, le=4.0)
+    timeout_seconds: float = Field(default=60.0, ge=1.0, le=300.0)
 
 
 class AgentConfig(BaseModel):
@@ -186,7 +183,6 @@ class FullConfig(BaseModel):
     host: HostConfig = HostConfig()
     llm: LLMConfig = LLMConfig()
     tts: TTSConfig = TTSConfig()
-    volcano: VolcanoConfig = VolcanoConfig()
     agent: AgentConfig = AgentConfig()
     avatar: AvatarConfig = AvatarConfig()
     ai: AIConfig = AIConfig()
@@ -249,15 +245,13 @@ async def get_full_config():
             disable_thinking=config.llm_disable_thinking,
         ),
         tts=TTSConfig(
-            provider=config.tts_provider,
+            gateway_url=config.tts_gateway_url,
+            api_key=_mask_sensitive(config.tts_api_key or ""),
+            model=config.tts_model,
             voice=config.tts_voice,
-            encoding=config.tts_encoding,
-            speed_ratio=config.tts_speed_ratio,
-        ),
-        volcano=VolcanoConfig(
-            appid=config.volcano_appid,
-            access_token=_mask_sensitive(config.volcano_access_token or ""),
-            speaker_id=config.volcano_speaker_id,
+            response_format=config.tts_response_format,
+            speed=config.tts_speed,
+            timeout_seconds=config.tts_timeout_seconds,
         ),
         agent=AgentConfig(
             enabled=config.agent_enabled,
@@ -354,7 +348,7 @@ SENSITIVE_KEYS = {
     "douyin.cookie",
     "llm.api_key",
     "agent.api_key",
-    "volcano.access_token",
+    "tts.api_key",
     "host.api_key",
     "embedding.api_key",
 }
@@ -460,16 +454,13 @@ async def update_full_config(config_data: FullConfig, response: Response):
 
         # tts
         t = config_data.tts
-        flat["tts.provider"] = t.provider
+        flat["tts.gateway_url"] = t.gateway_url
+        _store_secret(data, "tts.api_key", t.api_key)
+        flat["tts.model"] = t.model
         flat["tts.voice"] = t.voice
-        flat["tts.encoding"] = t.encoding
-        flat["tts.speed_ratio"] = t.speed_ratio
-
-        # volcano
-        v = config_data.volcano
-        flat["volcano.appid"] = v.appid
-        _store_secret(data, "volcano.access_token", v.access_token)
-        flat["volcano.speaker_id"] = v.speaker_id
+        flat["tts.response_format"] = t.response_format
+        flat["tts.speed"] = t.speed
+        flat["tts.timeout_seconds"] = t.timeout_seconds
 
         # agent
         agent = config_data.agent
@@ -613,7 +604,6 @@ async def list_sections():
             {"key": "host", "label": "AI主播", "description": "主播回复参数和模型"},
             {"key": "llm", "label": "通用LLM", "description": "通用大语言模型配置"},
             {"key": "tts", "label": "语音合成", "description": "TTS 语音输出配置"},
-            {"key": "volcano", "label": "火山引擎", "description": "火山引擎 TTS 凭证"},
             {"key": "agent", "label": "Agent", "description": "场景、能力与 Agent 行为参数"},
             {"key": "avatar", "label": "数字人", "description": "FeinaAvatar 动作、口型、渲染与输出"},
             {"key": "ai", "label": "AI行为", "description": "记忆、历史、轮询间隔"},

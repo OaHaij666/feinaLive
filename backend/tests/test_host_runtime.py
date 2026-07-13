@@ -190,6 +190,12 @@ async def test_speech_pipeline_enforces_reply_limit_before_tts(monkeypatch):
 
     class TTSResult:
         audio_data = b"audio"
+        media_type = "audio/mpeg"
+        provider = "test"
+        voice = "test"
+        sample_rate = None
+        duration_ms = None
+        timings = []
 
     class TTS:
         async def synthesize(self, text):
@@ -216,7 +222,7 @@ async def test_speech_pipeline_enforces_reply_limit_before_tts(monkeypatch):
         broadcasts.append(chunk)
 
     monkeypatch.setattr("apps.ai.speech_pipeline.get_ai_client", lambda: AI())
-    monkeypatch.setattr("apps.ai.speech_pipeline.get_tts_client", lambda: TTS())
+    monkeypatch.setattr("apps.ai.speech_pipeline.get_speech_gateway_client", lambda: TTS())
     monkeypatch.setattr(
         type(speech_module.config),
         "host_max_reply_length",
@@ -252,6 +258,12 @@ async def test_speak_text_bypasses_llm_and_waits_for_playback(monkeypatch):
 
     class TTSResult:
         audio_data = b"audio"
+        media_type = "audio/mpeg"
+        provider = "test"
+        voice = "test"
+        sample_rate = None
+        duration_ms = None
+        timings = []
 
     class TTS:
         async def synthesize(self, text):
@@ -275,7 +287,7 @@ async def test_speak_text_bypasses_llm_and_waits_for_playback(monkeypatch):
     async def broadcast(context, chunk):
         return None
 
-    monkeypatch.setattr("apps.ai.speech_pipeline.get_tts_client", lambda: TTS())
+    monkeypatch.setattr("apps.ai.speech_pipeline.get_speech_gateway_client", lambda: TTS())
     result = await SpeechPipeline(broadcaster=broadcast, playback=Playback()).speak_text(
         "这是 Agent 已经写好的最终解说。",
         current_context(),

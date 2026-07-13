@@ -179,10 +179,12 @@ async def lifespan(app: FastAPI):
     # after every runtime and memory consumer has stopped.
     from apps.ai.client import get_agent_ai_client, get_ai_client
     from apps.ai.embedding import get_embedding_client
+    from apps.speech import get_speech_gateway_client
 
     await get_agent_ai_client().close()
     await get_ai_client().close()
     await get_embedding_client().close()
+    await get_speech_gateway_client().close()
 
     await music_manager.shutdown()
     await avatar_runtime.stop()

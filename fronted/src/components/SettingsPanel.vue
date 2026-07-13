@@ -268,52 +268,44 @@
 
               <!-- Tab: 语音 -->
               <div v-if="activeTab === 'tts'" class="tab-content">
-                <div class="section-title">TTS 语音合成</div>
+                <div class="section-title">Speech Gateway</div>
+                <p class="section-desc">供应商凭据、路由和 fallback 在独立 Gateway 中管理；控制台只配置统一语音接口。</p>
                 <div class="form-group">
-                  <label>提供商</label>
-                  <select v-model="cfg.tts.provider">
-                    <option value="volcano">火山引擎</option>
-                    <option value="edge">Edge TTS</option>
-                  </select>
+                  <label>Gateway URL</label>
+                  <input type="text" v-model="cfg.tts.gateway_url" placeholder="http://127.0.0.1:8091/v1" />
                 </div>
-                <div class="form-group" v-if="cfg.tts.provider === 'edge'">
-                  <label>TTS 语音 <span class="hint">(仅 Edge 有效)</span></label>
-                  <select v-model="cfg.tts.voice">
-                    <option value="zh-CN-XiaoxiaoNeural">晓晓 (女声)</option>
-                    <option value="zh-CN-YunxiNeural">云希 (男声)</option>
-                    <option value="zh-CN-YunyangNeural">云扬 (男声)</option>
-                    <option value="zh-CN-XiaoyiNeural">晓伊 (女声)</option>
-                    <option value="zh-CN-YunjianNeural">云健 (男声)</option>
-                    <option value="zh-CN-YunhaoNeural">云浩 (男声)</option>
-                    <option value="zh-CN-YunxiaNeural">云夏 (女声)</option>
-                  </select>
+                <div class="form-group">
+                  <label>Gateway API Key <span v-if="cfg.tts.api_key.includes(MASKED)" class="hint">(已隐藏)</span></label>
+                  <input :type="cfg.tts.api_key.includes(MASKED) ? 'password' : 'text'" v-model="cfg.tts.api_key" placeholder="本地无鉴权时留空" />
                 </div>
-                <div class="form-group" v-if="cfg.tts.provider === 'volcano'">
-                  <label>朗诵人 (Speaker ID)</label>
-                  <input type="text" v-model="cfg.volcano.speaker_id" placeholder="火山引擎 Speaker ID" />
+                <div class="form-row-2">
+                  <div class="form-group">
+                    <label>模型路由</label>
+                    <input type="text" v-model="cfg.tts.model" placeholder="edge/edge-tts" />
+                  </div>
+                  <div class="form-group">
+                    <label>音色</label>
+                    <input type="text" v-model="cfg.tts.voice" placeholder="zh-CN-XiaoxiaoNeural" />
+                  </div>
                 </div>
                 <div class="form-row-2">
                   <div class="form-group">
                     <label>编码格式</label>
-                    <select v-model="cfg.tts.encoding">
-                      <option value="wav">WAV</option>
+                    <select v-model="cfg.tts.response_format">
                       <option value="mp3">MP3</option>
+                      <option value="wav">WAV</option>
+                      <option value="pcm">PCM</option>
+                      <option value="ogg_opus">Ogg Opus</option>
                     </select>
                   </div>
                   <div class="form-group">
-                    <label>语速 <span class="range-value">{{ cfg.tts.speed_ratio }}</span></label>
-                    <input type="range" v-model.number="cfg.tts.speed_ratio" min="0.5" max="2.0" step="0.1" />
+                    <label>语速 <span class="range-value">{{ cfg.tts.speed }}</span></label>
+                    <input type="range" v-model.number="cfg.tts.speed" min="0.5" max="2.0" step="0.1" />
                   </div>
                 </div>
-
-                <div class="section-title">火山引擎凭证 <span v-if="cfg.tts.provider !== 'volcano'" class="hint">(未使用)</span></div>
-                <div class="form-group" :class="{ dimmed: cfg.tts.provider !== 'volcano' }">
-                  <label>App ID</label>
-                  <input type="text" v-model="cfg.volcano.appid" />
-                </div>
-                <div class="form-group" :class="{ dimmed: cfg.tts.provider !== 'volcano' }">
-                  <label>Access Token <span v-if="cfg.volcano.access_token.includes(MASKED)" class="hint">(已隐藏)</span></label>
-                  <input :type="cfg.volcano.access_token.includes(MASKED) ? 'password' : 'text'" v-model="cfg.volcano.access_token" />
+                <div class="form-group">
+                  <label>合成超时（秒）</label>
+                  <input type="number" v-model.number="cfg.tts.timeout_seconds" min="1" max="300" />
                 </div>
               </div>
 
@@ -697,8 +689,7 @@ function initCfgShape() {
     douyin: { web_rid: '', cookie: '' },
     host: { reply_interval: 5, max_reply_length: 100, api_url: '', api_key: '', model: '', temperature: 0.7, top_p: 0.9, max_tokens: 200, disable_thinking: true },
     llm: { api_url: '', api_key: '', model: '', temperature: 0.1, top_p: 0.9, max_tokens: 200, disable_thinking: true },
-    tts: { provider: 'volcano', voice: 'zh-CN-XiaoxiaoNeural', encoding: 'wav', speed_ratio: 1.0 },
-    volcano: { appid: '', access_token: '', speaker_id: '' },
+    tts: { gateway_url: 'http://127.0.0.1:8091/v1', api_key: '', model: 'edge/edge-tts', voice: 'zh-CN-XiaoxiaoNeural', response_format: 'mp3', speed: 1.0, timeout_seconds: 60 },
     agent: { enabled: false, scenario_id: 'slay_the_spire', mcp_url: 'http://127.0.0.1:8080', api_url: '', api_key: '', model: '', temperature: 0.4, max_tokens: 500, disable_thinking: true, poll_interval: 1.0, memory_threshold: 30, memory_idle_seconds: 120, memory_scan_interval_seconds: 30, memory_context_max_chars: 12000, min_step_interval: 3.0, step_jitter: 0.5, commentary_interval: 30.0, min_commentary_interval: 15.0, commentary_hold_timeout: 20.0, memory_eagerness: 3, queue_max_size: 20, host_history_maxlen: 50, action_history_maxlen: 30, scenario_config: { default_character: 'IRONCLAD' } },
     avatar: { enabled: true, character: 'feina00', motion: { source: 'autonomous', allow_browser_control: true }, lip_sync: { source: 'browser_audio', sensitivity: 3, noise_gate: 0.015, attack_ms: 35, release_ms: 90 }, renderer: { engine: 'feina_avatar', model: 'tha3', backend: 'onnxruntime', precision: 'fp32', separable: false, use_eyebrow: true, frame_rate: 30, interpolation: 1, super_resolution: 1, ram_cache_mb: 2048, vram_cache_mb: 2048 }, outputs: { spout: { enabled: true, name: 'FeinaAvatar' }, preview: { enabled: true, frame_rate: 10, quality: 80 } } },
     ai: { max_history_per_session: 16, summary_interval: 10, summary_idle_seconds: 300.0, summary_scan_interval_seconds: 60.0, max_recent_messages: 16, poll_interval_seconds: 10.0 },

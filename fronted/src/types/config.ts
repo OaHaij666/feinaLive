@@ -38,16 +38,13 @@ export interface LLMConfig {
 }
 
 export interface TTSConfig {
-  provider: string
+  gateway_url: string
+  api_key: string
+  model: string
   voice: string
-  encoding: string
-  speed_ratio: number
-}
-
-export interface VolcanoConfig {
-  appid: string
-  access_token: string
-  speaker_id: string
+  response_format: string
+  speed: number
+  timeout_seconds: number
 }
 
 export interface AgentConfig {
@@ -223,7 +220,6 @@ export interface FullConfig {
   host: HostConfig
   llm: LLMConfig
   tts: TTSConfig
-  volcano: VolcanoConfig
   agent: AgentConfig
   avatar: AvatarConfig
   ai: AIConfig

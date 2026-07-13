@@ -97,16 +97,13 @@ host:
 # ============================================================
 
 tts:
-  provider: volcano  # TTS 提供商: volcano | edge
-  voice: "zh-CN-XiaoxiaoNeural"  # 语音名称
-  encoding: wav      # 输出格式: wav | mp3
-  speed_ratio: 1.0   # 语速倍率
-
-# 火山引擎 TTS 配置（provider=volcano 时使用）
-volcano:
-  appid: "your_appid"
-  access_token: ""  # 请通过控制台保存到系统密钥库，或设置 VOLCANO_ACCESS_TOKEN
-  speaker_id: "your_speaker_id"
+  gateway_url: "http://127.0.0.1:8091/v1"
+  api_key: ""                    # Gateway 开启鉴权时保存到系统密钥库
+  model: "edge/edge-tts"         # provider/model；例如 volcano/voice-clone
+  voice: "zh-CN-XiaoxiaoNeural"
+  response_format: "mp3"
+  speed: 1.0
+  timeout_seconds: 60
 
 # ============================================================
 # Agent 与静态场景配置

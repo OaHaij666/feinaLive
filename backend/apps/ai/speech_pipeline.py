@@ -13,10 +13,10 @@ from typing import Any
 
 from apps.ai.client import ChatMessage, ChatRequest, get_ai_client
 from apps.ai.playback import PlaybackCoordinator, get_playback_coordinator
-from apps.ai.tts import get_tts_client
 from apps.config import config
 from apps.live.models import LiveSessionContext
 from apps.live.runtime import get_live_runtime
+from apps.speech import get_speech_gateway_client
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +32,12 @@ class SpeechChunk:
     sentence_index: int = 0
     char_offset: int = 0
     is_final: bool = False
+    media_type: str = ""
+    provider: str = ""
+    voice: str = ""
+    sample_rate: int | None = None
+    duration_ms: int | None = None
+    timings: list[dict[str, Any]] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         result: dict[str, Any] = {"type": self.type, "is_final": self.is_final}
@@ -42,6 +48,15 @@ class SpeechChunk:
             result["sentence_index"] = self.sentence_index
             result["char_offset"] = self.char_offset
             result["char_length"] = len(self.text)
+            result["media_type"] = self.media_type
+            result["provider"] = self.provider
+            result["voice"] = self.voice
+            if self.sample_rate is not None:
+                result["sample_rate"] = self.sample_rate
+            if self.duration_ms is not None:
+                result["duration_ms"] = self.duration_ms
+            if self.timings:
+                result["timings"] = self.timings
         return result
 
 
@@ -400,7 +415,7 @@ class SpeechPipeline:
         char_offset: int,
     ) -> SpeechChunk | None:
         try:
-            result = await get_tts_client().synthesize(sentence)
+            result = await get_speech_gateway_client().synthesize(sentence)
         except asyncio.CancelledError:
             raise
         except Exception:
@@ -414,6 +429,12 @@ class SpeechPipeline:
             audio_data=result.audio_data,
             sentence_index=sentence_index,
             char_offset=char_offset,
+            media_type=result.media_type,
+            provider=result.provider,
+            voice=result.voice,
+            sample_rate=result.sample_rate,
+            duration_ms=result.duration_ms,
+            timings=result.timings,
         )
 
     async def _broadcast(

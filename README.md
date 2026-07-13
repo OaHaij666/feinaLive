@@ -32,6 +32,7 @@ feinaLive/
 │   ├── main.py              # FastAPI 入口，默认端口 9191
 │   └── pyproject.toml       # uv 依赖配置
 ├── fronted/                 # Vue 3 直播端 5173、控制台 5174
+├── speech_gateway/          # 独立 TTS Gateway，默认端口 8091
 ├── .ua/                     # Understand Anything 架构知识图谱
 ├── mcp/                     # 杀戮尖塔 MCP Mod
 ├── nginx-rtmp-win32/        # 本地 HLS/HTTP 代理运行文件
@@ -71,6 +72,16 @@ cd fronted
 npm install
 ```
 
+Speech Gateway 独立安装和启动：
+
+```powershell
+cd speech_gateway
+uv sync
+uv run python -m speech_gateway.main
+```
+
+Gateway 默认监听 `127.0.0.1:8091`。Edge TTS 无需供应商凭据；Volcano 的 `VOLCANO_APPID`、`VOLCANO_ACCESS_TOKEN` 和 `VOLCANO_DEFAULT_VOICE` 只配置在 Gateway 进程环境中，不进入 feinaLive 后端。
+
 ### 3. 配置
 
 复制配置模板：
@@ -85,13 +96,15 @@ Copy-Item backend\config.example.yaml backend\config.yaml
 - `storage.chroma_path`：ChromaDB 向量索引路径
 - `bilibili.room_id` / `bilibili.sessdata`
 - `llm` / `host` / `agent` 的模型 API 配置
-- `tts` / `volcano` 或 Edge TTS 配置
+- `tts.gateway_url`、模型路由、音色和音频格式
 - `agent.enabled`、`agent.scenario_id`、`agent.mcp_url`
 - `avatar` 数字人角色、输入、输出和性能配置
 
 敏感凭据通过运营控制台写入系统密钥库，也可使用环境变量；`backend/config.yaml` 只保存非敏感运行参数，仍不应提交个人配置。
 
 LLM 与 Embedding 统一通过独立的 Bifrost Gateway 接入。feinaLive 只调用其 OpenAI-compatible `/v1` API，不直接保存上游供应商配置；供应商路由、fallback、限流和上游密钥均由 Bifrost 管理。示例配置使用 `http://127.0.0.1:8081/v1`，避免与默认 MCP 端口 `8080` 冲突。
+
+TTS 通过独立 Feina Speech Gateway 的 `/v1/audio/speech` 接入。供应商凭据、能力差异和 fallback 留在 Gateway；主项目只接收统一音频产物和可选的采样率、时长、时间轴元数据。Gateway 对不支持的格式、情绪或时间轴能力明确报错，不会静默丢弃参数。
 
 ### 4. FeinaAvatar 模型
 

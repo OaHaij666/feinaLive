@@ -158,28 +158,31 @@ class Config:
         return os.getenv("TTS_VOICE") or self._data.get("tts", {}).get("voice", "zh-CN-XiaoxiaoNeural")
 
     @property
-    def tts_provider(self) -> str:
-        return os.getenv("TTS_PROVIDER") or self._data.get("tts", {}).get("provider", "edge")
+    def tts_gateway_url(self) -> str:
+        return (
+            os.getenv("TTS_GATEWAY_URL")
+            or self._data.get("tts", {}).get("gateway_url", "http://127.0.0.1:8091/v1")
+        )
 
     @property
-    def tts_encoding(self) -> str:
-        return self._data.get("tts", {}).get("encoding", "wav")
+    def tts_api_key(self) -> str | None:
+        return os.getenv("TTS_API_KEY") or secret_store.get("tts.api_key")
 
     @property
-    def tts_speed_ratio(self) -> float:
-        return float(self._data.get("tts", {}).get("speed_ratio", 1.0))
+    def tts_model(self) -> str:
+        return os.getenv("TTS_MODEL") or self._data.get("tts", {}).get("model", "edge/edge-tts")
 
     @property
-    def volcano_appid(self) -> str:
-        return os.getenv("VOLCANO_APPID") or self._data.get("volcano", {}).get("appid", "")
+    def tts_response_format(self) -> str:
+        return self._data.get("tts", {}).get("response_format", "mp3")
 
     @property
-    def volcano_access_token(self) -> str:
-        return os.getenv("VOLCANO_ACCESS_TOKEN") or secret_store.get("volcano.access_token") or ""
+    def tts_speed(self) -> float:
+        return float(self._data.get("tts", {}).get("speed", 1.0))
 
     @property
-    def volcano_speaker_id(self) -> str:
-        return os.getenv("VOLCANO_SPEAKER_ID") or self._data.get("volcano", {}).get("speaker_id", "")
+    def tts_timeout_seconds(self) -> float:
+        return float(self._data.get("tts", {}).get("timeout_seconds", 60.0))
 
     @property
     def host_reply_interval(self) -> int:

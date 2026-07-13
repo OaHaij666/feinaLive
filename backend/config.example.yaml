@@ -17,17 +17,22 @@ bilibili:
 # 直播间公告（显示在直播间标题下方）
 announcement: "AI主播是小笨蛋不要欺负她喵。输入 点歌 歌名 进行点歌。输入/clear 清除AI对你的记忆。"
 
-# 信任的UP主列表（用于视频采集，会自动采集这些UP主的视频）
-trusted_uploaders_seed:
-  - uid: 0
-    name: "UP主名称"
-
-# UP主视频采集配置
-# 默认播放列表（无点歌时播放）
-playlist_seed:
-  - bvid: "BVxxxxxxxxx"
-    title: "歌曲名称"
-    artist: "歌手"
+# 独立音乐系统
+music:
+  default_provider: "bilibili"
+  min_duration_seconds: 60
+  max_duration_seconds: 480
+  queue_capacity: 5
+  per_user_limit: 2
+  allow_bare_bv: false
+  accept_score: 60
+  reject_score: -50
+  llm_min_confidence: 0.75
+  search_candidates: 5
+  ducking_factor: 0.2
+  library_seed:
+    - provider: "bilibili"
+      source_id: "BVxxxxxxxxx"
 
 # ============================================================
 # LLM 配置
@@ -43,7 +48,6 @@ llm:
   temperature: 0.1
   top_p: 0.9
   max_tokens: 200
-  auto_collect_min_views: 20000  # 自动采集视频的最小播放量
   disable_thinking: true         # 禁用模型的思考过程输出
 
 # 用户对话批量总结配置

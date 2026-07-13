@@ -78,14 +78,6 @@ class Config:
         return bool(self._data.get("bilibili", {}).get("use_test_room", False))
 
     @property
-    def trusted_uploaders_seed(self) -> list[dict]:
-        return self._data.get("trusted_uploaders_seed", self._data.get("trusted_ups", []))
-
-    @property
-    def playlist_seed(self) -> list[dict]:
-        return self._data.get("playlist_seed", self._data.get("default_playlist", []))
-
-    @property
     def llm_api_url(self) -> str:
         return os.getenv("LLM_API_URL") or self._data.get("llm", {}).get("api_url", "")
 
@@ -112,10 +104,6 @@ class Config:
     @property
     def llm_max_tokens(self) -> int:
         return int(os.getenv("LLM_MAX_TOKENS") or self._data.get("llm", {}).get("max_tokens", 200))
-
-    @property
-    def auto_collect_min_views(self) -> int:
-        return self._data.get("llm", {}).get("auto_collect_min_views", 20000)
 
     @property
     def llm_disable_thinking(self) -> bool:
@@ -495,19 +483,55 @@ class Config:
     def ai_poll_interval_seconds(self) -> float:
         return float(self._data.get("ai", {}).get("poll_interval_seconds", 10.0))
 
-    # ---- 音乐验证 (music_config) ----
+    # ---- Independent music runtime ----
 
     @property
-    def music_verify_min_duration(self) -> int:
-        return int(self._data.get("music_config", {}).get("verify_min_duration", 60))
+    def music_default_provider(self) -> str:
+        return str(self._data.get("music", {}).get("default_provider", "bilibili"))
 
     @property
-    def music_verify_max_duration(self) -> int:
-        return int(self._data.get("music_config", {}).get("verify_max_duration", 480))
+    def music_min_duration_seconds(self) -> int:
+        return int(self._data.get("music", {}).get("min_duration_seconds", 60))
 
     @property
-    def music_verify_max_comments(self) -> int:
-        return int(self._data.get("music_config", {}).get("verify_max_comments", 3))
+    def music_max_duration_seconds(self) -> int:
+        return int(self._data.get("music", {}).get("max_duration_seconds", 480))
+
+    @property
+    def music_queue_capacity(self) -> int:
+        return int(self._data.get("music", {}).get("queue_capacity", 5))
+
+    @property
+    def music_per_user_limit(self) -> int:
+        return int(self._data.get("music", {}).get("per_user_limit", 2))
+
+    @property
+    def music_allow_bare_bv(self) -> bool:
+        return bool(self._data.get("music", {}).get("allow_bare_bv", False))
+
+    @property
+    def music_accept_score(self) -> int:
+        return int(self._data.get("music", {}).get("accept_score", 60))
+
+    @property
+    def music_reject_score(self) -> int:
+        return int(self._data.get("music", {}).get("reject_score", -50))
+
+    @property
+    def music_llm_min_confidence(self) -> float:
+        return float(self._data.get("music", {}).get("llm_min_confidence", 0.75))
+
+    @property
+    def music_search_candidates(self) -> int:
+        return int(self._data.get("music", {}).get("search_candidates", 5))
+
+    @property
+    def music_ducking_factor(self) -> float:
+        return float(self._data.get("music", {}).get("ducking_factor", 0.2))
+
+    @property
+    def music_library_seed(self) -> list[dict]:
+        return list(self._data.get("music", {}).get("library_seed", []))
 
     # ---- 记忆系统 (memory) ----
 

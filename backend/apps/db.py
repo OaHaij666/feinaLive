@@ -3,19 +3,14 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
-from datetime import datetime
 
 from sqlalchemy import (
-    BigInteger,
-    Boolean,
-    DateTime,
     Float,
     ForeignKey,
     Integer,
     String,
     Text,
     event,
-    func,
 )
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
@@ -83,41 +78,6 @@ class ViewerSummaryBatchDB(Base):
     last_interaction_id: Mapped[int] = mapped_column(Integer)
     result_json: Mapped[str] = mapped_column(Text)
     created_at: Mapped[float] = mapped_column(Float, default=0.0)
-
-
-class TrustedUploaderDB(Base):
-    __tablename__ = "trusted_uploaders"
-
-    uid: Mapped[int] = mapped_column(BigInteger, primary_key=True)
-    name: Mapped[str] = mapped_column(String(100), default="")
-    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=func.now())
-
-
-class UpVideo(Base):
-    __tablename__ = "up_video_cache"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    bvid: Mapped[str] = mapped_column(String(20), unique=True, index=True)
-    title: Mapped[str] = mapped_column(String(255))
-    up_name: Mapped[str] = mapped_column(String(100))
-    up_uid: Mapped[int] = mapped_column(BigInteger, index=True)
-    duration: Mapped[int] = mapped_column(Integer, default=0)
-    cover_url: Mapped[str] = mapped_column(String(500), default="")
-    source_published_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    last_seen_at: Mapped[datetime] = mapped_column(DateTime, default=func.now(), index=True)
-    fetched_at: Mapped[datetime] = mapped_column(DateTime, default=func.now())
-
-
-class PlaylistItem(Base):
-    __tablename__ = "playlist_items"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    bvid: Mapped[str] = mapped_column(String(20), unique=True, index=True)
-    title: Mapped[str] = mapped_column(String(255))
-    artist: Mapped[str] = mapped_column(String(100), default="")
-    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=func.now())
 
 
 async def init_db() -> None:

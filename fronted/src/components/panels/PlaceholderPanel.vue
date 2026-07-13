@@ -8,8 +8,8 @@
           <div class="music-main">
             <div class="track-info">
               <div class="track-info-header">
-                <div class="track-title" :title="current?.title ? `${current.title} - ${current.upName}` : '等待播放'">
-                  {{ current?.title ? `${current.title} - ${current.upName}` : '等待播放' }}
+                <div class="track-title" :title="current?.track.title ? `${current.track.title} - ${current.track.artists.join(' / ')}` : '等待播放'">
+                  {{ current?.track.title ? `${current.track.title} - ${current.track.artists.join(' / ')}` : '等待播放' }}
                 </div>
               </div>
 
@@ -42,9 +42,9 @@
               >
                 <div class="item-index">{{ index + 1 }}</div>
                 <div class="item-info">
-                  <div class="item-title">{{ item.title }} - {{ item.upName }}</div>
+                  <div class="item-title">{{ item.track.title }} - {{ item.track.artists.join(' / ') }}</div>
                 </div>
-                <div class="item-duration">{{ formatTime(item.duration) }}</div>
+                <div class="item-duration">{{ formatTime(item.track.duration_seconds) }}</div>
               </div>
             </div>
             <div class="queue-empty" v-else>
@@ -73,7 +73,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch, nextTick } from 'vue'
 import { storeToRefs } from 'pinia'
-import { useMusicStore } from '@/stores/music'
+import { useMusicStore } from '@/features/music/store'
 import { useLLMStore } from '@/stores/llm'
 
 const musicStore = useMusicStore()
@@ -251,7 +251,7 @@ function formatTime(seconds: number): string {
 }
 
 onMounted(() => {
-  musicStore.fetchQueue()
+  void musicStore.fetchState()
   startQueueAutoScroll()
 })
 

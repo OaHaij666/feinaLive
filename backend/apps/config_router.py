@@ -6,7 +6,7 @@ from pathlib import Path
 
 import yaml
 from fastapi import APIRouter, HTTPException, Response
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from apps.config import config
 from apps.storage.secrets import secret_store
@@ -47,7 +47,6 @@ class LLMConfig(BaseModel):
     temperature: float = 0.1
     top_p: float = 0.9
     max_tokens: int = 200
-    auto_collect_min_views: int = 20000
     disable_thinking: bool = True
 
 
@@ -166,9 +165,23 @@ class MessagingConfig(BaseModel):
 
 
 class MusicConfigModel(BaseModel):
-    verify_min_duration: int = 60
-    verify_max_duration: int = 480
-    verify_max_comments: int = 3
+    default_provider: str = "bilibili"
+    min_duration_seconds: int = Field(default=60, ge=1, le=86400)
+    max_duration_seconds: int = Field(default=480, ge=1, le=86400)
+    queue_capacity: int = Field(default=5, ge=1, le=1000)
+    per_user_limit: int = Field(default=2, ge=1, le=100)
+    allow_bare_bv: bool = False
+    accept_score: int = Field(default=60, ge=0, le=100)
+    reject_score: int = Field(default=-50, ge=-100, le=0)
+    llm_min_confidence: float = Field(default=0.75, ge=0, le=1)
+    search_candidates: int = Field(default=5, ge=1, le=20)
+    ducking_factor: float = Field(default=0.2, ge=0, le=1)
+
+    @model_validator(mode="after")
+    def validate_ranges(self):
+        if self.min_duration_seconds >= self.max_duration_seconds:
+            raise ValueError("music.min_duration_seconds 必须小于 max_duration_seconds")
+        return self
 
 
 class StorageConfig(BaseModel):
@@ -202,7 +215,7 @@ class FullConfig(BaseModel):
     easyvtuber: EasyVtuberConfig = EasyVtuberConfig()
     ai: AIConfig = AIConfig()
     messaging: MessagingConfig = MessagingConfig()
-    music_config: MusicConfigModel = MusicConfigModel()
+    music: MusicConfigModel = MusicConfigModel()
     storage: StorageConfig = StorageConfig()
     announcement: str = ""
     admin: AdminConfig = AdminConfig()
@@ -252,7 +265,6 @@ async def get_full_config():
             temperature=config.llm_temperature,
             top_p=config.llm_top_p,
             max_tokens=config.llm_max_tokens,
-            auto_collect_min_views=config.auto_collect_min_views,
             disable_thinking=config.llm_disable_thinking,
         ),
         tts=TTSConfig(
@@ -347,10 +359,18 @@ async def get_full_config():
             rate_limit_danmaku=config.messaging_rate_limit_danmaku,
             rate_limit_gift=config.messaging_rate_limit_gift,
         ),
-        music_config=MusicConfigModel(
-            verify_min_duration=config.music_verify_min_duration,
-            verify_max_duration=config.music_verify_max_duration,
-            verify_max_comments=config.music_verify_max_comments,
+        music=MusicConfigModel(
+            default_provider=config.music_default_provider,
+            min_duration_seconds=config.music_min_duration_seconds,
+            max_duration_seconds=config.music_max_duration_seconds,
+            queue_capacity=config.music_queue_capacity,
+            per_user_limit=config.music_per_user_limit,
+            allow_bare_bv=config.music_allow_bare_bv,
+            accept_score=config.music_accept_score,
+            reject_score=config.music_reject_score,
+            llm_min_confidence=config.music_llm_min_confidence,
+            search_candidates=config.music_search_candidates,
+            ducking_factor=config.music_ducking_factor,
         ),
         storage=StorageConfig(
             sqlite_path=config.app_db_path,
@@ -470,7 +490,6 @@ async def update_full_config(config_data: FullConfig, response: Response):
         flat["llm.temperature"] = llm_config.temperature
         flat["llm.top_p"] = llm_config.top_p
         flat["llm.max_tokens"] = llm_config.max_tokens
-        flat["llm.auto_collect_min_views"] = llm_config.auto_collect_min_views
         flat["llm.disable_thinking"] = llm_config.disable_thinking
 
         # tts
@@ -570,11 +589,19 @@ async def update_full_config(config_data: FullConfig, response: Response):
         flat["messaging.rate_limit_danmaku"] = m.rate_limit_danmaku
         flat["messaging.rate_limit_gift"] = m.rate_limit_gift
 
-        # music_config
-        mc = config_data.music_config
-        flat["music_config.verify_min_duration"] = mc.verify_min_duration
-        flat["music_config.verify_max_duration"] = mc.verify_max_duration
-        flat["music_config.verify_max_comments"] = mc.verify_max_comments
+        # music
+        mc = config_data.music
+        flat["music.default_provider"] = mc.default_provider
+        flat["music.min_duration_seconds"] = mc.min_duration_seconds
+        flat["music.max_duration_seconds"] = mc.max_duration_seconds
+        flat["music.queue_capacity"] = mc.queue_capacity
+        flat["music.per_user_limit"] = mc.per_user_limit
+        flat["music.allow_bare_bv"] = mc.allow_bare_bv
+        flat["music.accept_score"] = mc.accept_score
+        flat["music.reject_score"] = mc.reject_score
+        flat["music.llm_min_confidence"] = mc.llm_min_confidence
+        flat["music.search_candidates"] = mc.search_candidates
+        flat["music.ducking_factor"] = mc.ducking_factor
 
         storage = config_data.storage
         flat["storage.sqlite_path"] = storage.sqlite_path
@@ -651,8 +678,7 @@ async def list_sections():
             {"key": "easyvtuber", "label": "数字人", "description": "Live2D 渲染和输入配置"},
             {"key": "ai", "label": "AI行为", "description": "记忆、历史、轮询间隔"},
             {"key": "messaging", "label": "消息调度", "description": "优先级、队列、频率限制"},
-            {"key": "music_config", "label": "音乐验证", "description": "点歌验证参数"},
-            {"key": "up_videos", "label": "视频采集", "description": "UP主视频采集频率"},
+            {"key": "music", "label": "音乐系统", "description": "Provider、点歌审核与播放参数"},
             {"key": "announcement", "label": "公告", "description": "直播间跑马灯公告"},
             {"key": "admin", "label": "管理员", "description": "管理员身份标识"},
             {"key": "embedding", "label": "向量模型", "description": "Embedding / 向量检索模型配置"},

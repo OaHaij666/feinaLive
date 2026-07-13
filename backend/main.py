@@ -17,7 +17,7 @@ from apps.config_router import router as config_router
 from apps.easyvtuber.router import router as easyvtuber_router
 from apps.exceptions import AppException
 from apps.live.bilibili.router import router as bilibili_router
-from apps.live.music.router import router as music_router
+from apps.music.router import router as music_router
 from apps.test_router import router as test_router
 from services.nginx_service import get_nginx_service, start_nginx, stop_nginx
 
@@ -49,17 +49,11 @@ async def lifespan(app: FastAPI):
     )
     from apps.ai.memory.engine import init_memory_engine
     from apps.easyvtuber import get_easyvtuber_manager
-    from apps.live.music.client import BilibiliMusicClient
-    from apps.live.music.library import get_playlist_manager
-    from apps.live.music.queue import get_music_queue
-    from apps.live.music.up_videos import get_up_video_manager
     from apps.live.room_session import get_room_session_manager
+    from apps.music.manager import get_music_manager
 
-    queue = get_music_queue()
-    logger.info(f"Music queue initialized: max_history={queue._history.maxlen}, max_queue={queue._queue.maxlen}")
-
-    up_manager = get_up_video_manager()
-    await up_manager.initialize()
+    music_manager = get_music_manager()
+    await music_manager.initialize()
 
     await init_user_profiles()
 
@@ -79,91 +73,17 @@ async def lifespan(app: FastAPI):
     admin_handler.register_face_mode_callback(on_face_mode_change)
     easyvtuber_manager.set_face_mode(admin_handler.get_state().face_mode.value)
 
-    from core.websocket import manager as ws_manager
-
-    async def broadcast_music_control(action: str, data: dict = None):
-        message = {"type": "music_control", "data": {"action": action, **(data or {})}}
-        context = get_room_session_manager().active_context
-        if context is not None:
-            message["context"] = context.to_dict()
-            await ws_manager.send_message(context.room_id, message)
-
     def on_volume_change(volume: float):
-        queue.set_volume(volume)
-        asyncio.create_task(broadcast_music_control("volume", {"volume": volume}))
+        asyncio.create_task(music_manager.set_volume(volume))
 
     def on_pause_change(is_paused: bool):
-        if is_paused:
-            asyncio.create_task(queue.stop_auto_play())
-        else:
-            asyncio.create_task(queue.start_auto_play())
-        asyncio.create_task(broadcast_music_control("pause", {"is_paused": is_paused}))
+        asyncio.create_task(music_manager.set_paused(is_paused))
 
     async def on_next_track():
-        logger.info("[Next Track] 开始切换下一首")
-        current = await queue.get_current()
-        if current:
-            logger.info(f"[Next Track] 当前播放: {current.title} (bvid={current.bvid})")
-        skipped = await queue.skip()
-        if skipped:
-            logger.info(f"[Next Track] 已跳过: {skipped.title}")
-        new_current = await queue.get_current()
-        if new_current:
-            logger.info(f"[Next Track] 即将播放: {new_current.title} (bvid={new_current.bvid}), audioUrl={'有' if new_current.audioUrl else '无'}")
-        else:
-            logger.info("[Next Track] 队列为空，尝试从播放列表随机选取")
-            library = get_playlist_manager()
-            picked = await library.random_pick()
-            if picked:
-                logger.info(f"[Next Track] 从播放列表选取: {picked.title} ({picked.bvid})")
-                client = BilibiliMusicClient()
-                full_item = await client.get_music_item_with_overrides(
-                    picked.bvid, "system",
-                    title=picked.title,
-                    artist=picked.upName
-                )
-                if full_item:
-                    await queue.add(full_item)
-                    new_current = await queue.next()
-                    if new_current:
-                        logger.info(f"[Next Track] 随机选取成功，开始播放: {new_current.title}")
-                    else:
-                        logger.error("[Next Track] 随机选取后获取歌曲失败")
-                else:
-                    logger.error(f"[Next Track] 获取歌曲信息失败: {picked.bvid}")
-            else:
-                logger.info("[Next Track] 播放列表为空")
-        await broadcast_music_control("next")
+        await music_manager.skip()
 
     async def on_remove_track():
-        bvid = await queue.skip_and_disable_current()
-        if bvid:
-            library = get_playlist_manager()
-            await library.set_enabled(bvid, False)
-            logger.info(f"[Remove Track] 已禁用: {bvid}")
-        new_current = await queue.get_current()
-        if not new_current:
-            logger.info("[Remove Track] 队列为空，尝试从播放列表随机选取")
-            library = get_playlist_manager()
-            picked = await library.random_pick()
-            if picked:
-                logger.info(f"[Remove Track] 从播放列表选取: {picked.title} ({picked.bvid})")
-                client = BilibiliMusicClient()
-                full_item = await client.get_music_item_with_overrides(
-                    picked.bvid, "system",
-                    title=picked.title,
-                    artist=picked.upName
-                )
-                if full_item:
-                    await queue.add(full_item)
-                    new_current = await queue.next()
-                    if new_current:
-                        logger.info(f"[Remove Track] 随机选取成功，开始播放: {new_current.title}")
-                else:
-                    logger.error(f"[Remove Track] 获取歌曲信息失败: {picked.bvid}")
-            else:
-                logger.info("[Remove Track] 播放列表为空")
-        await broadcast_music_control("rm")
+        await music_manager.skip(remove_from_library=True)
 
     admin_handler.register_volume_change_callback(on_volume_change)
     admin_handler.register_pause_change_callback(on_pause_change)
@@ -247,7 +167,7 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"MemoryEngine shutdown error: {e}")
 
-    await queue.stop_auto_play()
+    await music_manager.shutdown()
     await easyvtuber_manager.stop()
     await stop_nginx()
 
@@ -268,7 +188,7 @@ app.add_middleware(
 )
 
 app.include_router(bilibili_router, prefix="/bilibili", tags=["Bilibili"])
-app.include_router(music_router, prefix="/music", tags=["Music"])
+app.include_router(music_router)
 app.include_router(config_router, tags=["Config"])
 app.include_router(ai_router, tags=["AI"])
 app.include_router(memory_router, tags=["AI Memory"])

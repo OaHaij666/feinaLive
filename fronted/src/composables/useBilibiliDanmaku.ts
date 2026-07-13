@@ -1,7 +1,8 @@
 import { ref, onUnmounted } from 'vue'
 import { useLLMStore } from '@/stores/llm'
 import { useLiveStatsStore } from '@/stores/livestats'
-import { useMusicStore } from '@/stores/music'
+import { useMusicStore } from '@/features/music/store'
+import type { MusicState } from '@/features/music/types'
 import { useNotification } from '@/utils/notification'
 import { useAdminCommands } from '@/composables/useAdminCommands'
 
@@ -143,15 +144,8 @@ export function useBilibiliDanmaku() {
         } else if (msg.type === 'music_error') {
           const data = msg.data
           notification.error(`❌ 点歌失败: ${data.error}`)
-        } else if (msg.type === 'music_control') {
-          const action = msg.data?.action
-          if (action === 'volume') {
-            musicStore.setVolume(msg.data.volume)
-          } else if (action === 'pause') {
-            musicStore.setPaused(msg.data.is_paused)
-          } else if (action === 'next' || action === 'rm') {
-            musicStore.fetchQueue()
-          }
+        } else if (msg.type === 'music_state') {
+          musicStore.applyExternalState(msg.data as MusicState)
         }
       } catch (e) {
         console.error('[BilibiliDanmaku] Parse error:', e)

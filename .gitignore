@@ -52,6 +52,7 @@ fronted/test-results/
 .env
 .env.local
 .env.*.local
+backend/tests/.env
 
 # Config with secrets
 backend/config.yaml

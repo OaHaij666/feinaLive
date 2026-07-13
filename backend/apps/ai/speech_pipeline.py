@@ -129,6 +129,17 @@ class SpeechPipeline:
         chunk_seq = 0
         playback_session = await self._playback.begin(reply_id)
         playback_delivery_failed = False
+        ducking_task: asyncio.Task[None] | None = None
+        music_ducked = False
+
+        async def duck_when_started() -> None:
+            nonlocal music_ducked
+            if await self._playback.wait_for_started(
+                reply_id,
+                timeout=config.host_playback_timeout_seconds,
+            ):
+                music_ducked = True
+                await self._set_music_ducking(True, reply_id)
 
         async def emit(chunk: dict[str, Any]) -> None:
             nonlocal chunk_seq, playback_delivery_failed
@@ -154,6 +165,8 @@ class SpeechPipeline:
             "is_final": False,
             "playback_expected": playback_session is not None,
         })
+        if playback_session is not None:
+            ducking_task = asyncio.create_task(duck_when_started())
 
         try:
             stream: AsyncIterator[str] = ai.chat_stream(request)
@@ -259,6 +272,11 @@ class SpeechPipeline:
             raise
         finally:
             await self._cancel_pending(tts_tasks)
+            if ducking_task and not ducking_task.done():
+                ducking_task.cancel()
+                await asyncio.gather(ducking_task, return_exceptions=True)
+            if music_ducked:
+                await self._set_music_ducking(False, reply_id)
 
     async def speak_text(
         self,
@@ -284,6 +302,7 @@ class SpeechPipeline:
         delivery_failed = False
         audio_chunks = 0
         started_task: asyncio.Task[None] | None = None
+        music_ducked = False
 
         async def emit(chunk: dict[str, Any]) -> None:
             nonlocal chunk_seq, delivery_failed
@@ -300,14 +319,18 @@ class SpeechPipeline:
             await self._broadcast(observer_chunk, context)
 
         async def notify_started() -> None:
+            nonlocal music_ducked
             if await self._playback.wait_for_started(
                 reply_id,
                 timeout=config.host_playback_timeout_seconds,
-            ) and on_playback_started:
-                await on_playback_started(reply_id)
+            ):
+                music_ducked = True
+                await self._set_music_ducking(True, reply_id)
+                if on_playback_started:
+                    await on_playback_started(reply_id)
 
         await emit({"type": "start", "is_final": False, "playback_expected": playback_session is not None})
-        if playback_session is not None and on_playback_started is not None:
+        if playback_session is not None:
             started_task = asyncio.create_task(notify_started())
 
         try:
@@ -353,6 +376,21 @@ class SpeechPipeline:
             if started_task and not started_task.done():
                 started_task.cancel()
                 await asyncio.gather(started_task, return_exceptions=True)
+            if music_ducked:
+                await self._set_music_ducking(False, reply_id)
+
+    @staticmethod
+    async def _set_music_ducking(active: bool, holder_id: str) -> None:
+        try:
+            from apps.audio_focus import get_audio_focus_coordinator
+
+            coordinator = get_audio_focus_coordinator()
+            if active:
+                await coordinator.acquire(f"host_speech:{holder_id}")
+            else:
+                await coordinator.release(f"host_speech:{holder_id}")
+        except Exception:
+            logger.warning("Unable to update music ducking state", exc_info=True)
 
     async def _synthesize_sentence(
         self,

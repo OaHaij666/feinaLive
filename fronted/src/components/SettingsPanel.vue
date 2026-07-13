@@ -346,6 +346,36 @@
                 <AgentSettingsPanel v-model="cfg.agent" />
               </div>
 
+              <!-- Tab: 音乐 -->
+              <div v-if="activeTab === 'music'" class="tab-content">
+                <div class="section-title">音乐 Provider</div>
+                <p class="section-desc">音乐系统独立运行；Provider 和审核参数重启后生效。</p>
+                <div class="form-group">
+                  <label>默认 Provider</label>
+                  <select v-model="cfg.music.default_provider">
+                    <option value="bilibili">Bilibili</option>
+                  </select>
+                </div>
+                <div class="section-title">点歌策略</div>
+                <div class="form-row-2">
+                  <div class="form-group"><label>最短时长（秒）</label><input type="number" v-model.number="cfg.music.min_duration_seconds" min="1" /></div>
+                  <div class="form-group"><label>最长时长（秒）</label><input type="number" v-model.number="cfg.music.max_duration_seconds" min="1" /></div>
+                  <div class="form-group"><label>队列容量</label><input type="number" v-model.number="cfg.music.queue_capacity" min="1" max="100" /></div>
+                  <div class="form-group"><label>每用户上限</label><input type="number" v-model.number="cfg.music.per_user_limit" min="1" max="20" /></div>
+                  <div class="form-group"><label>搜索候选数</label><input type="number" v-model.number="cfg.music.search_candidates" min="1" max="20" /></div>
+                  <div class="form-group">
+                    <label class="checkbox-label"><input type="checkbox" v-model="cfg.music.allow_bare_bv" /> 允许裸 BV 触发点歌</label>
+                  </div>
+                </div>
+                <div class="section-title">分层审核</div>
+                <div class="form-row-2">
+                  <div class="form-group"><label>规则接受阈值</label><input type="number" v-model.number="cfg.music.accept_score" min="0" max="100" /></div>
+                  <div class="form-group"><label>规则拒绝阈值</label><input type="number" v-model.number="cfg.music.reject_score" min="-100" max="0" /></div>
+                  <div class="form-group"><label>LLM 最低置信度</label><input type="number" v-model.number="cfg.music.llm_min_confidence" min="0" max="1" step="0.05" /></div>
+                  <div class="form-group"><label>主播说话压低比例</label><input type="number" v-model.number="cfg.music.ducking_factor" min="0" max="1" step="0.05" /></div>
+                </div>
+              </div>
+
               <!-- Tab: 直播 -->
               <div v-if="activeTab === 'live'" class="tab-content">
                 <div class="section-title">B站直播</div>
@@ -458,7 +488,7 @@ import { MASKED } from '../types/config'
 import { useNotification } from '@/utils/notification'
 import { useLLMStore } from '@/stores/llm'
 import { useDanmakuStore } from '@/stores/danmaku'
-import { useMusicStore } from '@/stores/music'
+import { useMusicStore } from '@/features/music/store'
 import { DanmakuType } from '@/types/danmaku'
 import MemoryDebugPanel from '@/components/memory/MemoryDebugPanel.vue'
 import AgentSettingsPanel from '@/components/settings/agent/AgentSettingsPanel.vue'
@@ -484,6 +514,7 @@ const tabs = [
   { key: 'messaging', label: '消息调度' },
   { key: 'easyvtuber', label: '数字人' },
   { key: 'agent_params', label: 'Agent 场景' },
+  { key: 'music', label: '音乐' },
   { key: 'live', label: '直播' },
   { key: 'monitor', label: '直播状况' },
   { key: 'memory', label: '记忆' },
@@ -502,14 +533,14 @@ function initCfgShape() {
   const s: Record<string, any> = {
     bilibili: { room_id: 0, sessdata: '', uid: 0, use_test_room: false },
     host: { room_id: 0, reply_interval: 5, max_reply_length: 100, api_url: '', api_key: '', model: '', temperature: 0.7, top_p: 0.9, max_tokens: 200, disable_thinking: true },
-    llm: { api_url: '', api_key: '', model: '', temperature: 0.1, top_p: 0.9, max_tokens: 200, auto_collect_min_views: 20000, disable_thinking: true },
+    llm: { api_url: '', api_key: '', model: '', temperature: 0.1, top_p: 0.9, max_tokens: 200, disable_thinking: true },
     tts: { provider: 'volcano', voice: 'zh-CN-XiaoxiaoNeural', encoding: 'wav', speed_ratio: 1.0 },
     volcano: { appid: '', access_token: '', speaker_id: '' },
     agent: { enabled: false, scenario_id: 'slay_the_spire', mcp_url: 'http://127.0.0.1:8080', api_url: '', api_key: '', model: '', temperature: 0.4, max_tokens: 500, disable_thinking: true, poll_interval: 1.0, memory_threshold: 30, memory_idle_seconds: 120, memory_scan_interval_seconds: 30, memory_context_max_chars: 12000, min_step_interval: 3.0, step_jitter: 0.5, commentary_interval: 30.0, min_commentary_interval: 15.0, commentary_hold_timeout: 20.0, memory_eagerness: 3, queue_max_size: 20, host_history_maxlen: 50, action_history_maxlen: 30, scenario_config: { default_character: 'IRONCLAD' } },
     easyvtuber: { enabled: true, character: 'feina00', input: { type: 'debug', osf_address: '127.0.0.1:11573', mouse_range: '0,0,1920,1080' }, model: { version: 'v3', precision: 'half', separable: true, use_tensorrt: true, use_eyebrow: true }, performance: { frame_rate: 30, interpolation: 'x2', super_resolution: 'off', ram_cache: '2gb', vram_cache: '2gb' }, output: { websocket: { enabled: true, port: 8765, host: 'localhost' } } },
     ai: { max_history_per_session: 16, summary_interval: 10, summary_idle_seconds: 300.0, summary_scan_interval_seconds: 60.0, max_recent_messages: 16, poll_interval_seconds: 10.0 },
     messaging: { danmaku_starvation_seconds: 30.0, danmaku_flood_threshold: 5, danmaku_flood_window: 20.0, gift_starvation_seconds: 60.0, gift_flood_threshold: 3, gift_flood_window: 30.0, gift_value_highest: 10000, gift_value_high: 5000, gift_value_normal: 1000, gift_value_low: 100, user_cooldown_seconds: 3.0, default_ttl_seconds: 30.0, rate_limit_commentary: 4.0, rate_limit_danmaku: 3.0, rate_limit_gift: 10.0 },
-    music_config: { verify_min_duration: 60, verify_max_duration: 480, verify_max_comments: 3 },
+    music: { default_provider: 'bilibili', min_duration_seconds: 60, max_duration_seconds: 480, queue_capacity: 5, per_user_limit: 2, allow_bare_bv: false, accept_score: 60, reject_score: -50, llm_min_confidence: 0.75, search_candidates: 5, ducking_factor: 0.2 },
     storage: { sqlite_path: 'data/feinalive.db', chroma_path: 'data/chroma', chroma_collection: 'memory_atoms' },
     announcement: '',
     admin: { uid: 378810242, username: '' },
@@ -637,12 +668,10 @@ function connectWebSocket() {
       else if (msg.type === 'audio') { addLog('[AI] 音频已生成', 'system'); if (adminState.value.isTestRoomEnabled && !llmStore.isPlaybackOwner) llmStore.handleExternalChunk(msg) }
       else if (msg.type === 'end') { addLog('[AI] 回复完成', 'system'); if (adminState.value.isTestRoomEnabled && !llmStore.isPlaybackOwner) llmStore.handleExternalChunk(msg) }
       else if (msg.type === 'error') { addLog(`[错误] ${msg.data?.text || ''}`, 'error'); if (adminState.value.isTestRoomEnabled) llmStore.handleExternalChunk(msg) }
-      else if (msg.type === 'music_control') {
-        const a = msg.data?.action
-        if (a === 'volume') { musicStore.setVolume(msg.data.volume); addLog(`[音乐] 音量 ${Math.round(msg.data.volume * 10)}/10`, 'system') }
-        else if (a === 'pause') { musicStore.setPaused(msg.data.is_paused); addLog(`[音乐] ${msg.data.is_paused ? '暂停' : '恢复'}`, 'system') }
-        else { musicStore.fetchQueue(); addLog(`[音乐] ${a}`, 'system') }
-      } else if (msg.type === 'music_added') { musicStore.fetchQueue(); addLog(`[点歌] ${(msg.data.title || '').replace(/\n/g,' ').trim()}`, 'system') }
+      else if (msg.type === 'music_state') {
+        musicStore.applyExternalState(msg.data)
+        addLog(`[音乐] 状态更新 #${msg.data.revision}`, 'system')
+      } else if (msg.type === 'music_added') { musicStore.fetchState(); addLog(`[点歌] ${(msg.data.title || '').replace(/\n/g,' ').trim()}`, 'system') }
       else if (msg.type === 'music_error') addLog(`[点歌失败] ${msg.data.error}`, 'error')
     } catch { /* */ }
   }

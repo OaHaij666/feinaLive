@@ -1,0 +1,43 @@
+export type QueueEntryStatus =
+  | 'pending'
+  | 'playing'
+  | 'paused'
+  | 'completed'
+  | 'skipped'
+  | 'rejected'
+  | 'failed'
+  | 'cancelled'
+
+export interface Track {
+  id: string
+  provider: string
+  source_id: string
+  title: string
+  artists: string[]
+  duration_seconds: number
+  cover_url: string
+  metadata: Record<string, unknown>
+}
+
+export interface QueueEntry {
+  id: string
+  track: Track
+  requested_by: string
+  request_id: string
+  status: QueueEntryStatus
+  requested_at: string
+  started_at?: string | null
+  finished_at?: string | null
+  failure_reason: string
+}
+
+export interface MusicState {
+  revision: number
+  current: QueueEntry | null
+  queue: QueueEntry[]
+  paused: boolean
+  volume: number
+  ducking_factor: number
+  effective_volume: number
+  playback_owner_id?: string | null
+}

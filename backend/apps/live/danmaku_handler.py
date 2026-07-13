@@ -7,7 +7,7 @@ from typing import Awaitable, Callable, Optional
 
 from apps.ai.admin_commands import get_admin_handler
 from apps.ai.host_brain import get_host_brain
-from apps.live.music.service import get_danmaku_service
+from apps.live.music_requests import process_music_danmaku
 from apps.live.room_session import RoomSessionContext, get_room_session_manager
 from core.websocket import manager
 
@@ -62,22 +62,23 @@ async def process_danmaku(
     ):
         return DanmakuProcessResult(success=True, intercepted=True)
 
-    music_result = await get_danmaku_service().process_danmaku(
+    music_result = await process_music_danmaku(
         danmaku.content,
         danmaku.user,
+        request_id=danmaku.msg_id,
     )
     if not get_room_session_manager().is_current(context):
         logger.debug("Dropped danmaku after slow processing because session changed: %s", context)
         return DanmakuProcessResult(success=False, intercepted=True)
 
-    if music_result.isMusicRequest:
-        if music_result.musicItem:
+    if music_result is not None:
+        if music_result.accepted and music_result.entry:
             await _broadcast_to_session(context, {
                 "type": "music_added",
                 "data": {
                     "user": danmaku.user,
-                    "title": music_result.musicItem.title,
-                    "artist": music_result.musicItem.upName,
+                    "title": music_result.entry.track.title,
+                    "artist": ", ".join(music_result.entry.track.artists),
                 },
             }, broadcast_fn)
         elif music_result.error:
@@ -93,7 +94,7 @@ async def process_danmaku(
             success=True,
             intercepted=True,
             music_item=(
-                music_result.musicItem.model_dump() if music_result.musicItem else None
+                music_result.entry.model_dump(mode="json") if music_result.entry else None
             ),
             music_error=music_result.error,
         )

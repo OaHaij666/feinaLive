@@ -27,7 +27,6 @@ export interface LLMConfig {
   temperature: number
   top_p: number
   max_tokens: number
-  auto_collect_min_views: number
   disable_thinking: boolean
 }
 
@@ -165,9 +164,17 @@ export interface MessagingConfig {
 }
 
 export interface MusicConfigModel {
-  verify_min_duration: number
-  verify_max_duration: number
-  verify_max_comments: number
+  default_provider: string
+  min_duration_seconds: number
+  max_duration_seconds: number
+  queue_capacity: number
+  per_user_limit: number
+  allow_bare_bv: boolean
+  accept_score: number
+  reject_score: number
+  llm_min_confidence: number
+  search_candidates: number
+  ducking_factor: number
 }
 
 export interface StorageConfig {
@@ -201,7 +208,7 @@ export interface FullConfig {
   easyvtuber: EasyVtuberConfig
   ai: AIConfig
   messaging: MessagingConfig
-  music_config: MusicConfigModel
+  music: MusicConfigModel
   storage: StorageConfig
   announcement: string
   admin: AdminConfig

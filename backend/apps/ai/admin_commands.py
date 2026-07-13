@@ -398,31 +398,20 @@ class AdminCommandHandler:
                 message="无效的BV号，BV号应以BV开头",
                 command="/add_music"
             )
-        from apps.live.music.library import get_playlist_manager
-        from apps.live.music.llm_verify import get_llm_verifier
-        verifier = get_llm_verifier()
-        library = get_playlist_manager()
-        logger.info(f"Admin command: /add_music {bvid} - 正在发送给LLM验证")
-        result = await verifier.verify(bvid)
-        if not result:
+        from apps.music.manager import get_music_manager
+
+        logger.info("Admin command: /add_music %s", bvid)
+        try:
+            track = await get_music_manager().add_library("bilibili", bvid)
+        except Exception as exc:
+            logger.warning("Unable to add admin music %s: %s", bvid, exc)
             return CommandResult(
                 success=False,
-                message="LLM验证失败，可能是视频时长不符合要求(需60秒-8分钟)或获取视频信息失败",
-                command="/add_music"
+                message=f"加入曲库失败: {exc}",
+                command="/add_music",
             )
-        if not result.is_music:
-            return CommandResult(
-                success=False,
-                message=f"LLM判定非音乐视频，原因: {result.reason}",
-                command="/add_music"
-            )
-        item = await library.add(
-            bvid=bvid,
-            title=result.song_name,
-            artist=result.artist,
-        )
-        if item:
-            message = f"已加入预备歌单: {result.song_name} - {result.artist}"
+        if track:
+            message = f"已加入曲库: {track.title} - {', '.join(track.artists)}"
             logger.info(f"Admin command: /add_music {bvid} -> {message}")
             return CommandResult(
                 success=True,
@@ -432,7 +421,7 @@ class AdminCommandHandler:
             )
         return CommandResult(
             success=False,
-            message="添加失败，可能已存在或数据库错误",
+            message="添加曲库失败",
             command="/add_music"
         )
 

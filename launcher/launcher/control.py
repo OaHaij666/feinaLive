@@ -527,6 +527,7 @@ class ConfigPage(QWidget):
         options: dict[tuple[str, ...], list[tuple[str, str]]] = {
             ("avatar", "motion", "source"): [
                 ("混合（推荐）", "hybrid"),
+                ("直播定点（轻微晃动）", "broadcast_idle"),
                 ("自主动作", "autonomous"),
                 ("浏览器控制", "browser"),
             ],

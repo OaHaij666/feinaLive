@@ -54,4 +54,9 @@ def test_desktop_i18n_switches_business_labels_both_ways():
 def test_avatar_motion_source_uses_a_hybrid_dropdown():
     choices = ConfigPage._choices_for_path(("avatar", "motion", "source"))
     assert choices is not None
-    assert [value for _, value in choices] == ["hybrid", "autonomous", "browser"]
+    assert [value for _, value in choices] == [
+        "hybrid",
+        "broadcast_idle",
+        "autonomous",
+        "browser",
+    ]

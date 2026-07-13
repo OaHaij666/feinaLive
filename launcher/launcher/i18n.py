@@ -156,6 +156,7 @@ ZH_TO_EN = {
     "Spout 输出": "Spout output",
     "预览": "Preview",
     "混合（推荐）": "Hybrid (recommended)",
+    "直播定点（轻微晃动）": "Broadcast idle (subtle sway)",
     "自主动作": "Autonomous motion",
     "浏览器控制": "Browser control",
     "浏览器音频": "Browser audio",

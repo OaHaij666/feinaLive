@@ -10,6 +10,8 @@ class MotionPose:
     head_pitch: float = 0.0
     head_yaw: float = 0.0
     head_roll: float = 0.0
+    body_yaw: float | None = None
+    body_roll: float | None = None
     gaze_x: float = 0.0
     gaze_y: float = 0.0
     breathing: float = 0.0
@@ -44,8 +46,8 @@ class THAPoseMapper:
         body[0] = motion.head_pitch
         body[1] = motion.head_yaw
         body[2] = motion.head_roll
-        body[3] = motion.head_yaw
-        body[4] = motion.head_roll
+        body[3] = motion.head_yaw if motion.body_yaw is None else motion.body_yaw
+        body[4] = motion.head_roll if motion.body_roll is None else motion.body_roll
         body[5] = motion.breathing
 
         pose = np.asarray(eyebrows + features + body, dtype=np.float32)

@@ -8,6 +8,7 @@ from apps.avatar.schemas import AvatarConfig
 from avatar_engine.config import EngineConfig
 from avatar_engine.pose import FacialPose, MotionPose, THAPoseMapper
 from avatar_engine.runner import FeinaAvatarEngine
+from avatar_engine.src.composite_input import broadcast_idle_motion
 
 
 class FakeEngine:
@@ -187,6 +188,28 @@ def test_named_pose_channels_map_to_tha_contract():
     assert pose[38] == pytest.approx(-0.3)
     assert pose[40] == pytest.approx(0.2)
     assert position[0] == pytest.approx(0.1)
+
+
+def test_broadcast_idle_motion_is_anchored_and_coordinates_eyes_with_head():
+    samples = [broadcast_idle_motion(index / 10) for index in range(200)]
+    assert all(sample.offset_x == 0.0 and sample.offset_y == 0.0 for sample in samples)
+    assert max(abs(sample.head_yaw) for sample in samples) < 0.1
+    assert max(abs(sample.head_pitch) for sample in samples) < 0.05
+    assert max(abs(sample.head_roll) for sample in samples) < 0.03
+    assert max(abs(sample.body_yaw or 0.0) for sample in samples) < 0.02
+    assert max(abs(sample.body_roll or 0.0) for sample in samples) < 0.015
+    assert all(sample.gaze_x * sample.head_yaw >= 0 for sample in samples)
+    assert all(sample.gaze_y * sample.head_pitch >= 0 for sample in samples)
+
+
+def test_pose_mapper_can_keep_body_sway_smaller_than_head_motion():
+    pose, _ = THAPoseMapper.map(
+        MotionPose(head_yaw=0.2, head_roll=0.1, body_yaw=0.02, body_roll=0.01),
+        FacialPose(),
+    )
+    assert pose[40] == pytest.approx(0.2)
+    assert pose[42] == pytest.approx(0.02)
+    assert pose[43] == pytest.approx(0.01)
 
 
 def test_avatar_engine_fails_when_either_worker_exits():

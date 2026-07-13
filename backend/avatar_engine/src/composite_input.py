@@ -37,6 +37,25 @@ class NaturalMotion:
         return self.x, self.y
 
 
+def broadcast_idle_motion(now: float) -> MotionPose:
+    """Anchored broadcast pose with subtle coordinated head, body and gaze motion."""
+    head_yaw = math.sin(now * 0.47) * 0.075 + math.sin(now * 0.19) * 0.018
+    head_pitch = math.sin(now * 0.37 + 0.8) * 0.038
+    head_roll = math.sin(now * 0.29 + 1.4) * 0.022
+    return MotionPose(
+        head_pitch=head_pitch,
+        head_yaw=head_yaw,
+        head_roll=head_roll,
+        body_yaw=math.sin(now * 0.23 + 0.3) * 0.018,
+        body_roll=math.sin(now * 0.21 + 1.1) * 0.012,
+        gaze_x=head_yaw * 0.62,
+        gaze_y=head_pitch * 0.55,
+        breathing=0.34 + math.sin(now * 0.8) * 0.09,
+        offset_x=0.0,
+        offset_y=0.0,
+    )
+
+
 class CompositePoseProcess(Process):
     """Own all pose channels so motion and lips never compete for shared memory."""
 
@@ -109,8 +128,11 @@ class CompositePoseProcess(Process):
             while True:
                 now = time.perf_counter()
                 dt = max(0.001, min(now - last_time, 0.1))
+                broadcast_idle = self.config.motion_source == "broadcast_idle"
                 browser_motion = self._browser_motion.value == 1
-                if browser_motion:
+                if broadcast_idle:
+                    target_x = target_y = 0.0
+                elif browser_motion:
                     target_x = (0.5 - self._mouse_x.value) * 2
                     target_y = (0.5 - self._mouse_y.value) * 2
                 else:
@@ -139,17 +161,20 @@ class CompositePoseProcess(Process):
                 coefficient = 1.0 - math.exp(-dt / max(time_constant / 1000.0, 0.001))
                 smoothed_mouth += (target_mouth - smoothed_mouth) * coefficient
 
-                breathing = (math.sin(now * math.pi / 2.0) + 1.0) / 2.0
-                motion = MotionPose(
-                    head_pitch=previous_head_x + math.sin(now * 0.4) * 0.08,
-                    head_yaw=previous_head_y + math.sin(now * 0.5) * 0.08,
-                    head_roll=math.sin(now * 0.3) * 0.05,
-                    gaze_x=target_x * 0.45 - previous_head_y * 0.25,
-                    gaze_y=target_y * 0.35 - previous_head_x * 0.2,
-                    breathing=breathing,
-                    offset_x=math.sin(now * 0.3) * 0.025,
-                    offset_y=math.sin(now * 0.4) * 0.025,
-                )
+                if broadcast_idle:
+                    motion = broadcast_idle_motion(now)
+                else:
+                    breathing = (math.sin(now * math.pi / 2.0) + 1.0) / 2.0
+                    motion = MotionPose(
+                        head_pitch=previous_head_x + math.sin(now * 0.4) * 0.08,
+                        head_yaw=previous_head_y + math.sin(now * 0.5) * 0.08,
+                        head_roll=math.sin(now * 0.3) * 0.05,
+                        gaze_x=target_x * 0.45 - previous_head_y * 0.25,
+                        gaze_y=target_y * 0.35 - previous_head_x * 0.2,
+                        breathing=breathing,
+                        offset_x=math.sin(now * 0.3) * 0.025,
+                        offset_y=math.sin(now * 0.4) * 0.025,
+                    )
                 face = FacialPose(
                     blink=blink,
                     mouth_open=smoothed_mouth,

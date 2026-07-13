@@ -129,7 +129,7 @@ Copy-Item backend\config.example.yaml backend\config.yaml
 - `agent.enabled`、`agent.scenario_id`、`agent.mcp_url`
 - `avatar` 数字人角色、输入、输出和性能配置
 
-FeinaAvatar 的动作来源使用下拉选项，默认 `hybrid`：平时采用自主动作，管理员切换到鼠标追踪时临时接管；也可选择始终自主或始终使用浏览器控制。
+FeinaAvatar 的动作来源使用下拉选项，默认 `hybrid`：平时采用自主动作，管理员切换到鼠标追踪时临时接管；`broadcast_idle` 用于直播定点站姿，身体位置保持锚定，仅保留轻微身体/头部晃动、随头部协同的视线和音频驱动口型；也可选择始终自主或始终使用浏览器控制。
 
 敏感凭据通过运营控制台写入系统密钥库，也可使用环境变量；`backend/config.yaml` 只保存非敏感运行参数，仍不应提交个人配置。
 

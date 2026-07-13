@@ -1,8 +1,7 @@
 import { ref } from 'vue'
 
 interface AvatarInputApi {
-  sendAudioData: (level: number, speaking: boolean) => void
-  setSpeaking: (speaking: boolean) => void
+  sendAudioData: (level: number, speaking: boolean, replyId: string, audioTimeMs: number) => void
   setPlaybackReady: (ready: boolean) => void
   sendPlaybackAck: (replyId: string, status: 'started' | 'finished' | 'failed', error?: string) => void
   onPlaybackRole: (callback: (isOwner: boolean) => void) => () => void
@@ -19,6 +18,9 @@ let mouseListenerAttached = false
 let shouldReconnect = false
 let playbackReady = false
 let playbackOwner = false
+let audioReplyId = ''
+let audioSeq = 0
+let lastMouseSentAt = 0
 const playbackRoleListeners = new Set<(isOwner: boolean) => void>()
 const hostChunkListeners = new Set<(chunk: Record<string, unknown>) => void>()
 
@@ -34,7 +36,7 @@ function sendJson(payload: Record<string, unknown>) {
 }
 
 function sendMouseData(x: number, y: number) {
-  if (ws && ws.readyState === WebSocket.OPEN) {
+  if (playbackOwner && ws && ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify({
       type: 'mouse',
       x,
@@ -56,6 +58,9 @@ function detachMouseListener() {
 }
 
 function handleMouseMove(event: MouseEvent) {
+  const now = performance.now()
+  if (!playbackOwner || now - lastMouseSentAt < 33) return
+  lastMouseSentAt = now
   const x = Math.max(0, Math.min(1, event.clientX / window.innerWidth))
   const y = Math.max(0, Math.min(1, event.clientY / window.innerHeight))
   sendMouseData(x, y)
@@ -68,7 +73,7 @@ function connect() {
   }
 
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-  const wsUrl = `${protocol}//${window.location.host}/avatar/input`
+  const wsUrl = `${protocol}//${window.location.host}/avatar/control`
 
   try {
     ws = new WebSocket(wsUrl)
@@ -142,14 +147,25 @@ function disconnect() {
   notifyPlaybackRole(false)
 }
 
-function sendAudioData(level: number, speaking: boolean) {
+function sendAudioData(
+  level: number,
+  speaking: boolean,
+  replyId: string,
+  audioTimeMs: number,
+) {
   if (!playbackOwner) return
-  sendJson({ type: 'audio', level, speaking })
-}
-
-function setSpeaking(speaking: boolean) {
-  if (!playbackOwner) return
-  sendJson({ type: 'speaking', speaking })
+  if (replyId !== audioReplyId) {
+    audioReplyId = replyId
+    audioSeq = 0
+  }
+  sendJson({
+    type: 'audio',
+    level,
+    speaking,
+    reply_id: replyId,
+    seq: audioSeq++,
+    audio_time_ms: Math.max(0, audioTimeMs),
+  })
 }
 
 function setPlaybackReady(ready: boolean) {
@@ -184,7 +200,6 @@ function isPlaybackOwner() {
 export function useAvatarInput(): AvatarInputApi {
   return {
     sendAudioData,
-    setSpeaking,
     setPlaybackReady,
     sendPlaybackAck,
     onPlaybackRole,
@@ -198,7 +213,6 @@ export function useAvatarInput(): AvatarInputApi {
 export function getAvatarInputApi(): AvatarInputApi {
   return {
     sendAudioData,
-    setSpeaking,
     setPlaybackReady,
     sendPlaybackAck,
     onPlaybackRole,

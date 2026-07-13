@@ -278,76 +278,9 @@ class Config:
         return self._data.get("announcement", "直播间24小时随机刷新开播。AI主播是小笨蛋不要欺负她喵。白天基本上是无人直播间喵，夜间可能会真人代播。直播间指令：输入 点歌 歌名 或者 点歌 BVid进行点歌，推荐使用BV号点歌。输入/clear 清除AI对你的记忆。")
 
     @property
-    def easyvtuber_enabled(self) -> bool:
-        return self._data.get("easyvtuber", {}).get("enabled", True)
-
-    @property
-    def easyvtuber_character(self) -> str:
-        return self._data.get("easyvtuber", {}).get("character", "feina00")
-
-    @property
-    def easyvtuber_input_type(self) -> str:
-        return self._data.get("easyvtuber", {}).get("input", {}).get("type", "debug")
-
-    @property
-    def easyvtuber_osf_address(self) -> str:
-        return self._data.get("easyvtuber", {}).get("input", {}).get("osf_address", "127.0.0.1:11573")
-
-    @property
-    def easyvtuber_mouse_range(self) -> str:
-        return self._data.get("easyvtuber", {}).get("input", {}).get("mouse_range", "0,0,1920,1080")
-
-    @property
-    def easyvtuber_model_version(self) -> str:
-        return self._data.get("easyvtuber", {}).get("model", {}).get("version", "v3")
-
-    @property
-    def easyvtuber_model_precision(self) -> str:
-        return self._data.get("easyvtuber", {}).get("model", {}).get("precision", "half")
-
-    @property
-    def easyvtuber_model_separable(self) -> bool:
-        return self._data.get("easyvtuber", {}).get("model", {}).get("separable", True)
-
-    @property
-    def easyvtuber_use_tensorrt(self) -> bool:
-        return self._data.get("easyvtuber", {}).get("model", {}).get("use_tensorrt", True)
-
-    @property
-    def easyvtuber_use_eyebrow(self) -> bool:
-        return self._data.get("easyvtuber", {}).get("model", {}).get("use_eyebrow", True)
-
-    @property
-    def easyvtuber_frame_rate(self) -> int:
-        return int(self._data.get("easyvtuber", {}).get("performance", {}).get("frame_rate", 30))
-
-    @property
-    def easyvtuber_interpolation(self) -> str:
-        return self._data.get("easyvtuber", {}).get("performance", {}).get("interpolation", "x2")
-
-    @property
-    def easyvtuber_super_resolution(self) -> str:
-        return self._data.get("easyvtuber", {}).get("performance", {}).get("super_resolution", "off")
-
-    @property
-    def easyvtuber_ram_cache(self) -> str:
-        return self._data.get("easyvtuber", {}).get("performance", {}).get("ram_cache", "2gb")
-
-    @property
-    def easyvtuber_vram_cache(self) -> str:
-        return self._data.get("easyvtuber", {}).get("performance", {}).get("vram_cache", "2gb")
-
-    @property
-    def easyvtuber_ws_enabled(self) -> bool:
-        return self._data.get("easyvtuber", {}).get("output", {}).get("websocket", {}).get("enabled", True)
-
-    @property
-    def easyvtuber_ws_port(self) -> int:
-        return int(self._data.get("easyvtuber", {}).get("output", {}).get("websocket", {}).get("port", 8765))
-
-    @property
-    def easyvtuber_ws_host(self) -> str:
-        return self._data.get("easyvtuber", {}).get("output", {}).get("websocket", {}).get("host", "localhost")
+    def avatar_config(self) -> dict:
+        value = self._data.get("avatar", {})
+        return dict(value) if isinstance(value, dict) else {}
 
     @property
     def admin_username(self) -> str:

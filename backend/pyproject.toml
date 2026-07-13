@@ -3,6 +3,7 @@ name = "feina-backend"
 version = "0.1.0"
 description = "feinaLive后端服务"
 readme = "README.md"
+license = "MIT"
 requires-python = ">=3.10,<3.12"
 dependencies = [
     "fastapi>=0.115.0",
@@ -27,7 +28,6 @@ dependencies = [
     "protobuf",
     "betterproto==2.0.0b6",
     "mini-racer>=0.12.4",
-    "pynput",
     "opencv-python",
     "Pillow",
     "mutagen>=1.47.0",
@@ -36,11 +36,6 @@ dependencies = [
     "onnxruntime-gpu>=1.21.0,<1.23.0",
     "tqdm",
     "torch",
-    "OneEuroFilter",
-    "sounddevice",
-    "pyvirtualcam>=0.9.1",
-    "mediapipe==0.10.11",
-    "pyanime4k==3.1.0",
 ]
 
 [project.optional-dependencies]
@@ -74,12 +69,12 @@ build-backend = "hatchling.build"
 allow-direct-references = true
 
 [tool.hatch.build.targets.wheel]
-packages = ["apps"]
+packages = ["apps", "avatar_engine", "vendor"]
 
 [tool.uv]
 override-dependencies = [
     # Chroma's bundled default embedding function needs the CPU wheel; feinaLive
-    # always supplies embeddings itself, while EasyVtuber needs the GPU wheel.
+    # always supplies embeddings itself, while FeinaAvatar needs the GPU wheel.
     "onnxruntime; sys_platform == 'never'",
 ]
 

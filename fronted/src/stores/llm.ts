@@ -45,6 +45,10 @@ class AudioPlayer {
   private textDisplayTimer: number | null = null
   private audioLevelTimer: number | null = null
   private lastAudioLevelSentAt = 0
+  private audioMonitorReplyId = ''
+  private audioMonitorStartTime = 0
+  private audioMonitorOffsetMs = 0
+  private playedAudioMs = 0
   private onAudioProgress: ((charIndex: number) => void) | null = null
   private onPlaybackStarted: (() => void) | null = null
   private onPlaybackFinished: (() => void) | null = null
@@ -91,6 +95,7 @@ class AudioPlayer {
     this.activeReplyId = replyId
     this.generationFinished = false
     this.playbackStarted = false
+    this.playedAudioMs = 0
   }
 
   queueAudio(chunk: AudioChunk) {
@@ -160,12 +165,14 @@ class AudioPlayer {
         charDuration,
         audioContext.currentTime,
       )
-      this.startAudioLevelMonitoring()
+      const audioStartTime = audioContext.currentTime
+      this.startAudioLevelMonitoring(replyId, audioStartTime, this.playedAudioMs)
 
       await new Promise<void>((resolve) => {
         source.onended = () => resolve()
         source.start(0)
       })
+      this.playedAudioMs += audioBuffer.duration * 1000
     } catch (error) {
       if (replyId === this.activeReplyId) {
         this.failActive(error instanceof Error ? error.message : String(error))
@@ -217,22 +224,33 @@ class AudioPlayer {
     this.isPlaying = false
     this.generationFinished = false
     this.playbackStarted = false
+    this.playedAudioMs = 0
   }
 
-  private startAudioLevelMonitoring() {
+  private startAudioLevelMonitoring(
+    replyId: string,
+    audioStartTime: number,
+    offsetMs: number,
+  ) {
     if (!this.analyser) return
     const analyser = this.analyser
-    const dataArray = new Uint8Array(analyser.frequencyBinCount)
+    const dataArray = new Float32Array(analyser.fftSize)
     this.lastAudioLevelSentAt = 0
+    this.audioMonitorReplyId = replyId
+    this.audioMonitorStartTime = audioStartTime
+    this.audioMonitorOffsetMs = offsetMs
 
     const update = (timestamp: number) => {
       if (!this.isPlaying) return
       if (timestamp - this.lastAudioLevelSentAt >= 40) {
-        analyser.getByteFrequencyData(dataArray)
-        let sum = 0
-        for (const value of dataArray) sum += value
-        const normalizedLevel = Math.min(sum / dataArray.length / 100, 1)
-        getAvatarInputApi().sendAudioData(normalizedLevel, true)
+        analyser.getFloatTimeDomainData(dataArray)
+        let sumSquares = 0
+        for (const value of dataArray) sumSquares += value * value
+        const rms = Math.min(Math.sqrt(sumSquares / dataArray.length), 1)
+        const audioTimeMs = offsetMs + (
+          this.getAudioContext().currentTime - audioStartTime
+        ) * 1000
+        getAvatarInputApi().sendAudioData(rms, true, replyId, audioTimeMs)
         this.lastAudioLevelSentAt = timestamp
       }
       this.audioLevelTimer = requestAnimationFrame(update)
@@ -245,7 +263,20 @@ class AudioPlayer {
       cancelAnimationFrame(this.audioLevelTimer)
       this.audioLevelTimer = null
     }
-    getAvatarInputApi().sendAudioData(0, false)
+    if (this.audioMonitorReplyId) {
+      const audioTimeMs = this.audioMonitorOffsetMs + (
+        this.getAudioContext().currentTime - this.audioMonitorStartTime
+      ) * 1000
+      getAvatarInputApi().sendAudioData(
+        0,
+        false,
+        this.audioMonitorReplyId,
+        audioTimeMs,
+      )
+    }
+    this.audioMonitorReplyId = ''
+    this.audioMonitorStartTime = 0
+    this.audioMonitorOffsetMs = 0
   }
 
   private startTextAnimation(

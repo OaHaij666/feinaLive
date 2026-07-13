@@ -12,9 +12,9 @@ from fastapi.responses import JSONResponse
 from apps.agent.router import router as agent_router
 from apps.ai.memory_router import router as memory_router
 from apps.ai.router import router as ai_router
+from apps.avatar.router import router as avatar_router
 from apps.config import config
 from apps.config_router import router as config_router
-from apps.easyvtuber.router import router as easyvtuber_router
 from apps.exceptions import AppException
 from apps.live.router import router as live_router
 from apps.music.router import router as music_router
@@ -48,7 +48,7 @@ async def lifespan(app: FastAPI):
         stop_summary_scheduler,
     )
     from apps.ai.memory.engine import init_memory_engine
-    from apps.easyvtuber import get_easyvtuber_manager
+    from apps.avatar import get_avatar_runtime
     from apps.live.models import LivePlatform
     from apps.live.runtime import get_live_runtime
     from apps.music.manager import get_music_manager
@@ -63,16 +63,15 @@ async def lifespan(app: FastAPI):
     start_summary_scheduler()
     logger.info("MemoryEngine initialized")
 
-    easyvtuber_manager = get_easyvtuber_manager()
-    await easyvtuber_manager.start()
+    avatar_runtime = get_avatar_runtime()
+    await avatar_runtime.start()
 
     admin_handler = get_admin_handler()
 
     def on_face_mode_change(mode):
-        easyvtuber_manager.set_face_mode(mode.value)
+        avatar_runtime.set_face_mode(mode.value)
 
     admin_handler.register_face_mode_callback(on_face_mode_change)
-    easyvtuber_manager.set_face_mode(admin_handler.get_state().face_mode.value)
 
     def on_volume_change(volume: float):
         asyncio.create_task(music_manager.set_volume(volume))
@@ -172,7 +171,7 @@ async def lifespan(app: FastAPI):
         logger.warning(f"MemoryEngine shutdown error: {e}")
 
     await music_manager.shutdown()
-    await easyvtuber_manager.stop()
+    await avatar_runtime.stop()
     await stop_nginx()
 
 
@@ -197,7 +196,7 @@ app.include_router(config_router, tags=["Config"])
 app.include_router(ai_router, tags=["AI"])
 app.include_router(memory_router, tags=["AI Memory"])
 app.include_router(agent_router, tags=["Agent"])
-app.include_router(easyvtuber_router, tags=["Avatar"])
+app.include_router(avatar_router)
 app.include_router(test_router, tags=["Test"])
 
 @app.exception_handler(AppException)

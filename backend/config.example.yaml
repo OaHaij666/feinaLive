@@ -137,30 +137,38 @@ agent:
   action_history_maxlen: 30 # Agent 动作历史最大条数
 
 # ============================================================
-# EasyVTuber Live2D 配置
+# FeinaAvatar 数字人配置
 # ============================================================
 
-easyvtuber:
+avatar:
   enabled: true
-  character: "feina00"  # 角色名称
-  input:
-    type: "hybrid"        # 输入类型: hybrid(混合) | osf(仅OSF) | mouse(仅鼠标)
-    osf_address: "127.0.0.1:11573"  # OSF 服务地址
-    mouse_range: "0,0,1920,1080"    # 鼠标活动范围
-  model:
-    version: "v3"         # 模型版本: v2 | v3
-    precision: "full"     # 精度: full | half
-    separable: false      # 是否使用可分离卷积
-    use_tensorrt: true    # 是否使用 TensorRT 加速
+  character: "feina00"
+  motion:
+    source: "autonomous"  # autonomous | browser
+    allow_browser_control: true
+  lip_sync:
+    source: "browser_audio"
+    sensitivity: 3.0
+    noise_gate: 0.015
+    attack_ms: 35
+    release_ms: 90
+  renderer:
+    engine: "feina_avatar"
+    model: "tha3"         # tha3 | tha4 | tha4_student
+    backend: "onnxruntime" # onnxruntime | tensorrt
+    precision: "fp32"     # fp32 | fp16
+    separable: false
     use_eyebrow: true     # 是否启用眉毛追踪
-  performance:
-    frame_rate: 30        # 输出帧率
-    interpolation: "x2"   # 插值倍率: x1 | x2 | x4
-    super_resolution: "x2"  # 超分辨率倍率: x1 | x2 | x4
-    ram_cache: "2gb"      # 内存缓存大小
-    vram_cache: "2gb"     # 显存缓存大小
-  output:
-    websocket:
+    frame_rate: 30
+    interpolation: 1
+    super_resolution: 1
+    ram_cache_mb: 2048
+    vram_cache_mb: 2048
+  outputs:
+    spout:
       enabled: true
-      port: 8765
-      host: "localhost"
+      name: "FeinaAvatar"
+    preview:
+      enabled: true
+      frame_rate: 10
+      quality: 80

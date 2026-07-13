@@ -62,6 +62,7 @@ backend/data/
 backend/*.db
 backend/*.db-wal
 backend/*.db-shm
+backend/avatar_engine/data/models/
 
 # Local archives / downloaded bundles
 *.zip

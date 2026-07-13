@@ -2,7 +2,7 @@
   <Teleport to="body">
     <Transition name="modal">
       <div v-if="visible" class="settings-overlay" @click.self="close">
-        <div :class="['settings-panel', { 'settings-panel-wide': ['memory', 'agent_params', 'monitor'].includes(activeTab) }]">
+        <div :class="['settings-panel', { 'settings-panel-wide': ['memory', 'agent_params', 'monitor', 'avatar'].includes(activeTab) }]">
           <div class="settings-header">
             <h2>集中配置</h2>
             <button class="close-btn" @click="close">&times;</button>
@@ -290,54 +290,53 @@
               </div>
 
               <!-- Tab: 数字人 -->
-              <div v-if="activeTab === 'easyvtuber'" class="tab-content">
+              <div v-if="activeTab === 'avatar'" class="tab-content">
                 <div class="form-group">
-                  <label class="checkbox-label"><input type="checkbox" v-model="cfg.easyvtuber.enabled" /> 启用数字人</label>
+                  <label class="checkbox-label"><input type="checkbox" v-model="cfg.avatar.enabled" /> 启用 FeinaAvatar</label>
                 </div>
                 <div class="form-group">
                   <label>角色</label>
                   <div class="input-row">
-                    <select v-model="cfg.easyvtuber.character" class="flex-select">
+                    <select v-model="cfg.avatar.character" class="flex-select">
                       <option v-for="char in characters" :key="char.name" :value="char.name">{{ char.name }}</option>
                     </select>
                     <button class="small-btn" @click="openImagesFolder">打开图片文件夹</button>
                   </div>
                 </div>
-                <div class="section-title">输入</div>
-                <div class="form-group">
-                  <label>输入类型</label>
-                  <select v-model="cfg.easyvtuber.input.type">
-                    <option value="debug">调试</option><option value="webcam">摄像头</option><option value="mouse">鼠标</option><option value="openseeface">OpenSeeFace</option><option value="hybrid">混合</option>
-                  </select>
+                <div v-if="cfg.avatar.outputs.preview.enabled" class="avatar-preview">
+                  <img :src="avatarPreviewUrl" alt="FeinaAvatar preview" />
+                  <span>{{ avatarStatusText }}</span>
                 </div>
+                <div class="section-title">动作与口型</div>
                 <div class="form-row-2">
-                  <div class="form-group"><label>OSF 地址</label><input type="text" v-model="cfg.easyvtuber.input.osf_address" /></div>
-                  <div class="form-group"><label>鼠标范围</label><input type="text" v-model="cfg.easyvtuber.input.mouse_range" /></div>
+                  <div class="form-group"><label>默认动作</label><select v-model="cfg.avatar.motion.source"><option value="autonomous">自主漫步</option><option value="browser">浏览器鼠标</option></select></div>
+                  <div class="form-group"><label>口型源</label><select v-model="cfg.avatar.lip_sync.source"><option value="browser_audio">真实播放音频</option><option value="disabled">关闭</option></select></div>
+                  <div class="form-group"><label class="checkbox-label"><input type="checkbox" v-model="cfg.avatar.motion.allow_browser_control" /> 允许管理指令切换鼠标追踪</label></div>
+                  <div class="form-group"><label>口型灵敏度</label><input type="number" v-model.number="cfg.avatar.lip_sync.sensitivity" min="0.1" max="10" step="0.1" /></div>
+                  <div class="form-group"><label>噪声门</label><input type="number" v-model.number="cfg.avatar.lip_sync.noise_gate" min="0" max="0.5" step="0.005" /></div>
+                  <div class="form-group"><label>张嘴响应(ms)</label><input type="number" v-model.number="cfg.avatar.lip_sync.attack_ms" min="1" max="1000" /></div>
+                  <div class="form-group"><label>闭嘴响应(ms)</label><input type="number" v-model.number="cfg.avatar.lip_sync.release_ms" min="1" max="2000" /></div>
                 </div>
-                <div class="section-title">模型</div>
+                <div class="section-title">渲染器 <span class="hint">(修改后重启生效)</span></div>
                 <div class="form-row-2">
-                  <div class="form-group"><label>版本</label><select v-model="cfg.easyvtuber.model.version"><option value="v2">v2</option><option value="v3">v3</option></select></div>
-                  <div class="form-group"><label>精度</label><select v-model="cfg.easyvtuber.model.precision"><option value="full">full</option><option value="half">half</option></select></div>
+                  <div class="form-group"><label>模型</label><select v-model="cfg.avatar.renderer.model"><option value="tha3">THA3</option><option value="tha4">THA4</option><option value="tha4_student">THA4 Student</option></select></div>
+                  <div class="form-group"><label>后端</label><select v-model="cfg.avatar.renderer.backend"><option value="onnxruntime">ONNX Runtime</option><option value="tensorrt">TensorRT</option></select></div>
+                  <div class="form-group"><label>精度</label><select v-model="cfg.avatar.renderer.precision"><option value="fp32">FP32</option><option value="fp16">FP16</option></select></div>
+                  <div class="form-group"><label>帧率</label><select v-model.number="cfg.avatar.renderer.frame_rate"><option :value="20">20</option><option :value="30">30</option><option :value="60">60</option></select></div>
+                  <div class="form-group"><label>插帧</label><select v-model.number="cfg.avatar.renderer.interpolation"><option :value="1">关</option><option :value="2">2x</option><option :value="4">4x</option></select></div>
+                  <div class="form-group"><label>超分</label><select v-model.number="cfg.avatar.renderer.super_resolution"><option :value="1">关</option><option :value="2">2x</option><option :value="4">4x</option></select></div>
+                  <div class="form-group"><label>RAM 缓存(MB)</label><input type="number" v-model.number="cfg.avatar.renderer.ram_cache_mb" min="0" /></div>
+                  <div class="form-group"><label>VRAM 缓存(MB)</label><input type="number" v-model.number="cfg.avatar.renderer.vram_cache_mb" min="0" /></div>
+                  <label class="checkbox-label"><input type="checkbox" v-model="cfg.avatar.renderer.separable" /> 可分离卷积</label>
+                  <label class="checkbox-label"><input type="checkbox" v-model="cfg.avatar.renderer.use_eyebrow" /> 眉毛参数</label>
                 </div>
+                <div class="section-title">输出</div>
                 <div class="form-row-2">
-                  <label class="checkbox-label"><input type="checkbox" v-model="cfg.easyvtuber.model.separable" /> 可分离卷积</label>
-                  <label class="checkbox-label"><input type="checkbox" v-model="cfg.easyvtuber.model.use_tensorrt" /> TensorRT</label>
-                  <label class="checkbox-label"><input type="checkbox" v-model="cfg.easyvtuber.model.use_eyebrow" /> 眉毛追踪</label>
-                </div>
-                <div class="section-title">性能</div>
-                <div class="form-row-2">
-                  <div class="form-group"><label>帧率</label><select v-model.number="cfg.easyvtuber.performance.frame_rate"><option :value="20">20</option><option :value="30">30</option><option :value="60">60</option></select></div>
-                  <div class="form-group"><label>插帧</label><select v-model="cfg.easyvtuber.performance.interpolation"><option value="x1">关</option><option value="x2">2x</option><option value="x4">4x</option></select></div>
-                  <div class="form-group"><label>超分</label><select v-model="cfg.easyvtuber.performance.super_resolution"><option value="x1">关</option><option value="x2">2x</option><option value="x4">4x</option></select></div>
-                </div>
-                <div class="form-row-2">
-                  <div class="form-group"><label>内存缓存</label><select v-model="cfg.easyvtuber.performance.ram_cache"><option value="1gb">1G</option><option value="2gb">2G</option><option value="4gb">4G</option></select></div>
-                  <div class="form-group"><label>显存缓存</label><select v-model="cfg.easyvtuber.performance.vram_cache"><option value="1gb">1G</option><option value="2gb">2G</option><option value="4gb">4G</option></select></div>
-                  <div class="form-group"><label class="checkbox-label"><input type="checkbox" v-model="cfg.easyvtuber.output.websocket.enabled" /> WS</label></div>
-                </div>
-                <div class="form-row-2">
-                  <div class="form-group"><label>WS 主机</label><input type="text" v-model="cfg.easyvtuber.output.websocket.host" /></div>
-                  <div class="form-group"><label>WS 端口</label><input type="number" v-model.number="cfg.easyvtuber.output.websocket.port" min="1000" max="65535" /></div>
+                  <div class="form-group"><label class="checkbox-label"><input type="checkbox" v-model="cfg.avatar.outputs.spout.enabled" /> Spout2 正式输出</label></div>
+                  <div class="form-group"><label>Spout 名称</label><input type="text" v-model="cfg.avatar.outputs.spout.name" /></div>
+                  <div class="form-group"><label class="checkbox-label"><input type="checkbox" v-model="cfg.avatar.outputs.preview.enabled" /> 控制面板预览</label></div>
+                  <div class="form-group"><label>预览帧率</label><input type="number" v-model.number="cfg.avatar.outputs.preview.frame_rate" min="1" max="30" /></div>
+                  <div class="form-group"><label>预览质量</label><input type="number" v-model.number="cfg.avatar.outputs.preview.quality" min="20" max="100" /></div>
                 </div>
               </div>
 
@@ -570,7 +569,7 @@ const tabs = [
   { key: 'ai_models', label: 'AI模型' },
   { key: 'tts', label: '语音' },
   { key: 'messaging', label: '消息调度' },
-  { key: 'easyvtuber', label: '数字人' },
+  { key: 'avatar', label: '数字人' },
   { key: 'agent_params', label: 'Agent 场景' },
   { key: 'music', label: '音乐' },
   { key: 'live', label: '直播' },
@@ -589,6 +588,15 @@ function setLocalDirectories(event: Event) {
 }
 const saveStatusText = ref('')
 const vectorStatus = reactive({ available: false, vector_count: 0 })
+const avatarPreviewRevision = ref(Date.now())
+const avatarRuntimeState = reactive({ state: 'stopped', error: '' })
+const avatarPreviewUrl = computed(() => `/avatar/preview/frame?v=${avatarPreviewRevision.value}`)
+const avatarStatusText = computed(() => {
+  if (avatarRuntimeState.state === 'running') return 'FeinaAvatar 运行中'
+  if (avatarRuntimeState.state === 'starting') return '渲染器启动中'
+  if (avatarRuntimeState.state === 'failed') return avatarRuntimeState.error || '渲染器启动失败'
+  return '当前无预览帧'
+})
 
 // ---- 配置（仅用于绑定 UI，不持久化存储） ----
 const cfg = reactive<FullConfig>({} as FullConfig)
@@ -604,7 +612,7 @@ function initCfgShape() {
     tts: { provider: 'volcano', voice: 'zh-CN-XiaoxiaoNeural', encoding: 'wav', speed_ratio: 1.0 },
     volcano: { appid: '', access_token: '', speaker_id: '' },
     agent: { enabled: false, scenario_id: 'slay_the_spire', mcp_url: 'http://127.0.0.1:8080', api_url: '', api_key: '', model: '', temperature: 0.4, max_tokens: 500, disable_thinking: true, poll_interval: 1.0, memory_threshold: 30, memory_idle_seconds: 120, memory_scan_interval_seconds: 30, memory_context_max_chars: 12000, min_step_interval: 3.0, step_jitter: 0.5, commentary_interval: 30.0, min_commentary_interval: 15.0, commentary_hold_timeout: 20.0, memory_eagerness: 3, queue_max_size: 20, host_history_maxlen: 50, action_history_maxlen: 30, scenario_config: { default_character: 'IRONCLAD' } },
-    easyvtuber: { enabled: true, character: 'feina00', input: { type: 'debug', osf_address: '127.0.0.1:11573', mouse_range: '0,0,1920,1080' }, model: { version: 'v3', precision: 'half', separable: true, use_tensorrt: true, use_eyebrow: true }, performance: { frame_rate: 30, interpolation: 'x2', super_resolution: 'off', ram_cache: '2gb', vram_cache: '2gb' }, output: { websocket: { enabled: true, port: 8765, host: 'localhost' } } },
+    avatar: { enabled: true, character: 'feina00', motion: { source: 'autonomous', allow_browser_control: true }, lip_sync: { source: 'browser_audio', sensitivity: 3, noise_gate: 0.015, attack_ms: 35, release_ms: 90 }, renderer: { engine: 'feina_avatar', model: 'tha3', backend: 'onnxruntime', precision: 'fp32', separable: false, use_eyebrow: true, frame_rate: 30, interpolation: 1, super_resolution: 1, ram_cache_mb: 2048, vram_cache_mb: 2048 }, outputs: { spout: { enabled: true, name: 'FeinaAvatar' }, preview: { enabled: true, frame_rate: 10, quality: 80 } } },
     ai: { max_history_per_session: 16, summary_interval: 10, summary_idle_seconds: 300.0, summary_scan_interval_seconds: 60.0, max_recent_messages: 16, poll_interval_seconds: 10.0 },
     messaging: { danmaku_starvation_seconds: 30.0, danmaku_flood_threshold: 5, danmaku_flood_window: 20.0, gift_starvation_seconds: 60.0, gift_flood_threshold: 3, gift_flood_window: 30.0, gift_value_highest: 10000, gift_value_high: 5000, gift_value_normal: 1000, gift_value_low: 100, user_cooldown_seconds: 3.0, default_ttl_seconds: 30.0, rate_limit_commentary: 4.0, rate_limit_danmaku: 3.0, rate_limit_gift: 10.0 },
     music: { default_provider: 'auto', min_duration_seconds: 60, max_duration_seconds: 480, queue_capacity: 5, per_user_limit: 2, allow_bare_bv: false, accept_score: 60, reject_score: -50, llm_min_confidence: 0.75, search_candidates: 5, ducking_factor: 0.2, ducking_enabled: true, local_directories: [] },
@@ -642,10 +650,21 @@ async function loadConfig() {
 
 async function loadCharacters() {
   try {
-    const res = await fetch('/config/easyvtuber/characters')
+    const res = await fetch('/config/avatar/characters')
     const data = await res.json()
     characters.value = data.characters || []
   } catch { /* ignore */ }
+}
+
+async function refreshAvatarStatus() {
+  try {
+    const response = await fetch('/avatar/status')
+    const data = await response.json()
+    avatarRuntimeState.state = data.state || 'stopped'
+    avatarRuntimeState.error = data.error || ''
+  } catch {
+    avatarRuntimeState.state = 'stopped'
+  }
 }
 
 async function refreshVectorStatus() {
@@ -665,7 +684,7 @@ async function backfillVectors() {
 
 async function openImagesFolder() {
   try {
-    await fetch('/config/easyvtuber/open-images', { method: 'POST' })
+    await fetch('/config/avatar/open-images', { method: 'POST' })
   } catch { /* ignore */ }
 }
 
@@ -734,6 +753,7 @@ const logs = ref<LogItem[]>([])
 let ws: WebSocket | null = null
 let wsReconnectTimer: ReturnType<typeof setTimeout> | null = null
 let shouldReconnect = true
+let avatarPreviewTimer: ReturnType<typeof setInterval> | null = null
 
 function addLog(content: string, type: LogItem['type'] = 'system') {
   const now = new Date()
@@ -850,6 +870,7 @@ watch(() => props.visible, (visible) => {
     loadCharacters()
     refreshStatus()
     refreshVectorStatus()
+    refreshAvatarStatus()
   }
 })
 
@@ -858,11 +879,18 @@ onMounted(() => {
   connectWebSocket()
   refreshStatus()
   refreshVectorStatus()
+  refreshAvatarStatus()
+  avatarPreviewTimer = setInterval(() => {
+    if (!props.visible || activeTab.value !== 'avatar') return
+    avatarPreviewRevision.value = Date.now()
+    void refreshAvatarStatus()
+  }, 1000)
 })
 
 onUnmounted(() => {
   shouldReconnect = false
   if (wsReconnectTimer) clearTimeout(wsReconnectTimer)
+  if (avatarPreviewTimer) clearInterval(avatarPreviewTimer)
   window.removeEventListener('keydown', handleKeydown)
   if (ws) ws.close()
 })
@@ -897,6 +925,28 @@ onUnmounted(() => {
   width: min(1500px, 94vw);
   height: min(920px, 92vh);
 }
+
+.avatar-preview {
+  display: grid;
+  grid-template-columns: minmax(220px, 420px) 1fr;
+  align-items: center;
+  gap: 18px;
+  margin: 10px 0 18px;
+  padding: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 12px;
+  background: rgba(15, 23, 42, 0.7);
+}
+
+.avatar-preview img {
+  width: 100%;
+  max-height: 360px;
+  object-fit: contain;
+  border-radius: 8px;
+  background: repeating-conic-gradient(#334155 0 25%, #1e293b 0 50%) 50% / 18px 18px;
+}
+
+.avatar-preview span { color: #94a3b8; font-size: 13px; }
 
 .settings-header {
   display: flex;

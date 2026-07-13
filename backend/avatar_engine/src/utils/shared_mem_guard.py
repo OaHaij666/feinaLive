@@ -135,11 +135,10 @@ class SharedMemoryGuard:
 
     # ---- lifecycle ----
     def close(self) -> None:
-        """Close handles and shared memory."""
+        """Close this guard's mutex handle; the payload is externally owned."""
         if self._mutex_handle and self._mutex_handle != 0:
             _CloseHandle(self._mutex_handle)
             self._mutex_handle = None
-        self.payload_shm.close()
 
     def unlink_control_if_owner(self) -> None:
         """

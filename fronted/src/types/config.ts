@@ -102,45 +102,54 @@ export interface ScenarioCatalogPayload {
   restart_required?: boolean
 }
 
-export interface EasyVtuberInputConfig {
-  type: string
-  osf_address: string
-  mouse_range: string
+export interface AvatarMotionConfig {
+  source: 'autonomous' | 'browser'
+  allow_browser_control: boolean
 }
 
-export interface EasyVtuberModelConfig {
-  version: string
-  precision: string
+export interface AvatarLipSyncConfig {
+  source: 'browser_audio' | 'disabled'
+  sensitivity: number
+  noise_gate: number
+  attack_ms: number
+  release_ms: number
+}
+
+export interface AvatarRendererConfig {
+  engine: 'feina_avatar'
+  model: 'tha3' | 'tha4' | 'tha4_student'
+  backend: 'onnxruntime' | 'tensorrt'
+  precision: 'fp32' | 'fp16'
   separable: boolean
-  use_tensorrt: boolean
   use_eyebrow: boolean
-}
-
-export interface EasyVtuberPerformanceConfig {
   frame_rate: number
-  interpolation: string
-  super_resolution: string
-  ram_cache: string
-  vram_cache: string
+  interpolation: 1 | 2 | 4
+  super_resolution: 1 | 2 | 4
+  ram_cache_mb: number
+  vram_cache_mb: number
 }
 
-export interface EasyVtuberWebSocketConfig {
+export interface AvatarSpoutConfig {
   enabled: boolean
-  port: number
-  host: string
+  name: string
 }
 
-export interface EasyVtuberOutputConfig {
-  websocket: EasyVtuberWebSocketConfig
+export interface AvatarPreviewConfig {
+  enabled: boolean
+  frame_rate: number
+  quality: number
 }
 
-export interface EasyVtuberConfig {
+export interface AvatarConfig {
   enabled: boolean
   character: string
-  input: EasyVtuberInputConfig
-  model: EasyVtuberModelConfig
-  performance: EasyVtuberPerformanceConfig
-  output: EasyVtuberOutputConfig
+  motion: AvatarMotionConfig
+  lip_sync: AvatarLipSyncConfig
+  renderer: AvatarRendererConfig
+  outputs: {
+    spout: AvatarSpoutConfig
+    preview: AvatarPreviewConfig
+  }
 }
 
 export interface AIConfig {
@@ -216,7 +225,7 @@ export interface FullConfig {
   tts: TTSConfig
   volcano: VolcanoConfig
   agent: AgentConfig
-  easyvtuber: EasyVtuberConfig
+  avatar: AvatarConfig
   ai: AIConfig
   messaging: MessagingConfig
   music: MusicConfigModel

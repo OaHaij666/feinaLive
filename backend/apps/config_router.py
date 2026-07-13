@@ -8,6 +8,7 @@ import yaml
 from fastapi import APIRouter, HTTPException, Response
 from pydantic import BaseModel, Field, model_validator
 
+from apps.avatar.schemas import AvatarConfig
 from apps.config import config
 from apps.storage.secrets import secret_store
 
@@ -103,47 +104,6 @@ class AgentConfig(BaseModel):
     scenario_config: dict[str, object] = Field(default_factory=dict)
 
 
-class EasyVtuberInputConfig(BaseModel):
-    type: str = "debug"
-    osf_address: str = "127.0.0.1:11573"
-    mouse_range: str = "0,0,1920,1080"
-
-
-class EasyVtuberModelConfig(BaseModel):
-    version: str = "v3"
-    precision: str = "half"
-    separable: bool = True
-    use_tensorrt: bool = True
-    use_eyebrow: bool = True
-
-
-class EasyVtuberPerformanceConfig(BaseModel):
-    frame_rate: int = 30
-    interpolation: str = "x2"
-    super_resolution: str = "off"
-    ram_cache: str = "2gb"
-    vram_cache: str = "2gb"
-
-
-class EasyVtuberWebSocketConfig(BaseModel):
-    enabled: bool = True
-    port: int = 8765
-    host: str = "localhost"
-
-
-class EasyVtuberOutputConfig(BaseModel):
-    websocket: EasyVtuberWebSocketConfig = EasyVtuberWebSocketConfig()
-
-
-class EasyVtuberConfig(BaseModel):
-    enabled: bool = True
-    character: str = "feina00"
-    input: EasyVtuberInputConfig = EasyVtuberInputConfig()
-    model: EasyVtuberModelConfig = EasyVtuberModelConfig()
-    performance: EasyVtuberPerformanceConfig = EasyVtuberPerformanceConfig()
-    output: EasyVtuberOutputConfig = EasyVtuberOutputConfig()
-
-
 class AIConfig(BaseModel):
     max_history_per_session: int = 16
     summary_interval: int = 10
@@ -229,7 +189,7 @@ class FullConfig(BaseModel):
     tts: TTSConfig = TTSConfig()
     volcano: VolcanoConfig = VolcanoConfig()
     agent: AgentConfig = AgentConfig()
-    easyvtuber: EasyVtuberConfig = EasyVtuberConfig()
+    avatar: AvatarConfig = AvatarConfig()
     ai: AIConfig = AIConfig()
     messaging: MessagingConfig = MessagingConfig()
     music: MusicConfigModel = MusicConfigModel()
@@ -326,36 +286,7 @@ async def get_full_config():
             action_history_maxlen=config.agent_action_history_maxlen,
             scenario_config=config.agent_scenario_config,
         ),
-        easyvtuber=EasyVtuberConfig(
-            enabled=config.easyvtuber_enabled,
-            character=config.easyvtuber_character,
-            input=EasyVtuberInputConfig(
-                type=config.easyvtuber_input_type,
-                osf_address=config.easyvtuber_osf_address,
-                mouse_range=config.easyvtuber_mouse_range,
-            ),
-            model=EasyVtuberModelConfig(
-                version=config.easyvtuber_model_version,
-                precision=config.easyvtuber_model_precision,
-                separable=config.easyvtuber_model_separable,
-                use_tensorrt=config.easyvtuber_use_tensorrt,
-                use_eyebrow=config.easyvtuber_use_eyebrow,
-            ),
-            performance=EasyVtuberPerformanceConfig(
-                frame_rate=config.easyvtuber_frame_rate,
-                interpolation=config.easyvtuber_interpolation,
-                super_resolution=config.easyvtuber_super_resolution,
-                ram_cache=config.easyvtuber_ram_cache,
-                vram_cache=config.easyvtuber_vram_cache,
-            ),
-            output=EasyVtuberOutputConfig(
-                websocket=EasyVtuberWebSocketConfig(
-                    enabled=config.easyvtuber_ws_enabled,
-                    port=config.easyvtuber_ws_port,
-                    host=config.easyvtuber_ws_host,
-                )
-            ),
-        ),
+        avatar=AvatarConfig.model_validate(config.avatar_config),
         ai=AIConfig(
             max_history_per_session=config.ai_max_history_per_session,
             summary_interval=config.ai_summary_interval,
@@ -483,6 +414,7 @@ async def update_full_config(config_data: FullConfig, response: Response):
             config.bilibili_sessdata,
             config.douyin_cookie,
         )
+        old_avatar = AvatarConfig.model_validate(config.avatar_config)
         with open(CONFIG_FILE, "r", encoding="utf-8") as f:
             data = yaml.safe_load(f) or {}
 
@@ -572,26 +504,8 @@ async def update_full_config(config_data: FullConfig, response: Response):
         flat["agent.action_history_maxlen"] = agent.action_history_maxlen
         flat["agent.scenario_config"] = validated_scenario_config
 
-        # easyvtuber
-        ev = config_data.easyvtuber
-        flat["easyvtuber.enabled"] = ev.enabled
-        flat["easyvtuber.character"] = ev.character
-        flat["easyvtuber.input.type"] = ev.input.type
-        flat["easyvtuber.input.osf_address"] = ev.input.osf_address
-        flat["easyvtuber.input.mouse_range"] = ev.input.mouse_range
-        flat["easyvtuber.model.version"] = ev.model.version
-        flat["easyvtuber.model.precision"] = ev.model.precision
-        flat["easyvtuber.model.separable"] = ev.model.separable
-        flat["easyvtuber.model.use_tensorrt"] = ev.model.use_tensorrt
-        flat["easyvtuber.model.use_eyebrow"] = ev.model.use_eyebrow
-        flat["easyvtuber.performance.frame_rate"] = ev.performance.frame_rate
-        flat["easyvtuber.performance.interpolation"] = ev.performance.interpolation
-        flat["easyvtuber.performance.super_resolution"] = ev.performance.super_resolution
-        flat["easyvtuber.performance.ram_cache"] = ev.performance.ram_cache
-        flat["easyvtuber.performance.vram_cache"] = ev.performance.vram_cache
-        flat["easyvtuber.output.websocket.enabled"] = ev.output.websocket.enabled
-        flat["easyvtuber.output.websocket.port"] = ev.output.websocket.port
-        flat["easyvtuber.output.websocket.host"] = ev.output.websocket.host
+        data["avatar"] = config_data.avatar.model_dump(mode="json")
+        data.pop("easyvtuber", None)
 
         # ai
         a = config_data.ai
@@ -674,7 +588,8 @@ async def update_full_config(config_data: FullConfig, response: Response):
             config.bilibili_sessdata,
             config.douyin_cookie,
         )
-        restart_required = restart_required or live_changed
+        avatar_changed = old_avatar != AvatarConfig.model_validate(config.avatar_config)
+        restart_required = restart_required or live_changed or avatar_changed
         response.headers["X-Restart-Required"] = "true" if restart_required else "false"
         result = await get_full_config()
         result.restart_required = restart_required
@@ -698,7 +613,7 @@ async def list_sections():
             {"key": "tts", "label": "语音合成", "description": "TTS 语音输出配置"},
             {"key": "volcano", "label": "火山引擎", "description": "火山引擎 TTS 凭证"},
             {"key": "agent", "label": "Agent", "description": "场景、能力与 Agent 行为参数"},
-            {"key": "easyvtuber", "label": "数字人", "description": "Live2D 渲染和输入配置"},
+            {"key": "avatar", "label": "数字人", "description": "FeinaAvatar 动作、口型、渲染与输出"},
             {"key": "ai", "label": "AI行为", "description": "记忆、历史、轮询间隔"},
             {"key": "messaging", "label": "消息调度", "description": "优先级、队列、频率限制"},
             {"key": "music", "label": "音乐系统", "description": "Provider、点歌审核与播放参数"},
@@ -709,49 +624,21 @@ async def list_sections():
     }
 
 
-# ---- EasyVtuber 独立端点 (保留兼容) ----
+# ---- Avatar standalone endpoints ----
 
-@router.get("/easyvtuber", response_model=EasyVtuberConfig)
-async def get_easyvtuber_config():
-    return EasyVtuberConfig(
-        enabled=config.easyvtuber_enabled,
-        character=config.easyvtuber_character,
-        input=EasyVtuberInputConfig(
-            type=config.easyvtuber_input_type,
-            osf_address=config.easyvtuber_osf_address,
-            mouse_range=config.easyvtuber_mouse_range,
-        ),
-        model=EasyVtuberModelConfig(
-            version=config.easyvtuber_model_version,
-            precision=config.easyvtuber_model_precision,
-            separable=config.easyvtuber_model_separable,
-            use_tensorrt=config.easyvtuber_use_tensorrt,
-            use_eyebrow=config.easyvtuber_use_eyebrow,
-        ),
-        performance=EasyVtuberPerformanceConfig(
-            frame_rate=config.easyvtuber_frame_rate,
-            interpolation=config.easyvtuber_interpolation,
-            super_resolution=config.easyvtuber_super_resolution,
-            ram_cache=config.easyvtuber_ram_cache,
-            vram_cache=config.easyvtuber_vram_cache,
-        ),
-        output=EasyVtuberOutputConfig(
-            websocket=EasyVtuberWebSocketConfig(
-                enabled=config.easyvtuber_ws_enabled,
-                port=config.easyvtuber_ws_port,
-                host=config.easyvtuber_ws_host,
-            )
-        ),
-    )
+@router.get("/avatar", response_model=AvatarConfig)
+async def get_avatar_config():
+    return AvatarConfig.model_validate(config.avatar_config)
 
 
-@router.put("/easyvtuber", response_model=EasyVtuberConfig)
-async def update_easyvtuber_config(config_data: EasyVtuberConfig):
+@router.put("/avatar", response_model=AvatarConfig)
+async def update_avatar_config(config_data: AvatarConfig):
     try:
         with open(CONFIG_FILE, "r", encoding="utf-8") as f:
             data = yaml.safe_load(f) or {}
 
-        data["easyvtuber"] = config_data.model_dump()
+        data["avatar"] = config_data.model_dump(mode="json")
+        data.pop("easyvtuber", None)
 
         _atomic_write_yaml(data)
 
@@ -760,15 +647,15 @@ async def update_easyvtuber_config(config_data: EasyVtuberConfig):
         return config_data
 
     except Exception as e:
-        logger.error(f"更新 EasyVtuber 配置失败: {e}")
+        logger.error(f"更新 Avatar 配置失败: {e}")
         raise HTTPException(status_code=500, detail=f"更新配置失败: {e}")
 
 
-@router.get("/easyvtuber/characters")
+@router.get("/avatar/characters")
 async def list_characters():
-    from apps.easyvtuber import EASYVTUBER_DIR
+    from apps.avatar import AVATAR_ENGINE_DIR
 
-    images_dir = EASYVTUBER_DIR / "data" / "images"
+    images_dir = AVATAR_ENGINE_DIR / "data" / "images"
     characters = []
 
     if images_dir.exists():
@@ -780,13 +667,13 @@ async def list_characters():
     return {"characters": characters}
 
 
-@router.post("/easyvtuber/open-images")
+@router.post("/avatar/open-images")
 async def open_images_folder():
     """打开数字人图片文件夹（仅 Windows）"""
     import subprocess
 
-    from apps.easyvtuber import EASYVTUBER_DIR
-    images_dir = EASYVTUBER_DIR / "data" / "images"
+    from apps.avatar import AVATAR_ENGINE_DIR
+    images_dir = AVATAR_ENGINE_DIR / "data" / "images"
     if not images_dir.exists():
         images_dir.mkdir(parents=True, exist_ok=True)
     subprocess.Popen(["explorer", str(images_dir)])

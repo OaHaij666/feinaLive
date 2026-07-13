@@ -33,13 +33,9 @@ logger = logging.getLogger(__name__)
 
 LOCAL_FRONTEND_ORIGINS = [
     "http://127.0.0.1:5173",
-    "http://127.0.0.1:5174",
     "http://127.0.0.1:8088",
-    "http://127.0.0.1:8089",
     "http://localhost:5173",
-    "http://localhost:5174",
     "http://localhost:8088",
-    "http://localhost:8089",
 ]
 
 

@@ -14,10 +14,8 @@ NGINX_CONF = NGINX_DIR / "conf" / "nginx.conf"
 HLS_DIR = NGINX_DIR / "hls"
 
 HTTP_PORT = 8088
-CONSOLE_PORT = 8089
 HLS_URL = f"http://localhost:{HTTP_PORT}/hls/stream.m3u8"
 LIVE_FRONTEND_URL = f"http://localhost:{HTTP_PORT}"
-CONSOLE_URL = f"http://localhost:{CONSOLE_PORT}"
 
 
 class NginxService:
@@ -102,7 +100,6 @@ class NginxService:
             "hls_url": HLS_URL,
             "frontend_url": LIVE_FRONTEND_URL,
             "live_frontend_url": LIVE_FRONTEND_URL,
-            "console_url": CONSOLE_URL,
         }
 
 
@@ -120,7 +117,6 @@ async def start_nginx():
     service = get_nginx_service()
     if service.start():
         logger.info(f"Live frontend available at: {LIVE_FRONTEND_URL}")
-        logger.info(f"Control console available at: {CONSOLE_URL}")
         logger.info(f"HLS stream available at: {HLS_URL}")
 
 

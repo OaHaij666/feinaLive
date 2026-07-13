@@ -24,10 +24,12 @@ from PySide6.QtWidgets import (
     QPushButton,
     QScrollArea,
     QSplitter,
+    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
 
+from launcher.control import OperationsConsole
 from launcher.health import HealthResult, evaluate_health
 from launcher.models import ModuleSpec, build_specs, executable
 from launcher.processes import ProcessController, clean_output
@@ -131,6 +133,7 @@ class LauncherWindow(QMainWindow):
         self.health_states: dict[str, HealthResult] = {}
         self.log_records: deque[tuple[str, str, str, str]] = deque(maxlen=5000)
         self.settings = QSettings("feinaLive", "Launcher")
+        self.theme = str(self.settings.value("theme", "dark"))
         self.network = QNetworkAccessManager(self)
         self.pending_health: set[str] = set()
         self.processes = ProcessController(self.specs, root, self)
@@ -153,9 +156,16 @@ class LauncherWindow(QMainWindow):
         self.setWindowTitle("FeinaLive Control Center")
         self.setMinimumSize(1050, 700)
         self.resize(1320, 840)
+        self.main_tabs = QTabWidget()
+        self.main_tabs.setObjectName("mainTabs")
+        self.setCentralWidget(self.main_tabs)
+        self.theme_button = QPushButton()
+        self._update_theme_button()
+        self.theme_button.clicked.connect(self.toggle_theme)
+        self.main_tabs.setCornerWidget(self.theme_button, Qt.Corner.TopRightCorner)
         root_widget = QWidget()
         root_widget.setObjectName("appRoot")
-        self.setCentralWidget(root_widget)
+        self.main_tabs.addTab(root_widget, "运行中心")
         outer = QVBoxLayout(root_widget)
         outer.setContentsMargins(18, 16, 18, 16)
         outer.setSpacing(12)
@@ -177,12 +187,10 @@ class LauncherWindow(QMainWindow):
         self.start_all_button.setObjectName("primaryButton")
         self.stop_all_button = QPushButton("停止全部")
         self.live_button = QPushButton("打开直播端")
-        self.console_button = QPushButton("打开控制台")
         for button in (
             self.start_all_button,
             self.stop_all_button,
             self.live_button,
-            self.console_button,
         ):
             button.setMinimumHeight(40)
             header.addWidget(button)
@@ -247,7 +255,8 @@ class LauncherWindow(QMainWindow):
         splitter.setStretchFactor(1, 2)
         splitter.setSizes([430, 330])
         outer.addWidget(splitter, 1)
-        self.setStyleSheet(self._stylesheet())
+        self.main_tabs.addTab(OperationsConsole(), "FEINA LIVE · 运营控制台")
+        self.setStyleSheet(self._stylesheet(self.theme))
 
     def _connect_signals(self) -> None:
         self.processes.log_received.connect(self.append_log)
@@ -256,9 +265,6 @@ class LauncherWindow(QMainWindow):
         self.stop_all_button.clicked.connect(self.stop_all)
         self.live_button.clicked.connect(
             lambda: QDesktopServices.openUrl(QUrl("http://127.0.0.1:8088/"))
-        )
-        self.console_button.clicked.connect(
-            lambda: QDesktopServices.openUrl(QUrl("http://127.0.0.1:8089/"))
         )
         self.log_filter.currentIndexChanged.connect(self.render_logs)
         self.log_search.textChanged.connect(self.render_logs)
@@ -284,8 +290,7 @@ class LauncherWindow(QMainWindow):
 
     def _ensure_frontend_then_start_backend(self) -> None:
         live_index = self.root / "fronted" / "dist" / "live" / "index.html"
-        console_index = self.root / "fronted" / "dist" / "console" / "index.html"
-        if live_index.exists() and console_index.exists():
+        if live_index.exists():
             QTimer.singleShot(600, lambda: self.processes.start("backend"))
             return
         self.append_log("frontend-setup", "system", "前端生产构建不存在，开始首次准备")
@@ -364,7 +369,9 @@ class LauncherWindow(QMainWindow):
         if health and health.state != "offline":
             self.cards[module_id].set_state(health.state, health.label, health.detail)
         elif process_state in {"starting", "running", "stopping", "error"}:
-            detail = "等待健康检查" if process_state in {"starting", "running"} else "进程状态已变化"
+            detail = (
+                "等待健康检查" if process_state in {"starting", "running"} else "进程状态已变化"
+            )
             self.cards[module_id].set_state(process_state, detail=detail)
         elif health:
             self.cards[module_id].set_state(health.state, health.label, health.detail)
@@ -379,7 +386,9 @@ class LauncherWindow(QMainWindow):
 
     def append_log(self, module_id: str, level: str, message: str) -> None:
         timestamp = datetime.now().strftime("%H:%M:%S")
-        module_name = self.spec_by_id.get(module_id).name if module_id in self.spec_by_id else module_id
+        module_name = (
+            self.spec_by_id.get(module_id).name if module_id in self.spec_by_id else module_id
+        )
         record = (timestamp, module_id, level, message)
         self.log_records.append(record)
         line = f"{timestamp}  [{module_name}]  {message}"
@@ -395,7 +404,9 @@ class LauncherWindow(QMainWindow):
         _, module_id, _, message = record
         selected = self.log_filter.currentData() if hasattr(self, "log_filter") else "all"
         query = self.log_search.text().strip().lower() if hasattr(self, "log_search") else ""
-        return (selected == "all" or selected == module_id) and (not query or query in message.lower())
+        return (selected == "all" or selected == module_id) and (
+            not query or query in message.lower()
+        )
 
     def render_logs(self) -> None:
         self.log_view.clear()
@@ -403,7 +414,9 @@ class LauncherWindow(QMainWindow):
             record = (timestamp, module_id, level, message)
             if not self._log_matches(record):
                 continue
-            module_name = self.spec_by_id.get(module_id).name if module_id in self.spec_by_id else module_id
+            module_name = (
+                self.spec_by_id.get(module_id).name if module_id in self.spec_by_id else module_id
+            )
             self.log_view.appendPlainText(f"{timestamp}  [{module_name}]  {message}")
         if self.auto_scroll.isChecked():
             self.log_view.moveCursor(QTextCursor.MoveOperation.End)
@@ -426,6 +439,15 @@ class LauncherWindow(QMainWindow):
         if geometry:
             self.restoreGeometry(geometry)
 
+    def toggle_theme(self) -> None:
+        self.theme = "light" if self.theme == "dark" else "dark"
+        self.setStyleSheet(self._stylesheet(self.theme))
+        self._update_theme_button()
+
+    def _update_theme_button(self) -> None:
+        self.theme_button.setText("亮色" if self.theme == "dark" else "暗色")
+        self.theme_button.setToolTip(f"切换到{'亮色' if self.theme == 'dark' else '暗色'}主题")
+
     def closeEvent(self, event: QCloseEvent) -> None:  # noqa: N802
         running = any(self.processes.is_running(spec.id) for spec in self.specs if spec.managed)
         if running:
@@ -442,19 +464,70 @@ class LauncherWindow(QMainWindow):
         self.health_timer.stop()
         self.processes.stop_all_sync()
         self.settings.setValue("geometry", self.saveGeometry())
+        self.settings.setValue("theme", self.theme)
         if self.log_file:
             self.log_file.close()
         event.accept()
 
     @staticmethod
-    def _stylesheet() -> str:
+    def _stylesheet(theme: str) -> str:
+        if theme == "light":
+            return """
+        QWidget { color: #172033; background: #f4f6fb; }
+        QWidget#appRoot { background: #f4f6fb; color: #172033; }
+        QLabel#heading { font-size: 24px; font-weight: 700; color: #172033; }
+        QLabel#subtitle, QLabel#moduleDescription, QLabel#moduleDetail, QLabel#mutedText { color: #64748b; }
+        QLabel#subtitle { font-size: 12px; }
+        QLabel#summary { padding: 8px 12px; border: 1px solid #d7dce6; border-radius: 8px; color: #475569; background: #ffffff; }
+        QLabel#pageTitle { font-size: 18px; font-weight: 700; color: #172033; }
+        QLabel#formHeading { padding-top: 12px; font-weight: 700; color: #5b21b6; }
+        QFrame#moduleCard, QGroupBox { border: 1px solid #dce1eb; border-radius: 10px; background: #ffffff; }
+        QGroupBox { margin-top: 12px; padding: 14px 10px 10px; font-weight: 650; }
+        QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 5px; }
+        QFrame#moduleCard:hover { border-color: #a8b0c0; }
+        QLabel#moduleTitle { font-weight: 650; color: #172033; }
+        QLabel#moduleDescription { font-size: 12px; }
+        QLabel#moduleDetail { font-size: 11px; font-family: "Cascadia Mono"; }
+        QLabel#stateLabel { font-size: 11px; font-weight: 600; color: #475569; }
+        QFrame#statusDot { border-radius: 5px; background: #94a3b8; }
+        QFrame#moduleCard[state="healthy"] QFrame#statusDot { background: #16a34a; }
+        QFrame#moduleCard[state="degraded"] QFrame#statusDot, QFrame#moduleCard[state="idle"] QFrame#statusDot { background: #d97706; }
+        QFrame#moduleCard[state="error"] QFrame#statusDot { background: #dc2626; }
+        QFrame#moduleCard[state="starting"] QFrame#statusDot, QFrame#moduleCard[state="running"] QFrame#statusDot { background: #0284c7; }
+        QFrame#logPanel { border: 1px solid #dce1eb; border-radius: 10px; background: #ffffff; }
+        QLabel#panelTitle { font-size: 14px; font-weight: 650; }
+        QPushButton { min-height: 34px; padding: 0 12px; border: 1px solid #cfd5e2; border-radius: 7px; color: #334155; background: #ffffff; }
+        QPushButton:hover { border-color: #a78bfa; background: #f3f0ff; }
+        QPushButton:focus, QLineEdit:focus, QComboBox:focus, QPlainTextEdit:focus { border: 2px solid #7c3aed; }
+        QPushButton:disabled { color: #94a3b8; background: #eef1f6; }
+        QPushButton#primaryButton { border-color: #6d28d9; color: #ffffff; background: #7c3aed; font-weight: 700; }
+        QPushButton#primaryButton:hover { background: #6d28d9; }
+        QComboBox, QLineEdit, QSpinBox, QDoubleSpinBox { min-height: 34px; padding: 0 9px; border: 1px solid #cfd5e2; border-radius: 7px; color: #172033; background: #ffffff; selection-background-color: #7c3aed; }
+        QPlainTextEdit { border: 1px solid #dce1eb; border-radius: 7px; color: #334155; background: #ffffff; selection-background-color: #7c3aed; }
+        QFrame#logPanel QPlainTextEdit { background: #eef1f6; }
+        QListWidget { border: 1px solid #dce1eb; border-radius: 8px; background: #ffffff; outline: 0; }
+        QListWidget::item { min-height: 38px; padding: 0 10px; }
+        QListWidget::item:selected { color: #5b21b6; background: #ede9fe; }
+        QTabWidget::pane { border: 1px solid #dce1eb; background: #f8f9fd; }
+        QTabBar::tab { min-height: 38px; padding: 0 18px; color: #596579; background: #eef1f6; border: 1px solid #dce1eb; }
+        QTabBar::tab:selected { color: #5b21b6; background: #ffffff; border-bottom: 2px solid #7c3aed; }
+        QScrollArea { background: transparent; }
+        QScrollBar:vertical { width: 10px; background: #eef1f6; }
+        QScrollBar::handle:vertical { min-height: 30px; border-radius: 5px; background: #a8b0c0; }
+        QSplitter::handle { height: 5px; background: #f4f6fb; }
+        """
         return """
+        QWidget { color: #f8fafc; background: #020617; }
         QWidget#appRoot { background: #020617; color: #f8fafc; }
         QLabel#heading { font-size: 24px; font-weight: 700; color: #f8fafc; }
-        QLabel#subtitle, QLabel#moduleDescription, QLabel#moduleDetail { color: #94a3b8; }
+        QLabel#subtitle, QLabel#moduleDescription, QLabel#moduleDetail, QLabel#mutedText { color: #94a3b8; }
         QLabel#subtitle { font-size: 12px; }
         QLabel#summary { padding: 8px 12px; border: 1px solid #334155; border-radius: 8px; color: #cbd5e1; background: #0f172a; }
-        QFrame#moduleCard { border: 1px solid #334155; border-radius: 10px; background: #0f172a; }
+        QLabel#pageTitle { font-size: 18px; font-weight: 700; color: #f8fafc; }
+        QLabel#formHeading { padding-top: 12px; font-weight: 700; color: #c4b5fd; }
+        QFrame#moduleCard, QGroupBox { border: 1px solid #334155; border-radius: 10px; background: #0f172a; }
+        QGroupBox { margin-top: 12px; padding: 14px 10px 10px; font-weight: 650; }
+        QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 5px; }
         QFrame#moduleCard:hover { border-color: #475569; }
         QLabel#moduleTitle { font-weight: 650; color: #f8fafc; }
         QLabel#moduleDescription { font-size: 12px; }
@@ -473,10 +546,17 @@ class LauncherWindow(QMainWindow):
         QPushButton:disabled { color: #64748b; background: #111827; }
         QPushButton#primaryButton { border-color: #16a34a; color: #052e16; background: #22c55e; font-weight: 700; }
         QPushButton#primaryButton:hover { background: #4ade80; }
-        QComboBox, QLineEdit { min-height: 34px; padding: 0 9px; border: 1px solid #334155; border-radius: 7px; color: #e2e8f0; background: #111827; selection-background-color: #2563eb; }
-        QComboBox:focus, QLineEdit:focus { border: 2px solid #38bdf8; }
+        QComboBox, QLineEdit, QSpinBox, QDoubleSpinBox { min-height: 34px; padding: 0 9px; border: 1px solid #334155; border-radius: 7px; color: #e2e8f0; background: #111827; selection-background-color: #2563eb; }
+        QComboBox:focus, QLineEdit:focus, QPlainTextEdit:focus { border: 2px solid #38bdf8; }
         QComboBox QAbstractItemView { color: #e2e8f0; background: #111827; selection-background-color: #334155; }
-        QPlainTextEdit { border: 0; color: #cbd5e1; background: #050a14; selection-background-color: #1d4ed8; }
+        QPlainTextEdit { border: 1px solid #334155; border-radius: 7px; color: #cbd5e1; background: #050a14; selection-background-color: #1d4ed8; }
+        QFrame#logPanel QPlainTextEdit { border: 0; }
+        QListWidget { border: 1px solid #334155; border-radius: 8px; background: #0f172a; outline: 0; }
+        QListWidget::item { min-height: 38px; padding: 0 10px; }
+        QListWidget::item:selected { color: #ede9fe; background: #312e81; }
+        QTabWidget::pane { border: 1px solid #334155; background: #020617; }
+        QTabBar::tab { min-height: 38px; padding: 0 18px; color: #94a3b8; background: #0f172a; border: 1px solid #334155; }
+        QTabBar::tab:selected { color: #f8fafc; background: #1e293b; border-bottom: 2px solid #8b5cf6; }
         QScrollArea { background: transparent; }
         QScrollBar:vertical { width: 10px; background: #0f172a; }
         QScrollBar::handle:vertical { min-height: 30px; border-radius: 5px; background: #475569; }

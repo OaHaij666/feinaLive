@@ -1,16 +1,11 @@
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
-import { resolve } from 'path'
 
-export default defineConfig(({ mode }) => ({
+export default defineConfig({
   plugins: [vue()],
   resolve: {
     alias: {
-      '@': resolve(__dirname, 'src'),
-      '@app-root': resolve(
-        __dirname,
-        mode === 'console' ? 'src/apps/console/ConsoleApp.vue' : 'src/App.vue'
-      )
+      '@': '/src'
     }
   },
   server: {
@@ -67,8 +62,8 @@ export default defineConfig(({ mode }) => ({
     host: '127.0.0.1',
   },
   build: {
-    outDir: mode === 'console' ? 'dist/console' : 'dist/live',
+    outDir: 'dist/live',
     assetsDir: 'assets',
     sourcemap: false
   }
-}))
+})

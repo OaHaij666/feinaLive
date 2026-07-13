@@ -38,7 +38,10 @@ def main() -> int:
     app.setApplicationName("FeinaLive Control Center")
     app.setOrganizationName("feinaLive")
     configure_ui_font(app)
-    lock_path = Path(QStandardPaths.writableLocation(QStandardPaths.StandardLocation.TempLocation)) / "feinalive-launcher.lock"
+    lock_path = (
+        Path(QStandardPaths.writableLocation(QStandardPaths.StandardLocation.TempLocation))
+        / "feinalive-launcher.lock"
+    )
     lock = QLockFile(str(lock_path))
     lock.setStaleLockTime(0)
     if not lock.tryLock(50):

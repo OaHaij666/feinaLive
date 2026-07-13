@@ -35,7 +35,7 @@ async def test_local_launcher_can_request_graceful_shutdown(monkeypatch):
     ("host", "origin"),
     [
         ("192.0.2.10", ""),
-        ("127.0.0.1", "http://127.0.0.1:8089"),
+        ("127.0.0.1", "http://127.0.0.1:8088"),
     ],
 )
 async def test_shutdown_rejects_remote_or_browser_requests(host, origin):

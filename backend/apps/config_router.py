@@ -551,7 +551,6 @@ async def update_full_config(config_data: FullConfig, response: Response):
 
         # embedding
         e = config_data.embedding
-        flat["embedding.provider"] = e.provider
         flat["embedding.model"] = e.model
         flat["embedding.api_url"] = e.api_url
         flat["embedding.user_graph_enabled"] = e.user_graph_enabled

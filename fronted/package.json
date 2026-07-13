@@ -4,14 +4,9 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "npm run dev:live",
-    "dev:live": "vite --mode live --port 5173",
-    "dev:console": "vite --mode console --port 5174",
-    "build": "npm run build:live && npm run build:console",
-    "build:live": "vue-tsc --noEmit && vite build --mode live",
-    "build:console": "vite build --mode console",
-    "preview:live": "vite preview --mode live --port 4173",
-    "preview:console": "vite preview --mode console --port 4174"
+    "dev": "vite --port 5173",
+    "build": "vue-tsc --noEmit && vite build",
+    "preview": "vite preview --port 4173"
   },
   "dependencies": {
     "hls.js": "^1.6.15",

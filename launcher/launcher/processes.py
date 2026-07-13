@@ -57,15 +57,15 @@ class ProcessController(QObject):
             lambda mid=module_id, proc=process: self._read(mid, proc, True)
         )
         process.started.connect(lambda mid=module_id: self._started(mid))
-        process.errorOccurred.connect(
-            lambda error, mid=module_id: self._error(mid, str(error))
-        )
+        process.errorOccurred.connect(lambda error, mid=module_id: self._error(mid, str(error)))
         process.finished.connect(
             lambda code, status, mid=module_id: self._finished(mid, code, status)
         )
         self.processes[module_id] = process
         self.state_changed.emit(module_id, "starting")
-        self.log_received.emit(module_id, "system", f"启动：{spec.program} {' '.join(spec.arguments)}")
+        self.log_received.emit(
+            module_id, "system", f"启动：{spec.program} {' '.join(spec.arguments)}"
+        )
         process.start()
 
     def restart(self, module_id: str) -> None:
@@ -96,6 +96,7 @@ class ProcessController(QObject):
             if process.state() != QProcess.ProcessState.NotRunning:
                 self._kill_tree(pid)
                 process.kill()
+
         QTimer.singleShot(6000 if graceful else 1500, force_stop)
 
     def stop_all_sync(self) -> None:

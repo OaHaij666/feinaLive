@@ -2,7 +2,7 @@ import pytest
 
 from core.local_boundary import LocalOriginBoundaryMiddleware
 
-ALLOWED = "http://127.0.0.1:8089"
+ALLOWED = "http://127.0.0.1:8088"
 
 
 async def _receive():

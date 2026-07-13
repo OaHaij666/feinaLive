@@ -12,7 +12,7 @@ FeinaLive 是一个个人开发的虚拟主播直播系统，目标是把 AI 主
 - FeinaAvatar：THA3/THA4 推理、浏览器口型输入、预览与 Spout2 输出
 - 通用 Agent：按静态场景装配 MCP、记忆、事件与主播解说能力
 - 记忆系统：用户原子记忆、用户/游戏知识图谱、工作记忆、SQLite 与 ChromaDB
-- 双前端：直播展示端与独立运营控制台分别构建和监听
+- 桌面控制中心：PySide6 集成进程管理、日志、配置、直播操作、语音、音乐、Agent 与记忆工具
 
 ## 项目结构
 
@@ -31,7 +31,8 @@ feinaLive/
 │   ├── data/                # 本地运行数据，不提交
 │   ├── main.py              # FastAPI 入口，默认端口 9191
 │   └── pyproject.toml       # uv 依赖配置
-├── fronted/                 # Vue 3 直播端 5173、控制台 5174
+├── fronted/                 # Vue 3 直播展示端，开发端口 5173
+├── launcher/                # PySide6 运行中心与运营控制台
 ├── speech_gateway/          # 独立 TTS Gateway，默认端口 8091
 ├── .ua/                     # Understand Anything 架构知识图谱
 ├── mcp/                     # 杀戮尖塔 MCP Mod
@@ -58,9 +59,9 @@ feinaLive/
 
 - 自动启动 Speech Gateway 和 Backend，并由 Backend 启动 Nginx；
 - 首次缺少前端依赖或生产构建时，自动执行安装与构建；
-- 集中显示 Bifrost、Speech Gateway、Backend、MCP、双前端、FeinaAvatar、直播平台 Runtime 和 Agent Runtime 的健康状态；
+- 集中显示 Bifrost、Speech Gateway、Backend、MCP、直播展示端、FeinaAvatar、直播平台 Runtime 和 Agent Runtime 的健康状态；
 - 集中收集托管进程日志到 `launcher/logs/`，支持模块筛选、搜索与自动滚动；
-- 支持单模块启动、停止、重启，以及打开直播端和运营控制台。
+- 支持单模块启动、停止、重启、打开直播端，并在同一窗口使用原生运营控制台。
 
 Bifrost 默认由外部独立管理。若希望控制中心同时托管它，可在启动 BAT 前设置完整启动命令，例如：
 
@@ -106,7 +107,7 @@ Copy-Item config.example.yaml config.yaml
 uv run python -m speech_gateway.main
 ```
 
-Gateway 默认监听 `127.0.0.1:8091`。控制台会根据 provider 自描述 schema 动态生成 Edge、Volcano 和 OpenAI-compatible 配置卡片；普通配置写入 `speech_gateway/config.yaml`，上游密钥写入系统 keyring，环境变量可作为部署覆盖。用户自行选择 Speaches、LocalAI、Piper/Kokoro 服务或其他兼容 `/v1/audio/speech` 的本地实现，feinaLive 不绑定具体模型。
+Gateway 默认监听 `127.0.0.1:8091`。桌面控制台提供 Provider JSON 配置、连通测试和运行结果；普通配置写入 `speech_gateway/config.yaml`，上游密钥写入系统 keyring，环境变量可作为部署覆盖。用户自行选择 Speaches、LocalAI、Piper/Kokoro 服务或其他兼容 `/v1/audio/speech` 的本地实现，feinaLive 不绑定具体模型。
 
 ### 3. 配置
 
@@ -172,14 +173,7 @@ npm run dev
 http://127.0.0.1:5173
 ```
 
-运营控制台另开一个终端：
-
-```powershell
-cd fronted
-npm run dev:console
-```
-
-控制台默认地址为 `http://127.0.0.1:5174`。生产构建由 Nginx 分别在 `8088`（直播端）和 `8089`（控制台）提供。
+运营控制台已经整合进 PySide6 Control Center，不再启动第二个 Web 前端。Nginx 只在 `8088` 提供直播展示端。
 
 后端启动时会初始化音乐队列、用户画像、记忆引擎、FeinaAvatar 和本地 Nginx/HLS 代理。
 
@@ -200,7 +194,7 @@ npm run dev:console
 | `POST /ai/memory/recall/test` | 记忆召回测试 |
 | `GET /ai/memory/graph/overview` | 记忆/知识图谱概览 |
 
-独立运营控制台包含：
+桌面运营控制台包含：
 
 - 运行总览、AI 主播、模型、TTS、消息调度、数字人、Agent 场景、音乐和直播平台
 - 记忆调试台：概览、记忆管理、召回测试、知识图谱、单局/注入、备份

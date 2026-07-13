@@ -86,13 +86,6 @@ def build_specs(root: Path) -> list[ModuleSpec]:
             open_url="http://127.0.0.1:8088/",
         ),
         ModuleSpec(
-            id="nginx_console",
-            name="运营控制台",
-            description="Nginx 生产管理界面",
-            health_url="http://127.0.0.1:8089/",
-            open_url="http://127.0.0.1:8089/",
-        ),
-        ModuleSpec(
             id="avatar",
             name="FeinaAvatar",
             description="数字人推理、预览和 Spout 输出",

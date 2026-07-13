@@ -68,12 +68,12 @@ def _default_data() -> dict[str, Any]:
             },
             "volcano": {
                 "type": "volcano",
+                "api_key_env": "VOLCANO_API_KEY",
                 "default_voice": os.getenv("VOLCANO_DEFAULT_VOICE", ""),
-                "formats": ["mp3", "wav", "pcm", "ogg_opus"],
+                "formats": ["mp3", "pcm", "ogg_opus"],
                 "options": {
-                    "appid_env": "VOLCANO_APPID",
-                    "access_token_env": "VOLCANO_ACCESS_TOKEN",
-                    "cluster": os.getenv("VOLCANO_CLUSTER", "volcano_icl"),
+                    "resource_id": os.getenv("VOLCANO_RESOURCE_ID", "seed-icl-2.0"),
+                    "sample_rate": 24000,
                 },
             },
             "local": {
@@ -87,7 +87,7 @@ def _default_data() -> dict[str, Any]:
         },
         "routes": {
             "host_voice": {
-                "primary": "volcano/voice-clone",
+                "primary": "volcano/seed-icl-2.0",
                 "fallback": ["edge/edge-tts"],
             }
         },

@@ -13,13 +13,13 @@ providers:
 
   volcano:
     type: volcano
+    api_key_env: VOLCANO_API_KEY
     default_voice: your-volcano-speaker-id
     timeout_seconds: 60
-    formats: [mp3, wav, pcm, ogg_opus]
+    formats: [mp3, pcm, ogg_opus]
     options:
-      appid_env: VOLCANO_APPID
-      access_token_env: VOLCANO_ACCESS_TOKEN
-      cluster: volcano_icl
+      resource_id: seed-icl-2.0
+      sample_rate: 24000
 
   # Users choose and operate the local TTS implementation. The Gateway only
   # requires its OpenAI-compatible /v1/audio/speech contract.
@@ -42,7 +42,7 @@ providers:
 
 routes:
   host_voice:
-    primary: volcano/voice-clone
+    primary: volcano/seed-icl-2.0
     fallback:
       - local/default
       - edge/edge-tts

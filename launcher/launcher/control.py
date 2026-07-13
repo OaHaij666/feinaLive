@@ -8,9 +8,10 @@ from collections.abc import Callable
 from typing import Any
 from urllib.parse import quote
 
-from PySide6.QtCore import QByteArray, QUrl
+from PySide6.QtCore import QByteArray, Qt, QUrl
 from PySide6.QtNetwork import QNetworkAccessManager, QNetworkReply, QNetworkRequest
 from PySide6.QtWidgets import (
+    QAbstractItemView,
     QCheckBox,
     QComboBox,
     QDoubleSpinBox,
@@ -586,8 +587,8 @@ class ConfigPage(QWidget):
     def _static_choices_for_path(path: tuple[str, ...]) -> list[tuple[str, Any]] | None:
         options: dict[tuple[str, ...], list[tuple[str, Any]]] = {
             ("avatar", "motion", "source"): [
-                ("混合（推荐）", "hybrid"),
                 ("直播定点（轻微晃动）", "broadcast_idle"),
+                ("混合", "hybrid"),
                 ("自主动作", "autonomous"),
                 ("浏览器控制", "browser"),
             ],
@@ -824,9 +825,14 @@ class SpeechPage(QWidget):
         toolbar.addWidget(probe_button)
         toolbar.addWidget(save_button)
         layout.addLayout(toolbar)
-        self.editor = QPlainTextEdit()
-        self.editor.setPlaceholderText("Provider JSON 配置")
-        layout.addWidget(self.editor, 2)
+        provider_box = QGroupBox("提供者配置")
+        self.provider_form = QFormLayout(provider_box)
+        self.provider_type = QComboBox()
+        self.provider_type.currentTextChanged.connect(self._provider_type_changed)
+        self.provider_enabled = QCheckBox("启用")
+        self.provider_form.addRow("类型", self.provider_type)
+        self.provider_form.addRow("状态", self.provider_enabled)
+        layout.addWidget(provider_box, 2)
         route_bar = QHBoxLayout()
         route_bar.addWidget(QLabel("语音路由"))
         self.routes = QComboBox()
@@ -845,6 +851,8 @@ class SpeechPage(QWidget):
         self.result.setMaximumHeight(180)
         layout.addWidget(self.result, 1)
         self.config: dict[str, Any] = {}
+        self.schemas: dict[str, dict[str, Any]] = {}
+        self.provider_fields: dict[str, tuple[QWidget, dict[str, Any]]] = {}
         self.load()
 
     def load(self) -> None:
@@ -855,9 +863,21 @@ class SpeechPage(QWidget):
             self.result.show_data({"error": error})
             return
         self.config = data
-        names = list(data.get("providers", {}))
+        self.api.send("GET", "/speech-gateway/provider-schemas", None, self._schemas_loaded)
+
+    def _schemas_loaded(self, ok: bool, data: Any, error: str) -> None:
+        if not ok or not isinstance(data, dict):
+            self.result.show_data({"error": error})
+            return
+        values = data.get("data", [])
+        self.schemas = {
+            str(item["type"]): item
+            for item in values
+            if isinstance(item, dict) and item.get("type")
+        }
+        names = list(self.config.get("providers", {}))
         current = self.providers.currentText()
-        route_names = list(data.get("routes", {}))
+        route_names = list(self.config.get("routes", {}))
         current_route = self.routes.currentText()
         self.providers.blockSignals(True)
         self.providers.clear()
@@ -878,17 +898,99 @@ class SpeechPage(QWidget):
 
     def _select(self, name: str) -> None:
         value = self.config.get("providers", {}).get(name, {})
-        self.editor.setPlainText(json.dumps(value, ensure_ascii=False, indent=2))
+        provider_type = str(value.get("type", ""))
+        self.provider_type.blockSignals(True)
+        self.provider_type.clear()
+        for schema_type, schema in self.schemas.items():
+            self.provider_type.addItem(str(schema.get("label", schema_type)), schema_type)
+        index = self.provider_type.findData(provider_type)
+        self.provider_type.setCurrentIndex(max(0, index))
+        self.provider_type.blockSignals(False)
+        self.provider_enabled.setChecked(bool(value.get("enabled", True)))
+        self._build_provider_fields(provider_type, value.get("values", {}))
+
+    def _provider_type_changed(self, _text: str = "") -> None:
+        provider_type = str(self.provider_type.currentData() or "")
+        self._build_provider_fields(provider_type, {})
+
+    def _clear_provider_fields(self) -> None:
+        while self.provider_form.rowCount() > 2:
+            self.provider_form.removeRow(2)
+        self.provider_fields.clear()
+
+    def _build_provider_fields(self, provider_type: str, values: dict[str, Any]) -> None:
+        self._clear_provider_fields()
+        schema = self.schemas.get(provider_type, {})
+        for field in schema.get("fields", []):
+            key = str(field.get("key", ""))
+            if not key:
+                continue
+            value = values.get(key, field.get("default", ""))
+            field_type = str(field.get("type", "text"))
+            if field_type == "boolean":
+                widget: QWidget = QCheckBox()
+                widget.setChecked(bool(value))
+            elif field_type == "number":
+                widget = QDoubleSpinBox()
+                widget.setRange(
+                    float(field.get("min", -1_000_000)),
+                    float(field.get("max", 1_000_000)),
+                )
+                widget.setValue(float(value or 0))
+            elif field_type == "select":
+                widget = QComboBox()
+                for option in field.get("options", []):
+                    widget.addItem(str(option), option)
+                index = widget.findData(value)
+                widget.setCurrentIndex(max(0, index))
+            elif field_type == "multiselect":
+                widget = QListWidget()
+                widget.setSelectionMode(QAbstractItemView.SelectionMode.MultiSelection)
+                selected = set(value or [])
+                for option in field.get("options", []):
+                    widget.addItem(str(option))
+                    item = widget.item(widget.count() - 1)
+                    item.setData(Qt.ItemDataRole.UserRole, option)
+                    item.setSelected(option in selected)
+                widget.setMaximumHeight(90)
+            else:
+                widget = QLineEdit(str(value or ""))
+                widget.setPlaceholderText(str(field.get("placeholder", "")))
+                if field_type == "secret":
+                    widget.setEchoMode(QLineEdit.EchoMode.Password)
+            self.provider_form.addRow(str(field.get("label", key)), widget)
+            self.provider_fields[key] = (widget, field)
 
     def save(self) -> None:
         name = self.providers.currentText()
         if not name:
             return
-        try:
-            payload = json.loads(self.editor.toPlainText())
-        except json.JSONDecodeError as exc:
-            QMessageBox.warning(self, "JSON 格式错误", str(exc))
-            return
+        values: dict[str, Any] = {}
+        for key, (widget, field) in self.provider_fields.items():
+            if isinstance(widget, QCheckBox):
+                values[key] = widget.isChecked()
+            elif isinstance(widget, QDoubleSpinBox):
+                values[key] = widget.value()
+            elif isinstance(widget, QComboBox):
+                values[key] = widget.currentData()
+            elif isinstance(widget, QListWidget):
+                values[key] = [
+                    item.data(Qt.ItemDataRole.UserRole) for item in widget.selectedItems()
+                ]
+            elif isinstance(widget, QLineEdit):
+                values[key] = widget.text().strip()
+            else:
+                continue
+            if field.get("required") and (
+                values[key] is None or values[key] == "" or values[key] == []
+            ):
+                QMessageBox.warning(self, "缺少配置", f"请填写 {field.get('label', key)}")
+                return
+        payload = {
+            "type": str(self.provider_type.currentData() or ""),
+            "enabled": self.provider_enabled.isChecked(),
+            "values": values,
+        }
         self.api.send("PUT", f"/speech-gateway/providers/{name}", payload, self._result)
 
     def _select_route(self, name: str) -> None:

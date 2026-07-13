@@ -49,14 +49,16 @@ def test_desktop_i18n_switches_business_labels_both_ways():
     assert translate("每会话最大历史数", "en") == "Max history per session"
     assert translate("Max history per session", "zh") == "每会话最大历史数"
     assert translate("直播平台", "en") == "Live platform"
+    assert translate("资源 ID", "en") == "Resource ID"
+    assert translate("Volcano Engine Doubao Speech V3", "zh") == "火山引擎豆包语音 V3"
 
 
-def test_avatar_motion_source_uses_a_hybrid_dropdown():
+def test_avatar_motion_source_defaults_to_broadcast_idle_order():
     choices = ConfigPage._static_choices_for_path(("avatar", "motion", "source"))
     assert choices is not None
     assert [value for _, value in choices] == [
-        "hybrid",
         "broadcast_idle",
+        "hybrid",
         "autonomous",
         "browser",
     ]

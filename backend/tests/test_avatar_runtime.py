@@ -72,11 +72,27 @@ async def test_avatar_runtime_supervises_engine_without_blocking_event_loop():
 
 
 @pytest.mark.asyncio
-async def test_hybrid_motion_is_default_and_switches_at_runtime():
+async def test_broadcast_idle_motion_is_default_and_ignores_browser_face_mode():
     engine = FakeEngine()
     runtime = AvatarRuntime(lambda settings: engine)
     settings = AvatarConfig()
-    assert settings.motion.source == "hybrid"
+    assert settings.motion.source == "broadcast_idle"
+    assert EngineConfig().motion_source == "broadcast_idle"
+
+    await runtime.start(settings)
+    await wait_for_state(runtime, "running")
+    runtime.set_face_mode("mouse_tracking")
+    runtime.set_face_mode("wandering")
+
+    assert engine.browser_motion[-2:] == [False, False]
+    await runtime.stop()
+
+
+@pytest.mark.asyncio
+async def test_hybrid_motion_switches_browser_control_at_runtime():
+    engine = FakeEngine()
+    runtime = AvatarRuntime(lambda settings: engine)
+    settings = AvatarConfig(motion={"source": "hybrid"})
 
     await runtime.start(settings)
     await wait_for_state(runtime, "running")

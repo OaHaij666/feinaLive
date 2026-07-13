@@ -8,7 +8,7 @@ from avatar_engine.config import EngineConfig, LipSyncConfig
 
 
 class AvatarMotionConfig(BaseModel):
-    source: Literal["autonomous", "browser", "hybrid", "broadcast_idle"] = "hybrid"
+    source: Literal["autonomous", "browser", "hybrid", "broadcast_idle"] = "broadcast_idle"
     allow_browser_control: bool = True
 
 

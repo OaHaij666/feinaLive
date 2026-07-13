@@ -1,4 +1,5 @@
 import base64
+import json
 
 import httpx
 import pytest
@@ -6,15 +7,41 @@ import pytest
 from speech_gateway import main
 from speech_gateway.admin import public_config, update_provider, update_route
 from speech_gateway.config import GatewayConfig, ProviderConfig, RouteConfig, load_config
-from speech_gateway.errors import CircuitOpenError, SynthesisError, UnsupportedCapabilityError
+from speech_gateway.errors import (
+    CircuitOpenError,
+    InvalidSpeechRequestError,
+    SynthesisError,
+    UnsupportedCapabilityError,
+)
 from speech_gateway.models import ProviderCapabilities, SpeechArtifact, SpeechRequest
 from speech_gateway.providers.openai_compatible import OpenAICompatibleSpeechProvider
 from speech_gateway.providers.volcano import VolcanoSpeechProvider
 from speech_gateway.registry import SpeechProviderRegistry
+from speech_gateway.schemas import schema_for
 
 
 def provider_config(name: str, provider_type: str = "test", **kwargs) -> ProviderConfig:
     return ProviderConfig(name=name, type=provider_type, **kwargs)
+
+
+def test_volcano_schema_exposes_v3_credentials_and_bounded_resource_choices():
+    schema = schema_for("volcano")
+    fields = {field["key"]: field for field in schema["fields"]}
+
+    assert fields["api_key"]["type"] == "secret"
+    assert "appid" not in fields
+    assert "access_token" not in fields
+    assert fields["resource_id"]["type"] == "select"
+    assert "seed-icl-2.0" in fields["resource_id"]["options"]
+    assert fields["sample_rate"]["options"] == [
+        8000,
+        16000,
+        22050,
+        24000,
+        32000,
+        44100,
+        48000,
+    ]
 
 
 class FakeProvider:
@@ -316,23 +343,42 @@ async def test_edge_provider_normalizes_upstream_failure(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_volcano_adapter_returns_normalized_artifact(monkeypatch):
-    monkeypatch.setenv("VOLCANO_APPID", "appid")
-    monkeypatch.setenv("VOLCANO_ACCESS_TOKEN", "token")
+    monkeypatch.setenv("VOLCANO_API_KEY", "api-key")
     settings = provider_config(
         "volcano",
         "volcano",
-        default_voice="voice",
-        formats=("wav",),
-        options={
-            "appid_env": "VOLCANO_APPID",
-            "access_token_env": "VOLCANO_ACCESS_TOKEN",
-        },
+        api_key_env="VOLCANO_API_KEY",
+        default_voice="S_voice",
+        formats=("mp3",),
+        options={"resource_id": "seed-icl-2.0", "sample_rate": 24000},
     )
     provider = VolcanoSpeechProvider(settings)
 
     async def handler(request: httpx.Request):
-        assert request.headers["Authorization"] == "Bearer;token"
-        return httpx.Response(200, json={"data": base64.b64encode(b"wav-data").decode()})
+        assert request.url.path == "/api/v3/tts/unidirectional/sse"
+        assert request.headers["X-Api-Key"] == "api-key"
+        assert request.headers["X-Api-Resource-Id"] == "seed-icl-2.0"
+        assert request.headers["X-Api-Request-Id"]
+        payload = json.loads(request.content)
+        assert payload["req_params"] == {
+            "text": "你好",
+            "speaker": "S_voice",
+            "audio_params": {
+                "format": "mp3",
+                "sample_rate": 24000,
+                "speech_rate": -20,
+                "loudness_rate": 0,
+            },
+            "additions": '{"post_process": {"pitch": 0}}',
+        }
+        first = base64.b64encode(b"audio-").decode()
+        second = base64.b64encode(b"data").decode()
+        body = (
+            f'event: 352\ndata: {{"code":0,"message":"","data":"{first}"}}\n\n'
+            f'event: 352\ndata: {{"code":0,"message":"","data":"{second}"}}\n\n'
+            'event: 152\ndata: {"code":20000000,"message":"ok","data":null}\n\n'
+        )
+        return httpx.Response(200, text=body, headers={"Content-Type": "text/event-stream"})
 
     await provider._client.aclose()
     provider._client = httpx.AsyncClient(
@@ -342,37 +388,56 @@ async def test_volcano_adapter_returns_normalized_artifact(monkeypatch):
 
     result = await provider.synthesize(
         SpeechRequest(
-            model="volcano/voice-clone",
+            model="volcano/seed-icl-2.0",
             input="你好",
-            voice="voice",
-            response_format="wav",
+            voice="S_voice",
+            response_format="mp3",
+            speed=0.8,
         ),
-        "voice-clone",
+        "seed-icl-2.0",
     )
 
-    assert result.audio == b"wav-data"
-    assert result.media_type == "audio/wav"
+    assert result.audio == b"audio-data"
+    assert result.media_type == "audio/mpeg"
+    assert result.sample_rate == 24000
     await provider.close()
 
 
 @pytest.mark.asyncio
 async def test_volcano_rejects_unsupported_format_before_network(monkeypatch):
-    monkeypatch.setenv("VOLCANO_APPID", "appid")
-    monkeypatch.setenv("VOLCANO_ACCESS_TOKEN", "token")
+    monkeypatch.setenv("VOLCANO_API_KEY", "api-key")
     provider = VolcanoSpeechProvider(
         provider_config(
             "volcano",
             "volcano",
-            default_voice="voice",
-            options={
-                "appid_env": "VOLCANO_APPID",
-                "access_token_env": "VOLCANO_ACCESS_TOKEN",
-            },
+            api_key_env="VOLCANO_API_KEY",
+            default_voice="S_voice",
+            options={"resource_id": "seed-icl-2.0"},
         )
     )
     with pytest.raises(UnsupportedCapabilityError):
         await provider.synthesize(
             SpeechRequest(model="volcano/model", input="hello", response_format="flac"),
+            "model",
+        )
+    await provider.close()
+
+
+@pytest.mark.asyncio
+async def test_volcano_rejects_speed_outside_documented_range(monkeypatch):
+    monkeypatch.setenv("VOLCANO_API_KEY", "api-key")
+    provider = VolcanoSpeechProvider(
+        provider_config(
+            "volcano",
+            "volcano",
+            api_key_env="VOLCANO_API_KEY",
+            default_voice="S_voice",
+            options={"resource_id": "seed-icl-2.0"},
+        )
+    )
+    with pytest.raises(InvalidSpeechRequestError, match="speed must be between 0.5 and 2.0"):
+        await provider.synthesize(
+            SpeechRequest(model="volcano/model", input="hello", speed=0.25),
             "model",
         )
     await provider.close()

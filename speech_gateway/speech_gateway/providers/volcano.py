@@ -3,15 +3,18 @@
 from __future__ import annotations
 
 import base64
-import os
 import uuid
 
 import httpx
 
+from speech_gateway.config import ProviderConfig
 from speech_gateway.errors import (
+    InvalidSpeechRequestError,
     ProviderUnavailableError,
     SynthesisError,
     UnsupportedCapabilityError,
+    UpstreamAuthenticationError,
+    UpstreamRateLimitError,
 )
 from speech_gateway.models import ProviderCapabilities, SpeechArtifact, SpeechRequest
 
@@ -26,14 +29,22 @@ _MEDIA_TYPES = {
 class VolcanoSpeechProvider:
     name = "volcano"
 
-    def __init__(self) -> None:
-        self.appid = os.getenv("VOLCANO_APPID", "").strip()
-        self.access_token = os.getenv("VOLCANO_ACCESS_TOKEN", "").strip()
-        self.default_voice = os.getenv("VOLCANO_DEFAULT_VOICE", "").strip()
-        self.cluster = os.getenv("VOLCANO_CLUSTER", "volcano_icl").strip()
+    def __init__(self, settings: ProviderConfig) -> None:
+        self.name = settings.name
+        self.settings = settings
+        appid_env = str(settings.options.get("appid_env", "VOLCANO_APPID"))
+        token_env = str(settings.options.get("access_token_env", "VOLCANO_ACCESS_TOKEN"))
+        import os
+
+        self.appid = os.getenv(appid_env, "").strip() or str(settings.options.get("appid", ""))
+        self.access_token = (
+            os.getenv(token_env, "").strip() or settings.secrets.get("access_token", "")
+        )
+        self.default_voice = settings.default_voice
+        self.cluster = str(settings.options.get("cluster", "volcano_icl"))
         self._client = httpx.AsyncClient(
             base_url="https://openspeech.bytedance.com",
-            timeout=httpx.Timeout(60.0),
+            timeout=httpx.Timeout(settings.timeout_seconds),
             headers={"Accept-Encoding": "identity"},
         )
 
@@ -99,6 +110,14 @@ class VolcanoSpeechProvider:
         except httpx.HTTPError as exc:
             raise SynthesisError("Volcano TTS network request failed") from exc
         if response.status_code != 200:
+            if response.status_code in {401, 403}:
+                raise UpstreamAuthenticationError("Volcano rejected its configured credentials")
+            if response.status_code == 429:
+                raise UpstreamRateLimitError("Volcano rate limit exceeded")
+            if 400 <= response.status_code < 500:
+                raise InvalidSpeechRequestError(
+                    f"Volcano rejected the speech request with HTTP {response.status_code}"
+                )
             raise SynthesisError(f"Volcano returned HTTP {response.status_code}: {response.text[:300]}")
         try:
             result = response.json()
@@ -121,3 +140,20 @@ class VolcanoSpeechProvider:
 
     async def close(self) -> None:
         await self._client.aclose()
+
+    async def health(self) -> bool:
+        if not self.available:
+            return False
+        try:
+            await self.synthesize(
+                SpeechRequest(
+                    model=f"{self.name}/volcano-tts",
+                    input="测试",
+                    voice=self.default_voice,
+                    response_format="mp3",
+                ),
+                "volcano-tts",
+            )
+            return True
+        except Exception:
+            return False

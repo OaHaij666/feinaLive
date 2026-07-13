@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-import os
-
 import edge_tts
 
+from speech_gateway.config import ProviderConfig
 from speech_gateway.errors import SynthesisError, UnsupportedCapabilityError
 from speech_gateway.models import ProviderCapabilities, SpeechArtifact, SpeechRequest
 
@@ -13,8 +12,10 @@ from speech_gateway.models import ProviderCapabilities, SpeechArtifact, SpeechRe
 class EdgeSpeechProvider:
     name = "edge"
 
-    def __init__(self) -> None:
-        self.default_voice = os.getenv("EDGE_DEFAULT_VOICE", "zh-CN-XiaoxiaoNeural")
+    def __init__(self, settings: ProviderConfig) -> None:
+        self.name = settings.name
+        self.settings = settings
+        self.default_voice = settings.default_voice or "zh-CN-XiaoxiaoNeural"
 
     @property
     def available(self) -> bool:
@@ -84,3 +85,20 @@ class EdgeSpeechProvider:
 
     async def close(self) -> None:
         return None
+
+    async def health(self) -> bool:
+        if not self.available:
+            return False
+        try:
+            await self.synthesize(
+                SpeechRequest(
+                    model=f"{self.name}/edge-tts",
+                    input="测试",
+                    voice=self.default_voice,
+                    response_format="mp3",
+                ),
+                "edge-tts",
+            )
+            return True
+        except Exception:
+            return False

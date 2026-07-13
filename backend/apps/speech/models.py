@@ -17,3 +17,7 @@ class SpeechArtifact:
     sample_rate: int | None = None
     duration_ms: int | None = None
     timings: list[dict[str, Any]] = field(default_factory=list)
+    synthesis_ms: int | None = None
+    rtf: float | None = None
+    fallback_from: str = ""
+    attempts: tuple[str, ...] = ()

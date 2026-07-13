@@ -56,3 +56,41 @@ async def test_speech_gateway_client_returns_none_on_explicit_gateway_error():
 
     assert await client.synthesize("hello") is None
     await client.close()
+
+
+@pytest.mark.asyncio
+async def test_speech_gateway_admin_contract_uses_same_authenticated_connection():
+    async def handler(request: httpx.Request):
+        assert request.headers["Authorization"] == "Bearer gateway-secret"
+        if request.method == "GET" and request.url.path == "/v1/admin/provider-schemas":
+            return httpx.Response(200, json={"data": [{"type": "edge", "fields": []}]})
+        if request.method == "PUT" and request.url.path == "/v1/admin/providers/edge":
+            return httpx.Response(200, json={"ok": True})
+        if request.method == "PUT" and request.url.path == "/v1/admin/routes/host_voice":
+            return httpx.Response(200, json={"ok": True})
+        if request.method == "POST" and request.url.path == "/v1/providers/edge/probe":
+            return httpx.Response(200, json={"provider": "edge", "healthy": True})
+        return httpx.Response(404)
+
+    client = SpeechGatewayClient(
+        gateway_url="http://gateway/v1",
+        api_key="gateway-secret",
+        model="host_voice",
+        voice="",
+        transport=httpx.MockTransport(handler),
+    )
+
+    schemas = await client.get_provider_schemas()
+    updated = await client.update_provider(
+        "edge", {"type": "edge", "enabled": True, "values": {}}
+    )
+    route = await client.update_route(
+        "host_voice", {"primary": "edge/edge-tts", "fallback": []}
+    )
+    probe = await client.probe_provider("edge")
+
+    assert schemas["data"][0]["type"] == "edge"
+    assert updated["ok"] is True
+    assert route["ok"] is True
+    assert probe["healthy"] is True
+    await client.close()

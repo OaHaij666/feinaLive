@@ -56,6 +56,7 @@ backend/tests/.env
 
 # Config with secrets
 backend/config.yaml
+speech_gateway/config.yaml
 
 # Runtime data
 backend/data/

@@ -196,6 +196,9 @@ async def test_speech_pipeline_enforces_reply_limit_before_tts(monkeypatch):
         sample_rate = None
         duration_ms = None
         timings = []
+        synthesis_ms = None
+        rtf = None
+        fallback_from = ""
 
     class TTS:
         async def synthesize(self, text):
@@ -264,6 +267,9 @@ async def test_speak_text_bypasses_llm_and_waits_for_playback(monkeypatch):
         sample_rate = None
         duration_ms = None
         timings = []
+        synthesis_ms = None
+        rtf = None
+        fallback_from = ""
 
     class TTS:
         async def synthesize(self, text):

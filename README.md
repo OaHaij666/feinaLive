@@ -77,10 +77,11 @@ Speech Gateway 独立安装和启动：
 ```powershell
 cd speech_gateway
 uv sync
+Copy-Item config.example.yaml config.yaml
 uv run python -m speech_gateway.main
 ```
 
-Gateway 默认监听 `127.0.0.1:8091`。Edge TTS 无需供应商凭据；Volcano 的 `VOLCANO_APPID`、`VOLCANO_ACCESS_TOKEN` 和 `VOLCANO_DEFAULT_VOICE` 只配置在 Gateway 进程环境中，不进入 feinaLive 后端。
+Gateway 默认监听 `127.0.0.1:8091`。控制台会根据 provider 自描述 schema 动态生成 Edge、Volcano 和 OpenAI-compatible 配置卡片；普通配置写入 `speech_gateway/config.yaml`，上游密钥写入系统 keyring，环境变量可作为部署覆盖。用户自行选择 Speaches、LocalAI、Piper/Kokoro 服务或其他兼容 `/v1/audio/speech` 的本地实现，feinaLive 不绑定具体模型。
 
 ### 3. 配置
 
@@ -104,7 +105,7 @@ Copy-Item backend\config.example.yaml backend\config.yaml
 
 LLM 与 Embedding 统一通过独立的 Bifrost Gateway 接入。feinaLive 只调用其 OpenAI-compatible `/v1` API，不直接保存上游供应商配置；供应商路由、fallback、限流和上游密钥均由 Bifrost 管理。示例配置使用 `http://127.0.0.1:8081/v1`，避免与默认 MCP 端口 `8080` 冲突。
 
-TTS 通过独立 Feina Speech Gateway 的 `/v1/audio/speech` 接入。供应商凭据、能力差异和 fallback 留在 Gateway；主项目只接收统一音频产物和可选的采样率、时长、时间轴元数据。Gateway 对不支持的格式、情绪或时间轴能力明确报错，不会静默丢弃参数。
+TTS 通过独立 Feina Speech Gateway 的 `/v1/audio/speech` 接入。供应商配置、能力差异、路由、熔断和 fallback 留在 Gateway；主项目只接收统一音频产物和采样率、时长、RTF、fallback、可选时间轴等元数据。Gateway 对不支持的格式、情绪或时间轴能力明确报错，不会静默丢弃参数，并通过 `/v1/status` 与 `/metrics` 暴露运行状态。
 
 ### 4. FeinaAvatar 模型
 

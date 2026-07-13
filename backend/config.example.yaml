@@ -99,8 +99,7 @@ host:
 tts:
   gateway_url: "http://127.0.0.1:8091/v1"
   api_key: ""                    # Gateway 开启鉴权时保存到系统密钥库
-  model: "edge/edge-tts"         # provider/model；例如 volcano/voice-clone
-  voice: "zh-CN-XiaoxiaoNeural"
+  model: "host_voice"            # Gateway 路由别名，或直接使用 provider/model
   response_format: "mp3"
   speed: 1.0
   timeout_seconds: 60

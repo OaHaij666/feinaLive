@@ -17,6 +17,7 @@ from apps.config import config
 from apps.config_router import router as config_router
 from apps.live.router import router as live_router
 from apps.music.router import router as music_router
+from apps.speech.router import router as speech_gateway_router
 from apps.test_router import router as test_router
 from core.local_boundary import LocalOriginBoundaryMiddleware
 from services.nginx_service import get_nginx_service, start_nginx, stop_nginx
@@ -221,6 +222,7 @@ app.include_router(ai_router, tags=["AI"])
 app.include_router(memory_router, tags=["AI Memory"])
 app.include_router(agent_router, tags=["Agent"])
 app.include_router(avatar_router)
+app.include_router(speech_gateway_router)
 app.include_router(test_router, tags=["Test"])
 
 @app.exception_handler(Exception)
@@ -243,10 +245,18 @@ async def root():
 @app.get("/health")
 async def health():
     from apps.ai.messaging.queue import get_message_queue
+    from apps.speech import get_speech_gateway_client
+
     queue = get_message_queue()
     queue_stats = queue.get_stats()
 
-    components = {"app": "healthy", "message_queue": "healthy"}
+    components = {
+        "app": "healthy",
+        "message_queue": "healthy",
+        "speech_gateway": (
+            "healthy" if await get_speech_gateway_client().health() else "unavailable"
+        ),
+    }
     if queue_stats.get("muted"):
         components["message_queue"] = "muted"
 

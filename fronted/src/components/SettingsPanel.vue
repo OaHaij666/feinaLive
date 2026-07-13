@@ -280,14 +280,56 @@
                 </div>
                 <div class="form-row-2">
                   <div class="form-group">
-                    <label>模型路由</label>
-                    <input type="text" v-model="cfg.tts.model" placeholder="edge/edge-tts" />
+                    <label>TTS 提供者</label>
+                    <select v-model="selectedSpeechProvider" @change="selectSpeechProvider(true)">
+                      <option v-for="(provider, name) in speechGatewayConfig.providers" :key="name" :value="name">
+                        {{ speechSchemaByType(provider.type)?.label || provider.type }} · {{ name }}
+                      </option>
+                    </select>
                   </div>
                   <div class="form-group">
-                    <label>音色</label>
-                    <input type="text" v-model="cfg.tts.voice" placeholder="zh-CN-XiaoxiaoNeural" />
+                    <label>备用提供者（按选择顺序）</label>
+                    <select multiple v-model="speechFallbackProviders">
+                      <option v-for="name in fallbackSpeechProviders" :key="name" :value="name">{{ name }}</option>
+                    </select>
                   </div>
                 </div>
+                <div v-if="activeSpeechSchema" class="settings-subcard">
+                  <div class="section-title">{{ activeSpeechSchema.label }} 配置</div>
+                  <div v-for="field in activeSpeechSchema.fields" :key="field.key" class="form-group">
+                    <label>{{ field.label }} <span v-if="field.required" class="hint">(必填)</span></label>
+                    <input
+                      v-if="field.type === 'text' || field.type === 'url' || field.type === 'secret'"
+                      :type="field.type === 'secret' && String(speechProviderDraft[field.key] || '').includes(MASKED) ? 'password' : 'text'"
+                      v-model="speechProviderDraft[field.key]"
+                      :placeholder="field.placeholder || ''"
+                    />
+                    <input
+                      v-else-if="field.type === 'number'"
+                      type="number"
+                      v-model.number="speechProviderDraft[field.key]"
+                      :min="field.min"
+                      :max="field.max"
+                    />
+                    <label v-else-if="field.type === 'boolean'" class="checkbox-label">
+                      <input type="checkbox" v-model="speechProviderDraft[field.key]" /> 启用
+                    </label>
+                    <select v-else-if="field.type === 'multiselect'" multiple v-model="speechProviderDraft[field.key]">
+                      <option v-for="option in field.options || []" :key="option" :value="option">{{ option }}</option>
+                    </select>
+                  </div>
+                  <div class="card-actions">
+                    <button class="action-btn" :disabled="speechGatewayBusy" @click="saveSpeechProvider">
+                      {{ speechGatewayBusy ? '保存中…' : '保存提供者配置' }}
+                    </button>
+                    <button class="action-btn" :disabled="speechGatewayBusy" @click="probeSpeechProvider">主动探测</button>
+                  </div>
+                </div>
+                <p v-if="speechGatewayError" class="status-error">{{ speechGatewayError }}</p>
+                <p v-else-if="selectedSpeechStatus" class="section-desc">
+                  状态：{{ selectedSpeechStatus.configured ? '已配置' : '未配置' }} · 熔断器 {{ selectedSpeechStatus.circuit || '未知' }} ·
+                  成功率 {{ selectedSpeechStatus.metrics?.success_rate ?? '暂无数据' }} · RTF P95 {{ selectedSpeechStatus.metrics?.rtf?.p95 ?? '暂无数据' }}
+                </p>
                 <div class="form-row-2">
                   <div class="form-group">
                     <label>编码格式</label>
@@ -654,6 +696,116 @@ const characters = ref<{ name: string }[]>([])
 const saveStatus = ref('')
 const credentialChecking = ref(false)
 const credentialStatus = ref<{ valid: boolean; message: string } | null>(null)
+const speechSchemas = ref<any[]>([])
+const speechGatewayConfig = reactive<Record<string, any>>({ providers: {}, routes: {} })
+const speechGatewayStatus = reactive<Record<string, any>>({ providers: {}, routes: {} })
+const selectedSpeechProvider = ref('')
+const speechFallbackProviders = ref<string[]>([])
+const speechProviderDraft = reactive<Record<string, any>>({})
+const speechGatewayBusy = ref(false)
+const speechGatewayError = ref('')
+const activeSpeechSchema = computed(() => {
+  const provider = speechGatewayConfig.providers?.[selectedSpeechProvider.value]
+  return provider ? speechSchemaByType(provider.type) : null
+})
+const selectedSpeechStatus = computed(() => speechGatewayStatus.providers?.[selectedSpeechProvider.value] || null)
+const fallbackSpeechProviders = computed(() => Object.entries(speechGatewayConfig.providers || {})
+  .filter(([name, provider]: [string, any]) => name !== selectedSpeechProvider.value && provider.enabled)
+  .map(([name]) => name))
+
+function speechSchemaByType(type: string) {
+  return speechSchemas.value.find(schema => schema.type === type)
+}
+
+function selectSpeechProvider(updateModel = true) {
+  const name = selectedSpeechProvider.value
+  const provider = speechGatewayConfig.providers?.[name]
+  const schema = provider ? speechSchemaByType(provider.type) : null
+  Object.keys(speechProviderDraft).forEach(key => delete speechProviderDraft[key])
+  for (const field of schema?.fields || []) {
+    speechProviderDraft[field.key] = provider.values?.[field.key] ?? field.default ?? (field.type === 'boolean' ? false : '')
+  }
+  if (schema && name && updateModel) cfg.tts.model = 'host_voice'
+}
+
+async function loadSpeechGateway() {
+  speechGatewayError.value = ''
+  try {
+    const [schemasResponse, configResponse, statusResponse] = await Promise.all([
+      fetch('/speech-gateway/provider-schemas'),
+      fetch('/speech-gateway/config'),
+      fetch('/speech-gateway/status'),
+    ])
+    if (!schemasResponse.ok || !configResponse.ok || !statusResponse.ok) throw new Error('Speech Gateway 管理接口不可用')
+    speechSchemas.value = (await schemasResponse.json()).data || []
+    Object.assign(speechGatewayConfig, await configResponse.json())
+    Object.assign(speechGatewayStatus, await statusResponse.json())
+    const routePrimary = speechGatewayConfig.routes?.[cfg.tts.model]?.primary || ''
+    const selectedTarget = cfg.tts.model.includes('/') ? cfg.tts.model : routePrimary
+    const directProvider = selectedTarget.includes('/') ? selectedTarget.split('/', 1)[0] : ''
+    selectedSpeechProvider.value = directProvider && speechGatewayConfig.providers[directProvider]
+      ? directProvider
+      : Object.keys(speechGatewayConfig.providers)[0] || ''
+    speechFallbackProviders.value = (speechGatewayConfig.routes?.host_voice?.fallback || [])
+      .map((target: string) => target.split('/', 1)[0])
+      .filter((name: string) => name && name !== selectedSpeechProvider.value)
+    selectSpeechProvider(false)
+  } catch (error) {
+    speechGatewayError.value = error instanceof Error ? error.message : String(error)
+  }
+}
+
+async function saveSpeechProvider() {
+  const name = selectedSpeechProvider.value
+  const provider = speechGatewayConfig.providers?.[name]
+  if (!name || !provider) return
+  speechGatewayBusy.value = true
+  speechGatewayError.value = ''
+  try {
+    const response = await fetch(`/speech-gateway/providers/${encodeURIComponent(name)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: provider.type, enabled: true, values: speechProviderDraft }),
+    })
+    if (!response.ok) throw new Error(await response.text())
+    const schema = speechSchemaByType(provider.type)
+    const primary = `${name}/${schema?.default_model || `${provider.type}-tts`}`
+    const fallback = speechFallbackProviders.value.map(fallbackName => {
+      const fallbackProvider = speechGatewayConfig.providers[fallbackName]
+      const fallbackSchema = speechSchemaByType(fallbackProvider.type)
+      return `${fallbackName}/${fallbackSchema?.default_model || `${fallbackProvider.type}-tts`}`
+    })
+    const routeResponse = await fetch('/speech-gateway/routes/host_voice', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ primary, fallback }),
+    })
+    if (!routeResponse.ok) throw new Error(await routeResponse.text())
+    cfg.tts.model = 'host_voice'
+    useNotification().success('TTS 提供者与 fallback 路由已保存并热加载')
+    await loadSpeechGateway()
+  } catch (error) {
+    speechGatewayError.value = error instanceof Error ? error.message : String(error)
+  } finally {
+    speechGatewayBusy.value = false
+  }
+}
+
+async function probeSpeechProvider() {
+  if (!selectedSpeechProvider.value) return
+  speechGatewayBusy.value = true
+  try {
+    const response = await fetch(`/speech-gateway/providers/${encodeURIComponent(selectedSpeechProvider.value)}/probe`, { method: 'POST' })
+    const result = await response.json()
+    if (!response.ok || !result.healthy) throw new Error(result.detail || '提供者探测失败')
+    useNotification().success('TTS 提供者探测成功，熔断状态已恢复')
+    await loadSpeechGateway()
+  } catch (error) {
+    speechGatewayError.value = error instanceof Error ? error.message : String(error)
+  } finally {
+    speechGatewayBusy.value = false
+  }
+}
 
 function setLocalDirectories(event: Event) {
   cfg.music.local_directories = (event.target as HTMLTextAreaElement).value
@@ -689,7 +841,7 @@ function initCfgShape() {
     douyin: { web_rid: '', cookie: '' },
     host: { reply_interval: 5, max_reply_length: 100, api_url: '', api_key: '', model: '', temperature: 0.7, top_p: 0.9, max_tokens: 200, disable_thinking: true },
     llm: { api_url: '', api_key: '', model: '', temperature: 0.1, top_p: 0.9, max_tokens: 200, disable_thinking: true },
-    tts: { gateway_url: 'http://127.0.0.1:8091/v1', api_key: '', model: 'edge/edge-tts', voice: 'zh-CN-XiaoxiaoNeural', response_format: 'mp3', speed: 1.0, timeout_seconds: 60 },
+    tts: { gateway_url: 'http://127.0.0.1:8091/v1', api_key: '', model: 'host_voice', response_format: 'mp3', speed: 1.0, timeout_seconds: 60 },
     agent: { enabled: false, scenario_id: 'slay_the_spire', mcp_url: 'http://127.0.0.1:8080', api_url: '', api_key: '', model: '', temperature: 0.4, max_tokens: 500, disable_thinking: true, poll_interval: 1.0, memory_threshold: 30, memory_idle_seconds: 120, memory_scan_interval_seconds: 30, memory_context_max_chars: 12000, min_step_interval: 3.0, step_jitter: 0.5, commentary_interval: 30.0, min_commentary_interval: 15.0, commentary_hold_timeout: 20.0, memory_eagerness: 3, queue_max_size: 20, host_history_maxlen: 50, action_history_maxlen: 30, scenario_config: { default_character: 'IRONCLAD' } },
     avatar: { enabled: true, character: 'feina00', motion: { source: 'autonomous', allow_browser_control: true }, lip_sync: { source: 'browser_audio', sensitivity: 3, noise_gate: 0.015, attack_ms: 35, release_ms: 90 }, renderer: { engine: 'feina_avatar', model: 'tha3', backend: 'onnxruntime', precision: 'fp32', separable: false, use_eyebrow: true, frame_rate: 30, interpolation: 1, super_resolution: 1, ram_cache_mb: 2048, vram_cache_mb: 2048 }, outputs: { spout: { enabled: true, name: 'FeinaAvatar' }, preview: { enabled: true, frame_rate: 10, quality: 80 } } },
     ai: { max_history_per_session: 16, summary_interval: 10, summary_idle_seconds: 300.0, summary_scan_interval_seconds: 60.0, max_recent_messages: 16, poll_interval_seconds: 10.0 },
@@ -719,6 +871,7 @@ async function loadConfig() {
     Object.assign(cfg, data)
     cfg.agent.scenario_config ||= {}
     connected.value = true
+    await loadSpeechGateway()
   } catch (e) {
     console.error('连接后端失败:', e)
     connected.value = false
@@ -1492,6 +1645,10 @@ select option {
 .card-action:hover { border-color: rgba(167, 139, 250, .45); background: rgba(124, 58, 237, .18); }
 .card-action:disabled { opacity: .42; cursor: not-allowed; }
 .card-actions { gap: 8px; }
+.settings-subcard { margin: 16px 0; padding: 16px; border: 1px solid rgba(167, 139, 250, .18); border-radius: 12px; background: rgba(124, 58, 237, .045); }
+.action-btn { min-height: 38px; padding: 8px 14px; border: 1px solid rgba(167, 139, 250, .28); border-radius: 8px; color: #ede9fe; background: rgba(124, 58, 237, .16); cursor: pointer; }
+.action-btn:disabled { opacity: .45; cursor: not-allowed; }
+.status-error { color: #fb7185; font-size: 12px; }
 
 @media (max-width: 1180px) {
   .runtime-grid { grid-template-columns: repeat(2, minmax(220px, 1fr)); }

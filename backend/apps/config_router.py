@@ -67,8 +67,7 @@ class LLMConfig(BaseModel):
 class TTSConfig(BaseModel):
     gateway_url: str = "http://127.0.0.1:8091/v1"
     api_key: str = ""
-    model: str = "edge/edge-tts"
-    voice: str = "zh-CN-XiaoxiaoNeural"
+    model: str = "host_voice"
     response_format: str = "mp3"
     speed: float = Field(default=1.0, ge=0.25, le=4.0)
     timeout_seconds: float = Field(default=60.0, ge=1.0, le=300.0)
@@ -248,7 +247,6 @@ async def get_full_config():
             gateway_url=config.tts_gateway_url,
             api_key=_mask_sensitive(config.tts_api_key or ""),
             model=config.tts_model,
-            voice=config.tts_voice,
             response_format=config.tts_response_format,
             speed=config.tts_speed,
             timeout_seconds=config.tts_timeout_seconds,
@@ -457,7 +455,6 @@ async def update_full_config(config_data: FullConfig, response: Response):
         flat["tts.gateway_url"] = t.gateway_url
         _store_secret(data, "tts.api_key", t.api_key)
         flat["tts.model"] = t.model
-        flat["tts.voice"] = t.voice
         flat["tts.response_format"] = t.response_format
         flat["tts.speed"] = t.speed
         flat["tts.timeout_seconds"] = t.timeout_seconds

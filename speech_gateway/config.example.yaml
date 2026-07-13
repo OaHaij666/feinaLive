@@ -1,0 +1,48 @@
+gateway:
+  api_key_env: SPEECH_GATEWAY_API_KEY
+  default_provider: edge
+  circuit_failure_threshold: 3
+  circuit_recovery_seconds: 30
+  metrics_sample_size: 500
+
+providers:
+  edge:
+    type: edge
+    default_voice: zh-CN-XiaoxiaoNeural
+    formats: [mp3]
+
+  volcano:
+    type: volcano
+    default_voice: your-volcano-speaker-id
+    timeout_seconds: 60
+    formats: [mp3, wav, pcm, ogg_opus]
+    options:
+      appid_env: VOLCANO_APPID
+      access_token_env: VOLCANO_ACCESS_TOKEN
+      cluster: volcano_icl
+
+  # Users choose and operate the local TTS implementation. The Gateway only
+  # requires its OpenAI-compatible /v1/audio/speech contract.
+  local:
+    type: openai_compatible
+    enabled: false
+    base_url: http://127.0.0.1:8000/v1
+    api_key_env: LOCAL_TTS_API_KEY
+    default_voice: default
+    timeout_seconds: 30
+    formats: [mp3, wav]
+    health_path: models
+    options:
+      voice_listing: false
+      streaming: false
+      speed: true
+      pitch: false
+      emotion: false
+      word_timings: false
+
+routes:
+  host_voice:
+    primary: volcano/voice-clone
+    fallback:
+      - local/default
+      - edge/edge-tts

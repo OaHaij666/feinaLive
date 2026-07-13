@@ -38,6 +38,9 @@ class SpeechChunk:
     sample_rate: int | None = None
     duration_ms: int | None = None
     timings: list[dict[str, Any]] | None = None
+    synthesis_ms: int | None = None
+    rtf: float | None = None
+    fallback_from: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         result: dict[str, Any] = {"type": self.type, "is_final": self.is_final}
@@ -57,6 +60,12 @@ class SpeechChunk:
                 result["duration_ms"] = self.duration_ms
             if self.timings:
                 result["timings"] = self.timings
+            if self.synthesis_ms is not None:
+                result["synthesis_ms"] = self.synthesis_ms
+            if self.rtf is not None:
+                result["rtf"] = self.rtf
+            if self.fallback_from:
+                result["fallback_from"] = self.fallback_from
         return result
 
 
@@ -435,6 +444,9 @@ class SpeechPipeline:
             sample_rate=result.sample_rate,
             duration_ms=result.duration_ms,
             timings=result.timings,
+            synthesis_ms=result.synthesis_ms,
+            rtf=result.rtf,
+            fallback_from=result.fallback_from,
         )
 
     async def _broadcast(

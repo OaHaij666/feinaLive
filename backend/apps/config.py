@@ -154,10 +154,6 @@ class Config:
         return bool(self._data.get("embedding", {}).get("game_graph_enabled", True))
 
     @property
-    def tts_voice(self) -> str:
-        return os.getenv("TTS_VOICE") or self._data.get("tts", {}).get("voice", "zh-CN-XiaoxiaoNeural")
-
-    @property
     def tts_gateway_url(self) -> str:
         return (
             os.getenv("TTS_GATEWAY_URL")
@@ -170,7 +166,7 @@ class Config:
 
     @property
     def tts_model(self) -> str:
-        return os.getenv("TTS_MODEL") or self._data.get("tts", {}).get("model", "edge/edge-tts")
+        return os.getenv("TTS_MODEL") or self._data.get("tts", {}).get("model", "host_voice")
 
     @property
     def tts_response_format(self) -> str:

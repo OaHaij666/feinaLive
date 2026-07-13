@@ -41,7 +41,6 @@ export interface TTSConfig {
   gateway_url: string
   api_key: string
   model: string
-  voice: string
   response_format: string
   speed: number
   timeout_seconds: number

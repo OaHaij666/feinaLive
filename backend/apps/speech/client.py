@@ -37,7 +37,7 @@ class SpeechGatewayClient:
         self.health_url = base_url.removesuffix("v1/") + "health"
         self.api_key = api_key or config.tts_api_key or ""
         self.model = model or config.tts_model
-        self.voice = voice or config.tts_voice
+        self.voice = voice
         self.response_format = response_format or config.tts_response_format
         self.speed = speed if speed is not None else config.tts_speed
         timeout = timeout_seconds if timeout_seconds is not None else config.tts_timeout_seconds
@@ -51,7 +51,7 @@ class SpeechGatewayClient:
 
     @property
     def available(self) -> bool:
-        return bool(self.gateway_url and self.model and self.voice)
+        return bool(self.gateway_url and self.model)
 
     async def synthesize(self, text: str) -> SpeechArtifact | None:
         text = text.strip()
@@ -90,6 +90,14 @@ class SpeechGatewayClient:
                 sample_rate=_optional_int(response.headers.get("X-Speech-Sample-Rate")),
                 duration_ms=_optional_int(response.headers.get("X-Speech-Duration-Ms")),
                 timings=timings,
+                synthesis_ms=_optional_int(response.headers.get("X-Speech-Synthesis-Ms")),
+                rtf=self._optional_float(response.headers.get("X-Speech-RTF")),
+                fallback_from=response.headers.get("X-Speech-Fallback-From", ""),
+                attempts=tuple(
+                    item
+                    for item in response.headers.get("X-Speech-Attempts", "").split(",")
+                    if item
+                ),
             )
         except httpx.HTTPStatusError as exc:
             logger.error(
@@ -103,13 +111,50 @@ class SpeechGatewayClient:
 
     async def health(self) -> bool:
         try:
-            response = await self._client.get(self.health_url)
+            response = await self._client.get(self.health_url, timeout=0.5)
             return response.status_code == 200
         except httpx.HTTPError:
             return False
 
+    async def get_provider_schemas(self) -> dict:
+        return await self._get_json("admin/provider-schemas")
+
+    async def get_admin_config(self) -> dict:
+        return await self._get_json("admin/config")
+
+    async def get_status(self) -> dict:
+        return await self._get_json("status")
+
+    async def update_provider(self, name: str, payload: dict) -> dict:
+        response = await self._client.put(f"admin/providers/{name}", json=payload)
+        response.raise_for_status()
+        return response.json()
+
+    async def update_route(self, name: str, payload: dict) -> dict:
+        response = await self._client.put(f"admin/routes/{name}", json=payload)
+        response.raise_for_status()
+        return response.json()
+
+    async def probe_provider(self, name: str) -> dict:
+        response = await self._client.post(f"providers/{name}/probe")
+        response.raise_for_status()
+        return response.json()
+
+    async def _get_json(self, path: str) -> dict:
+        response = await self._client.get(path)
+        response.raise_for_status()
+        value = response.json()
+        return value if isinstance(value, dict) else {}
+
     async def close(self) -> None:
         await self._client.aclose()
+
+    @staticmethod
+    def _optional_float(value: str | None) -> float | None:
+        try:
+            return float(value) if value else None
+        except ValueError:
+            return None
 
 
 _speech_gateway_client: SpeechGatewayClient | None = None

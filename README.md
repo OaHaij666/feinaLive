@@ -238,28 +238,8 @@ cd backend
 .\.venv\Scripts\python.exe -m pytest tests\test_memory_debug.py -q
 ```
 
-## Git 注意事项
-
-不应提交：
-
-- `__pycache__/`、`*.pyc`
-- `.venv/`、`.pytest_cache/`、`.ruff_cache/`
-- `backend/config.yaml`
-- `backend/data/`、`memory.db*`、记忆备份
-- `fronted/test-results/`、`playwright-report/`
-- 日志、pid、临时 zip 包
-- `cankao/` 参考项目
-
-如果某个运行产物已经被 Git 跟踪，需要先从索引移除：
-
-```powershell
-git rm --cached path\to\file
-```
 
 ## 架构知识图谱
 
-项目架构、模块关系与引导式导览由 Understand Anything 维护在 `.ua/knowledge-graph.json`，使用 UA Dashboard 查看。该图谱跟随最终提交完整重建，不再维护一套容易过期的手写 `docs/`。
+项目架构、模块关系与引导式导览由 Understand Anything 维护在 `.ua/knowledge-graph.json`，使用 UA Dashboard 查看。
 
-## 说明
-
-这是个人实验性项目，接口和内部结构仍可能调整。运行事实以当前代码、测试与 UA 图谱为准。

@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 
 from launcher.health import evaluate_health
+from launcher.i18n import translate
 from launcher.models import build_specs
 from launcher.processes import clean_output
 
@@ -29,3 +30,9 @@ def test_native_console_replaces_the_old_nginx_console_module():
     module_ids = {spec.id for spec in build_specs(Path("C:/workspace/feinaLive"))}
     assert "nginx_live" in module_ids
     assert "nginx_console" not in module_ids
+
+
+def test_desktop_i18n_switches_business_labels_both_ways():
+    assert translate("每会话最大历史数", "en") == "Max history per session"
+    assert translate("Max history per session", "zh") == "每会话最大历史数"
+    assert translate("直播平台", "en") == "Live platform"

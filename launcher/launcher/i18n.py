@@ -1,0 +1,268 @@
+"""Small runtime translation layer for the native desktop UI."""
+
+from __future__ import annotations
+
+from PySide6.QtWidgets import (
+    QCheckBox,
+    QComboBox,
+    QGroupBox,
+    QLabel,
+    QLineEdit,
+    QListWidget,
+    QPlainTextEdit,
+    QPushButton,
+    QTabWidget,
+    QWidget,
+)
+
+ZH_TO_EN = {
+    # Main shell
+    "运行中心": "Runtime",
+    "FEINA LIVE · 运营控制台": "FEINA LIVE · Operations Console",
+    "本地直播运行栈 · 进程、健康检查与集中日志": "Local live stack · processes, health checks and centralized logs",
+    "正在检查模块…": "Checking modules…",
+    "启动全部": "Start all",
+    "停止全部": "Stop all",
+    "打开直播端": "Open live display",
+    "实时日志": "Live logs",
+    "全部模块": "All modules",
+    "启动准备": "Startup preparation",
+    "搜索日志": "Search logs",
+    "自动滚动": "Auto-scroll",
+    "清空显示": "Clear view",
+    "启动": "Start",
+    "重启": "Restart",
+    "停止": "Stop",
+    "打开": "Open",
+    "亮色": "Light",
+    "暗色": "Dark",
+    # State and modules
+    "等待检查": "Pending check",
+    "正在启动": "Starting",
+    "进程运行": "Process running",
+    "正在停止": "Stopping",
+    "已停止": "Stopped",
+    "未连接": "Offline",
+    "运行正常": "Healthy",
+    "部分降级": "Degraded",
+    "待机": "Idle",
+    "错误": "Error",
+    "服务未响应": "Service not responding",
+    "在线·需鉴权": "Online · authentication required",
+    "响应异常": "Unexpected response",
+    "核心组件已就绪": "Core components are ready",
+    "渲染中": "Rendering",
+    "数字人输出已启动": "Avatar output has started",
+    "启动失败": "Startup failed",
+    "未知错误": "Unknown error",
+    "已连接": "Connected",
+    "未启用": "Disabled",
+    "等待直播平台": "Waiting for live platform",
+    "运行中": "Running",
+    "休眠": "Sleeping",
+    "等待场景": "Waiting for scenario",
+    "外部服务可达": "External service is reachable",
+    "可访问": "Reachable",
+    "等待健康检查": "Waiting for health check",
+    "进程状态已变化": "Process state changed",
+    "场景 MCP": "Scenario MCP",
+    "直播展示端": "Live display",
+    "直播平台 Runtime": "Live Platform Runtime",
+    "模型路由、fallback 与上游供应商": "Model routing, fallback and upstream providers",
+    "TTS provider、路由、熔断与指标": "TTS providers, routing, circuit breaking and metrics",
+    "HostRuntime、平台、记忆与播放编排": "HostRuntime, platform, memory and playback orchestration",
+    "可选的游戏或 Computer Use 能力服务": "Optional game or Computer Use capability service",
+    "Nginx 生产直播画面": "Nginx production live canvas",
+    "数字人推理、预览和 Spout 输出": "Avatar inference, preview and Spout output",
+    "唯一房间与统一直播事件入口": "Single-room normalized live event entry",
+    "场景能力、MCP 与解说请求": "Scenario capabilities, MCP and commentary requests",
+    # Console tabs
+    "配置中心": "Settings",
+    "直播操作": "Live controls",
+    "语音": "Speech",
+    "音乐": "Music",
+    "记忆": "Memory",
+    # Config shell and navigation
+    "持久配置": "Persistent settings",
+    "尚未加载": "Not loaded",
+    "重新加载": "Reload",
+    "保存配置": "Save settings",
+    "加载中…": "Loading…",
+    "配置已同步": "Settings synchronized",
+    "保存中…": "Saving…",
+    "已保存": "Saved",
+    "已保存；需要重启生效": "Saved; restart required",
+    "直播平台": "Live platform",
+    "模型配置": "Models",
+    "主播与消息": "Host and messaging",
+    "语音与数字人": "Speech and avatar",
+    "Agent 场景": "Agent scenario",
+    "音乐策略": "Music policy",
+    "记忆与数据": "Memory and data",
+    "管理员与公告": "Admin and announcement",
+    # Config pages
+    "平台选择": "Platform selection",
+    "当前平台": "Active platform",
+    "内部测试平台": "Internal test platform",
+    "Bilibili 接入": "Bilibili connection",
+    "抖音接入": "Douyin connection",
+    "房间号": "Room ID",
+    "用户 UID": "User UID",
+    "直播间 Web RID": "Live room Web RID",
+    "主播生成模型": "Host generation model",
+    "通用分析模型": "General analysis model",
+    "Agent 决策模型": "Agent decision model",
+    "Embedding 模型": "Embedding model",
+    "主播回复节奏": "Host response timing",
+    "消息调度": "Message scheduling",
+    "语音路由": "Speech routing",
+    "场景与运行参数": "Scenario and runtime",
+    "点歌与播放策略": "Song request and playback policy",
+    "用户记忆调度": "User memory scheduling",
+    "知识图谱召回": "Knowledge graph recall",
+    "存储位置": "Storage locations",
+    "管理员身份": "Administrator identity",
+    "直播公告": "Live announcement",
+    # Common fields
+    "API 地址": "API URL",
+    "API 密钥": "API key",
+    "模型名称": "Model",
+    "温度": "Temperature",
+    "最大 Token": "Max tokens",
+    "关闭思考模式": "Disable thinking",
+    "回复间隔（秒）": "Reply interval (seconds)",
+    "最大回复长度": "Maximum reply length",
+    "启用": "Enabled",
+    "场景": "Scenario",
+    "MCP 地址": "MCP URL",
+    "Gateway 地址": "Gateway URL",
+    "音频格式": "Audio format",
+    "语速": "Speech speed",
+    "超时（秒）": "Timeout (seconds)",
+    "向量维度": "Embedding dimensions",
+    "用户图启用向量": "Use embeddings for user graph",
+    "游戏图启用向量": "Use embeddings for game graph",
+    "SQLite 文件": "SQLite file",
+    "ChromaDB 目录": "ChromaDB directory",
+    "向量集合": "Vector collection",
+    "管理员名称": "Administrator name",
+    "各平台管理员身份": "Platform admin identities",
+    "场景专属配置": "Scenario-specific settings",
+    "本地音乐目录": "Local music directories",
+    "动作": "Motion",
+    "口型同步": "Lip sync",
+    "渲染器": "Renderer",
+    "输出": "Outputs",
+    "Spout 输出": "Spout output",
+    "预览": "Preview",
+    # AI memory
+    "每会话最大历史数": "Max history per session",
+    "总结触发消息数": "Summary message threshold",
+    "空闲总结等待（秒）": "Idle summary delay (seconds)",
+    "总结扫描间隔（秒）": "Summary scan interval (seconds)",
+    "最近消息上限": "Recent message limit",
+    "记忆轮询间隔（秒）": "Memory polling interval (seconds)",
+    # Operations
+    "直播运行操作": "Live runtime controls",
+    "刷新状态": "Refresh status",
+    "管理员指令": "Administrator commands",
+    "暂停 AI": "Pause AI",
+    "恢复 AI": "Resume AI",
+    "鼠标追踪": "Mouse tracking",
+    "自由漫步": "Autonomous motion",
+    "管理员接管": "Admin takeover",
+    "恢复 AI 主播": "Resume AI host",
+    "隐藏管理员弹幕": "Hide admin messages",
+    "显示管理员弹幕": "Show admin messages",
+    "测试平台标准事件": "Test-platform normalized event",
+    "测试观众": "Test viewer",
+    "小花花": "Small flower",
+    "发送事件": "Send event",
+    "类型": "Type",
+    "用户": "User",
+    "用户 ID": "User ID",
+    "内容": "Content",
+    "礼物": "Gift",
+    "价值": "Value",
+    "连通测试": "Connection test",
+    "保存 Provider": "Save provider",
+    "保存路由": "Save route",
+    "音乐队列": "Music queue",
+    "歌曲名、BV 号或本地曲目": "Song title, BV ID or local track",
+    "点歌": "Request song",
+    "暂停/继续": "Pause / resume",
+    "切歌": "Skip",
+    "清空队列": "Clear queue",
+    "设置音量": "Set volume",
+    "主播说话时自动压低": "Duck music while host speaks",
+    "记忆系统": "Memory system",
+    "搜索原子记忆": "Search atomic memories",
+    "搜索": "Search",
+    "测试召回": "Test recall",
+    "静音": "Mute",
+    "解除静音": "Unmute",
+    "共享上下文": "Shared context",
+    "刷新": "Refresh",
+    "状态": "Status",
+    "图概览": "Graph overview",
+    "备份": "Backup",
+    "补齐向量": "Backfill vectors",
+    "重建向量": "Rebuild vectors",
+    "等待后端数据…": "Waiting for backend data…",
+    "Provider JSON 配置": "Provider JSON settings",
+}
+
+# Explanatory copy is kept here so both themes and all pages switch together.
+ZH_TO_EN.update(
+    {
+        "同一时间只启用一个平台。选择后仅填写该平台需要的房间与身份凭据，修改后重启生效。": "Only one platform can run at a time. Select it, enter only its room and credentials, then restart to apply.",
+        "SESSDATA 属于敏感凭据，保存后进入系统密钥库。": "SESSDATA is sensitive and is stored in the system keyring.",
+        "Cookie 属于敏感凭据，保存后进入系统密钥库。": "The cookie is sensitive and is stored in the system keyring.",
+        "不连接外部直播服务；标准弹幕和礼物从“直播操作”页发送。": "No external platform is connected; send normalized messages and gifts from Live controls.",
+        "所有 OpenAI-compatible 模型集中配置。Bifrost 负责实际供应商、路由和 fallback。": "Configure all OpenAI-compatible models here. Bifrost owns providers, routing and fallback.",
+        "负责最终主播回复和解说词生成。": "Generates final host replies and commentary.",
+        "负责抽取、总结、审核等后台任务。": "Handles extraction, summarization, moderation and other background tasks.",
+        "负责场景观察、工具选择和行动规划。": "Handles scene observation, tool selection and action planning.",
+        "为空时知识图谱召回自动使用关键词兜底。": "When empty, graph recall automatically falls back to keyword matching.",
+        "配置回复节奏、消息优先级、饥饿保护、洪峰控制和队列速率。": "Configure reply timing, message priority, starvation protection, flood control and queue rates.",
+        "这里配置主播输出链路；具体 Speech Provider 与 fallback 在上方“语音”运行页维护。": "Configure host output here; manage speech providers and fallback on the Speech runtime page.",
+        "角色、渲染器和输出方式修改后需要重启。": "Character, renderer and output changes require a restart.",
+        "场景、MCP 和能力装配在进程启动时固定；此页不重复显示模型参数。": "Scenario, MCP and capabilities are fixed at process startup; model settings are not duplicated here.",
+        "配置 Provider 路由、队列容量、审核阈值、本地目录与自动压低。实时播放操作在“音乐”页。": "Configure provider routing, queue capacity, moderation thresholds, local folders and ducking. Runtime controls are on Music.",
+        "配置用户总结、游戏记忆、SQLite 权威数据和 ChromaDB 可重建向量索引。": "Configure user summaries, game memory, authoritative SQLite data and the rebuildable ChromaDB vector index.",
+        "路径修改后重启生效。": "Path changes require a restart.",
+        "配置管理员显示名称、各平台身份映射和直播间公告。": "Configure the admin display name, platform identity mapping and live announcement.",
+    }
+)
+
+EN_TO_ZH = {value: key for key, value in ZH_TO_EN.items()}
+
+
+def translate(text: str, language: str) -> str:
+    if language == "en":
+        if text.startswith("已加载 ") and text.endswith(" 个 provider"):
+            return f"Loaded {text[4:-11]} providers"
+        return ZH_TO_EN.get(text, text)
+    return EN_TO_ZH.get(text, text)
+
+
+def localize_widget_tree(root: QWidget, language: str) -> None:
+    """Translate current widget text without rebuilding runtime-owned objects."""
+    widgets = [root, *root.findChildren(QWidget)]
+    for widget in widgets:
+        if isinstance(widget, (QLabel, QPushButton, QCheckBox)):
+            widget.setText(translate(widget.text(), language))
+        if isinstance(widget, QGroupBox):
+            widget.setTitle(translate(widget.title(), language))
+        if isinstance(widget, (QLineEdit, QPlainTextEdit)):
+            widget.setPlaceholderText(translate(widget.placeholderText(), language))
+        if isinstance(widget, QListWidget):
+            for index in range(widget.count()):
+                item = widget.item(index)
+                item.setText(translate(item.text(), language))
+        if isinstance(widget, QComboBox):
+            for index in range(widget.count()):
+                widget.setItemText(index, translate(widget.itemText(index), language))
+        if isinstance(widget, QTabWidget):
+            for index in range(widget.count()):
+                widget.setTabText(index, translate(widget.tabText(index), language))

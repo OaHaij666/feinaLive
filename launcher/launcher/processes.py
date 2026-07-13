@@ -24,9 +24,12 @@ class ProcessController(QObject):
     log_received = Signal(str, str, str)
     state_changed = Signal(str, str)
 
-    def __init__(self, specs: list[ModuleSpec], root: Path, parent=None) -> None:
+    def __init__(
+        self, specs: list[ModuleSpec], root: Path, parent=None, language: str = "zh"
+    ) -> None:
         super().__init__(parent)
         self.root = root
+        self.language = language
         self.specs = {spec.id: spec for spec in specs}
         self.processes: dict[str, QProcess] = {}
         self.pending_restarts: set[str] = set()
@@ -63,8 +66,9 @@ class ProcessController(QObject):
         )
         self.processes[module_id] = process
         self.state_changed.emit(module_id, "starting")
+        prefix = "Starting" if self.language == "en" else "启动"
         self.log_received.emit(
-            module_id, "system", f"启动：{spec.program} {' '.join(spec.arguments)}"
+            module_id, "system", f"{prefix}: {spec.program} {' '.join(spec.arguments)}"
         )
         process.start()
 
@@ -124,15 +128,26 @@ class ProcessController(QObject):
 
     def _started(self, module_id: str) -> None:
         self.state_changed.emit(module_id, "running")
-        self.log_received.emit(module_id, "system", "进程已启动，等待健康检查")
+        message = (
+            "Process started; waiting for health check"
+            if self.language == "en"
+            else "进程已启动，等待健康检查"
+        )
+        self.log_received.emit(module_id, "system", message)
 
     def _error(self, module_id: str, error: str) -> None:
         self.state_changed.emit(module_id, "error")
-        self.log_received.emit(module_id, "error", f"进程错误：{error}")
+        prefix = "Process error" if self.language == "en" else "进程错误"
+        self.log_received.emit(module_id, "error", f"{prefix}: {error}")
 
     def _finished(self, module_id: str, code: int, status) -> None:
         self.state_changed.emit(module_id, "stopped" if code == 0 else "error")
-        self.log_received.emit(module_id, "system", f"进程已退出，代码 {code}，状态 {status.name}")
+        message = (
+            f"Process exited with code {code}, status {status.name}"
+            if self.language == "en"
+            else f"进程已退出，代码 {code}，状态 {status.name}"
+        )
+        self.log_received.emit(module_id, "system", message)
         if module_id in self.pending_restarts:
             self.pending_restarts.discard(module_id)
             QTimer.singleShot(350, lambda: self.start(module_id))
@@ -147,7 +162,12 @@ class ProcessController(QObject):
             with urllib.request.urlopen(request, timeout=1.0) as response:
                 accepted = response.status == 202
             if accepted:
-                self.log_received.emit("backend", "system", "已请求后端优雅退出")
+                message = (
+                    "Requested graceful backend shutdown"
+                    if self.language == "en"
+                    else "已请求后端优雅退出"
+                )
+                self.log_received.emit("backend", "system", message)
             return accepted
         except (OSError, urllib.error.URLError):
             return False

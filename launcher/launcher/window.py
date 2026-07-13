@@ -31,6 +31,7 @@ from PySide6.QtWidgets import (
 
 from launcher.control import OperationsConsole
 from launcher.health import HealthResult, evaluate_health
+from launcher.i18n import localize_widget_tree, translate
 from launcher.models import ModuleSpec, build_specs, executable
 from launcher.processes import ProcessController, clean_output
 
@@ -134,9 +135,10 @@ class LauncherWindow(QMainWindow):
         self.log_records: deque[tuple[str, str, str, str]] = deque(maxlen=5000)
         self.settings = QSettings("feinaLive", "Launcher")
         self.theme = str(self.settings.value("theme", "dark"))
+        self.language = str(self.settings.value("language", "zh"))
         self.network = QNetworkAccessManager(self)
         self.pending_health: set[str] = set()
-        self.processes = ProcessController(self.specs, root, self)
+        self.processes = ProcessController(self.specs, root, self, self.language)
         self.setup_process: QProcess | None = None
         self.setup_stage = ""
         self._build_ui()
@@ -160,9 +162,17 @@ class LauncherWindow(QMainWindow):
         self.main_tabs.setObjectName("mainTabs")
         self.setCentralWidget(self.main_tabs)
         self.theme_button = QPushButton()
+        self.language_button = QPushButton()
         self._update_theme_button()
         self.theme_button.clicked.connect(self.toggle_theme)
-        self.main_tabs.setCornerWidget(self.theme_button, Qt.Corner.TopRightCorner)
+        self.language_button.clicked.connect(self.toggle_language)
+        corner = QWidget()
+        corner_layout = QHBoxLayout(corner)
+        corner_layout.setContentsMargins(0, 0, 2, 0)
+        corner_layout.setSpacing(6)
+        corner_layout.addWidget(self.language_button)
+        corner_layout.addWidget(self.theme_button)
+        self.main_tabs.setCornerWidget(corner, Qt.Corner.TopRightCorner)
         root_widget = QWidget()
         root_widget.setObjectName("appRoot")
         self.main_tabs.addTab(root_widget, "运行中心")
@@ -255,8 +265,12 @@ class LauncherWindow(QMainWindow):
         splitter.setStretchFactor(1, 2)
         splitter.setSizes([430, 330])
         outer.addWidget(splitter, 1)
-        self.main_tabs.addTab(OperationsConsole(), "FEINA LIVE · 运营控制台")
+        self.operations_console = OperationsConsole(self.language)
+        self.main_tabs.addTab(self.operations_console, "FEINA LIVE · 运营控制台")
         self.setStyleSheet(self._stylesheet(self.theme))
+        localize_widget_tree(self, self.language)
+        self._update_language_button()
+        self._update_theme_button()
 
     def _connect_signals(self) -> None:
         self.processes.log_received.connect(self.append_log)
@@ -367,22 +381,40 @@ class LauncherWindow(QMainWindow):
         health = self.health_states.get(module_id)
         process_state = self.process_states.get(module_id, "unknown")
         if health and health.state != "offline":
-            self.cards[module_id].set_state(health.state, health.label, health.detail)
+            self.cards[module_id].set_state(
+                health.state,
+                translate(health.label, self.language),
+                translate(health.detail, self.language),
+            )
         elif process_state in {"starting", "running", "stopping", "error"}:
             detail = (
                 "等待健康检查" if process_state in {"starting", "running"} else "进程状态已变化"
             )
-            self.cards[module_id].set_state(process_state, detail=detail)
+            self.cards[module_id].set_state(
+                process_state,
+                label=translate(STATE_LABELS.get(process_state, process_state), self.language),
+                detail=translate(detail, self.language),
+            )
         elif health:
-            self.cards[module_id].set_state(health.state, health.label, health.detail)
+            self.cards[module_id].set_state(
+                health.state,
+                translate(health.label, self.language),
+                translate(health.detail, self.language),
+            )
         else:
-            self.cards[module_id].set_state(process_state)
+            self.cards[module_id].set_state(
+                process_state,
+                translate(STATE_LABELS.get(process_state, process_state), self.language),
+            )
 
     def _update_summary(self) -> None:
         states = [result.state for result in self.health_states.values()]
         healthy = sum(state == "healthy" for state in states)
         degraded = sum(state in {"degraded", "error"} for state in states)
-        self.summary_label.setText(f"在线 {healthy}/{len(self.specs)} · 异常 {degraded}")
+        if self.language == "en":
+            self.summary_label.setText(f"Online {healthy}/{len(self.specs)} · Issues {degraded}")
+        else:
+            self.summary_label.setText(f"在线 {healthy}/{len(self.specs)} · 异常 {degraded}")
 
     def append_log(self, module_id: str, level: str, message: str) -> None:
         timestamp = datetime.now().strftime("%H:%M:%S")
@@ -444,17 +476,44 @@ class LauncherWindow(QMainWindow):
         self.setStyleSheet(self._stylesheet(self.theme))
         self._update_theme_button()
 
+    def toggle_language(self) -> None:
+        self.language = "en" if self.language == "zh" else "zh"
+        self.processes.language = self.language
+        self.operations_console.set_language(self.language)
+        localize_widget_tree(self, self.language)
+        self._update_language_button()
+        self._update_theme_button()
+        self._update_summary()
+        for module_id in self.cards:
+            self._apply_module_state(module_id)
+
+    def _update_language_button(self) -> None:
+        self.language_button.setText("EN" if self.language == "zh" else "中文")
+        self.language_button.setToolTip(
+            "Switch to English" if self.language == "zh" else "切换到中文"
+        )
+
     def _update_theme_button(self) -> None:
-        self.theme_button.setText("亮色" if self.theme == "dark" else "暗色")
-        self.theme_button.setToolTip(f"切换到{'亮色' if self.theme == 'dark' else '暗色'}主题")
+        target_zh = "亮色" if self.theme == "dark" else "暗色"
+        self.theme_button.setText(translate(target_zh, self.language))
+        if self.language == "en":
+            self.theme_button.setToolTip(f"Switch to {translate(target_zh, 'en').lower()} theme")
+        else:
+            self.theme_button.setToolTip(f"切换到{target_zh}主题")
 
     def closeEvent(self, event: QCloseEvent) -> None:  # noqa: N802
         running = any(self.processes.is_running(spec.id) for spec in self.specs if spec.managed)
         if running:
+            title = "Exit FeinaLive" if self.language == "en" else "退出 FeinaLive"
+            message = (
+                "Exiting will stop modules started by this window. Continue?"
+                if self.language == "en"
+                else "退出会停止由本窗口启动的模块。是否继续？"
+            )
             answer = QMessageBox.question(
                 self,
-                "退出 FeinaLive",
-                "退出会停止由本窗口启动的模块。是否继续？",
+                title,
+                message,
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.No,
             )
@@ -465,6 +524,7 @@ class LauncherWindow(QMainWindow):
         self.processes.stop_all_sync()
         self.settings.setValue("geometry", self.saveGeometry())
         self.settings.setValue("theme", self.theme)
+        self.settings.setValue("language", self.language)
         if self.log_file:
             self.log_file.close()
         event.accept()

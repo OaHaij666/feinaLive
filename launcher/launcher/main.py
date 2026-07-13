@@ -7,7 +7,7 @@ import os
 import sys
 from pathlib import Path
 
-from PySide6.QtCore import QLockFile, QStandardPaths
+from PySide6.QtCore import QLockFile, QSettings, QStandardPaths
 from PySide6.QtGui import QFont, QFontDatabase
 from PySide6.QtWidgets import QApplication, QMessageBox
 
@@ -45,7 +45,11 @@ def main() -> int:
     lock = QLockFile(str(lock_path))
     lock.setStaleLockTime(0)
     if not lock.tryLock(50):
-        QMessageBox.information(None, "FeinaLive", "控制中心已经在运行。")
+        language = str(QSettings("feinaLive", "Launcher").value("language", "zh"))
+        message = (
+            "Control Center is already running." if language == "en" else "控制中心已经在运行。"
+        )
+        QMessageBox.information(None, "FeinaLive", message)
         return 0
 
     window = LauncherWindow(project_root(), autostart=not arguments.no_autostart)

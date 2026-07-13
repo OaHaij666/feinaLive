@@ -32,6 +32,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from launcher.i18n import localize_widget_tree, translate
+
 API_ROOT = "http://127.0.0.1:9191"
 Callback = Callable[[bool, Any, str], None]
 
@@ -69,6 +71,78 @@ FIELD_LABELS = {
     "identities": "各平台管理员身份",
     "scenario_config": "场景专属配置",
     "local_directories": "本地音乐目录",
+    "max_history_per_session": "每会话最大历史数",
+    "summary_interval": "总结触发消息数",
+    "summary_idle_seconds": "空闲总结等待（秒）",
+    "summary_scan_interval_seconds": "总结扫描间隔（秒）",
+    "max_recent_messages": "最近消息上限",
+    "poll_interval_seconds": "记忆轮询间隔（秒）",
+    "poll_interval": "Agent 轮询间隔（秒）",
+    "memory_threshold": "记忆总结事件数",
+    "memory_idle_seconds": "记忆空闲总结（秒）",
+    "memory_scan_interval_seconds": "记忆扫描间隔（秒）",
+    "memory_context_max_chars": "记忆上下文最大字符",
+    "min_step_interval": "最小行动间隔（秒）",
+    "step_jitter": "行动间隔抖动",
+    "commentary_interval": "解说间隔（秒）",
+    "min_commentary_interval": "最小解说间隔（秒）",
+    "commentary_hold_timeout": "解说等待超时（秒）",
+    "memory_eagerness": "记忆积极度",
+    "queue_max_size": "队列容量",
+    "host_history_maxlen": "主播共享历史上限",
+    "action_history_maxlen": "行动历史上限",
+    "danmaku_starvation_seconds": "弹幕饥饿保护（秒）",
+    "danmaku_flood_threshold": "弹幕洪峰阈值",
+    "danmaku_flood_window": "弹幕洪峰窗口（秒）",
+    "gift_starvation_seconds": "礼物饥饿保护（秒）",
+    "gift_flood_threshold": "礼物洪峰阈值",
+    "gift_flood_window": "礼物洪峰窗口（秒）",
+    "gift_value_highest": "最高优先级礼物价值",
+    "gift_value_high": "高优先级礼物价值",
+    "gift_value_normal": "普通礼物价值",
+    "gift_value_low": "低优先级礼物价值",
+    "user_cooldown_seconds": "用户冷却（秒）",
+    "default_ttl_seconds": "消息默认有效期（秒）",
+    "rate_limit_commentary": "解说最小间隔（秒）",
+    "rate_limit_danmaku": "弹幕最小间隔（秒）",
+    "rate_limit_gift": "礼物最小间隔（秒）",
+    "default_provider": "默认音乐 Provider",
+    "min_duration_seconds": "最短时长（秒）",
+    "max_duration_seconds": "最长时长（秒）",
+    "queue_capacity": "点歌队列容量",
+    "per_user_limit": "每用户点歌上限",
+    "allow_bare_bv": "允许直接输入 BV 号",
+    "accept_score": "直接通过分数",
+    "reject_score": "直接拒绝分数",
+    "llm_min_confidence": "免 LLM 最低置信度",
+    "search_candidates": "搜索候选数",
+    "ducking_factor": "自动压低比例",
+    "ducking_enabled": "启用自动压低",
+    "character": "角色",
+    "source": "输入来源",
+    "allow_browser_control": "允许浏览器控制",
+    "sensitivity": "口型灵敏度",
+    "noise_gate": "噪声门限",
+    "attack_ms": "口型启动时间（毫秒）",
+    "release_ms": "口型释放时间（毫秒）",
+    "engine": "渲染引擎",
+    "backend": "推理后端",
+    "precision": "计算精度",
+    "separable": "启用可分离模型",
+    "use_eyebrow": "启用眉毛控制",
+    "frame_rate": "帧率",
+    "interpolation": "插帧倍率",
+    "super_resolution": "超分倍率",
+    "ram_cache_mb": "内存缓存（MB）",
+    "vram_cache_mb": "显存缓存（MB）",
+    "name": "输出名称",
+    "quality": "预览质量",
+    "motion": "动作",
+    "lip_sync": "口型同步",
+    "renderer": "渲染器",
+    "outputs": "输出",
+    "spout": "Spout 输出",
+    "preview": "预览",
 }
 
 MODEL_FIELDS = {
@@ -140,9 +214,10 @@ class JsonView(QPlainTextEdit):
 
 
 class ConfigPage(QWidget):
-    def __init__(self, api: ApiClient) -> None:
+    def __init__(self, api: ApiClient, language: str = "zh") -> None:
         super().__init__()
         self.api = api
+        self.language = language
         self.data: dict[str, Any] = {}
         self.fields: dict[tuple[str, ...], tuple[QWidget, type]] = {}
 
@@ -172,19 +247,22 @@ class ConfigPage(QWidget):
         content.addWidget(self.sections)
         content.addWidget(self.pages, 1)
         layout.addLayout(content, 1)
+        localize_widget_tree(self, self.language)
         self.load()
 
     def load(self) -> None:
-        self.status.setText("加载中…")
+        self.status.setText(translate("加载中…", self.language))
         self.api.send("GET", "/config", None, self._loaded)
 
     def _loaded(self, ok: bool, data: Any, error: str) -> None:
         if not ok or not isinstance(data, dict):
-            self.status.setText(f"加载失败：{error}")
+            prefix = "Load failed" if self.language == "en" else "加载失败"
+            self.status.setText(f"{prefix}: {error}")
             return
         self.data = data
         self._build_forms()
-        self.status.setText("配置已同步")
+        self.status.setText(translate("配置已同步", self.language))
+        localize_widget_tree(self, self.language)
 
     def _build_forms(self) -> None:
         selected_row = max(0, self.sections.currentRow())
@@ -208,6 +286,7 @@ class ConfigPage(QWidget):
             self.sections.addItem(label)
             self.pages.addWidget(builder())
         self.sections.setCurrentRow(min(selected_row, self.sections.count() - 1))
+        localize_widget_tree(self, self.language)
 
     def _page(self, title: str, description: str) -> tuple[QScrollArea, QVBoxLayout]:
         scroll = QScrollArea()
@@ -397,7 +476,7 @@ class ConfigPage(QWidget):
         for key, value in values.items():
             path = (*prefix, key)
             if isinstance(value, dict) and value:
-                heading = QLabel(key.replace("_", " ").title())
+                heading = QLabel(FIELD_LABELS.get(key, key.replace("_", " ").title()))
                 heading.setObjectName("formHeading")
                 form.addRow(heading)
                 self._add_values(form, path, value)
@@ -458,7 +537,7 @@ class ConfigPage(QWidget):
         except (TypeError, ValueError, json.JSONDecodeError) as exc:
             QMessageBox.warning(self, "配置格式错误", str(exc))
             return
-        self.status.setText("保存中…")
+        self.status.setText(translate("保存中…", self.language))
         self.api.send("PUT", "/config", payload, self._saved)
 
     @staticmethod
@@ -479,12 +558,15 @@ class ConfigPage(QWidget):
 
     def _saved(self, ok: bool, data: Any, error: str) -> None:
         if not ok:
-            self.status.setText(f"保存失败：{error}")
+            prefix = "Save failed" if self.language == "en" else "保存失败"
+            self.status.setText(f"{prefix}: {error}")
             return
         self.data = data
         restart = bool(data.get("restart_required")) if isinstance(data, dict) else False
-        self.status.setText("已保存；需要重启生效" if restart else "已保存")
+        message = "已保存；需要重启生效" if restart else "已保存"
+        self.status.setText(translate(message, self.language))
         self._build_forms()
+        localize_widget_tree(self, self.language)
 
 
 class OperationsPage(QWidget):
@@ -865,13 +947,22 @@ class InspectorPage(QWidget):
 
 
 class OperationsConsole(QTabWidget):
-    def __init__(self, parent=None) -> None:
+    def __init__(self, language: str = "zh", parent=None) -> None:
         super().__init__(parent)
         self.setObjectName("operationsConsole")
+        self.language = language
         self.api = ApiClient(self)
-        self.addTab(ConfigPage(self.api), "配置中心")
+        self.addTab(ConfigPage(self.api, language), "配置中心")
         self.addTab(OperationsPage(self.api), "直播操作")
         self.addTab(SpeechPage(self.api), "语音")
         self.addTab(MusicPage(self.api), "音乐")
         self.addTab(InspectorPage(self.api, "agent"), "Agent")
         self.addTab(InspectorPage(self.api, "memory"), "记忆")
+        localize_widget_tree(self, language)
+
+    def set_language(self, language: str) -> None:
+        self.language = language
+        config = self.widget(0)
+        if isinstance(config, ConfigPage):
+            config.language = language
+        localize_widget_tree(self, language)
